@@ -1,18 +1,16 @@
 from typing import Final
 
 from .common import (
+    _pl_json_to_sympy,
+    count_in_latex,
     dbg,
-    get_ans,
-    get_sympy_ans,
     getrec,
     latex,
     lim_latex,
-    _pl_json_to_sympy,
     set_correct_sympy_ans,
     set_format_error,
     setrec,
     str_to_sympy,
-    submitted_ans_latex_contains,
     sympy_eq,
     to_expr,
 )
@@ -25,34 +23,32 @@ from .partial_credit import (
     set_partial_score,
 )
 from .sets import (
-    reject_non_sympy_set_input,
     grade_sympy_set,
+    reject_non_sympy_set_input,
 )
 
 __all__: Final[tuple[str, ...]] = (
+    "_pl_json_to_sympy",
     "already_scored",
     "award_partial_credit",
+    "count_in_latex",
     "dbg",
     "eval_at",
     "eval_at_",
     "evalf_at",
     "evalf_at_",
-    "get_ans",
     "get_partial_score",
-    "get_sympy_ans",
     "getrec",
+    "grade_sympy_set",
     "latex",
     "lim_latex",
-    "_pl_json_to_sympy",
     "reject_non_sympy_set_input",
     "rule",
-    "grade_sympy_set",
     "set_correct_sympy_ans",
     "set_format_error",
     "set_partial_score",
     "setrec",
     "str_to_sympy",
-    "submitted_ans_latex_contains",
     "sympy_eq",
     "to_expr",
 )

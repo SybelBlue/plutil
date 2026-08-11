@@ -22,7 +22,7 @@ from .common import (
 )
 from .functions import eval_at, eval_at_
 from .lenses import SympyQuestionLens
-from .partial_credit import award_partial_credit, rule
+from .partial_credit import rule
 
 DEFAULT_FEEDBACK: Final[str] = (
     "Your answer is correct up to an additive constant. Include + C for full credit."
@@ -34,14 +34,15 @@ def award_missing_constant_credit(
     lens: SympyQuestionLens,
     C: Variable = "C",
     partial_score: float = 0.8,
-    feedback: str | None = DEFAULT_FEEDBACK,
+    feedback: str = DEFAULT_FEEDBACK,
 ) -> bool:
     """Award partial credit when an antiderivative is missing its constant.
 
     Returns True when partial credit was applied, False otherwise.
     """
-    return award_partial_credit(
-        lens.as_sympy_lens((C, *_normalize_one_or_more(lens.variables))),
+    return lens.as_sympy_lens(
+        (C, *_normalize_one_or_more(lens.variables))
+    ).award_partial_credit(
         rule(partial_score, change_correct=eval_at_(**{var_name(C): 0})),
         feedback=feedback,
     )
