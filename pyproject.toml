@@ -19,4 +19,4 @@ git = "https://github.com/PrairieLearn/PrairieLearn.git"
 subdirectory = "apps/prairielearn/python"
 
 [dependency-groups]
-dev = ["ipython", "pyright", "pytest", "ruff"]
+dev = ["ipython", "pyfakefs", "pyright", "pytest", "ruff"]
