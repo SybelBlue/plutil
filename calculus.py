@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from itertools import pairwise
-from typing import Any, Callable, Final, Literal
+from typing import Any, Final, Literal
 
 import prairielearn as pl
 import sympy
@@ -157,12 +158,12 @@ def approximate_area[num: int | float](
     f_x: Callable[[float], SympyEquiv]
     if isinstance(f, dict):
         table = {float(x): y for x, y in f.items()}
-        f_x = lambda x: next(v for k, v in table.items() if math.isclose(k, x))  # noqa: E731
+        f_x = lambda x: next(v for k, v in table.items() if math.isclose(k, x))
     else:
         f_expr = to_expr(f, d).simplify()
-        f_x = lambda x: eval_at(f_expr, **{var_name(d): x})  # noqa: E731
+        f_x = lambda x: eval_at(f_expr, **{var_name(d): x})  # type: ignore
 
-    return width * sum(map(f_x, rect_xs))
+    return width * sum(map(f_x, rect_xs))  # type: ignore
 
 
 def mean_value_theorem(
