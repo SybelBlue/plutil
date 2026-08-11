@@ -1,0 +1,22 @@
+[build-system]
+requires = ["uv_build>=0.12.1,<0.13.0"]
+build-backend = "uv_build"
+
+[project]
+name = "plutil"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+  "prairielearn",
+  "sympy==1.14.0",
+]
+
+[tool.uv]
+package = true
+
+[tool.uv.sources.prairielearn]
+git = "https://github.com/PrairieLearn/PrairieLearn.git"
+subdirectory = "apps/prairielearn/python"
+
+[dependency-groups]
+dev = ["ipython", "pyright", "pytest", "ruff"]
