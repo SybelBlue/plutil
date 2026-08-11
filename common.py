@@ -1,14 +1,19 @@
 """Helpers common to plutil."""
 
+from __future__ import annotations
+
 import math
 import re
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Literal, cast, overload
+from typing import TYPE_CHECKING, Any, Literal, cast, overload
 
 import prairielearn as pl
 import prairielearn.sympy_utils as psu
 import sympy
+
+if TYPE_CHECKING:
+    from .lenses import QuestionLens, SympyQuestionLens
 
 type SympyValue = sympy.Expr | sympy.Set
 type SympyEquiv = SympyValue | int | float
@@ -54,8 +59,7 @@ def _pl_json_to_sympy(value: object | None) -> SympyValue | None:
 
 
 def set_correct_sympy_ans(
-    data: pl.QuestionData,
-    answer_name: str,
+    lens: QuestionLens,
     answer: sympy.Basic | sympy.Set | int,
 ) -> Any:
     """Store a SymPy correct answer using PrairieLearn's JSON encoding."""
@@ -67,16 +71,15 @@ def set_correct_sympy_ans(
         raise TypeError(f"answer must be a SymPy expression or set, got {answer!r}")
 
     return setrec(
-        data,
+        lens.data,
         "correct_answers",
-        answer_name,
+        lens.answers_name,
         v=pl.to_json(sympy_answer),
     )
 
 
 def set_format_error(
-    data: pl.QuestionData,
-    answer_name: str,
+    lens: QuestionLens,
     message: str,
     *,
     clobber_existing_error: bool = True,
@@ -87,13 +90,13 @@ def set_format_error(
     ``clobber_existing_error=False`` and the answer already has a formatting
     error, preserves the existing message and returns ``False``.
     """
-    format_errors = setrec(data, "format_errors", default={})
+    format_errors = setrec(lens.data, "format_errors", default={})
     if not isinstance(format_errors, dict):
         raise TypeError('`data["format_errors"]` is not a dict')
-    if not clobber_existing_error and answer_name in format_errors:
+    if not clobber_existing_error and lens.answers_name in format_errors:
         return False
 
-    format_errors[answer_name] = message
+    format_errors[lens.answers_name] = message
     return True
 
 
@@ -237,48 +240,41 @@ def sympy_eq(left: Any, right: Any) -> bool:
 
 
 def get_ans(
-    data: pl.QuestionData,
-    answer_name: str,
+    lens: QuestionLens,
     *,
     ver: Literal["correct", "submitted", "raw_submitted"] = "correct",
     default: Any | None = None,
 ) -> Any | None:
     """Retrieve a correct, submitted, or raw submitted answer from question data."""
     assert ver in ("correct", "submitted", "raw_submitted")
-    return getrec(data, f"{ver}_answers", answer_name, default=default)
+    return getrec(lens.data, f"{ver}_answers", lens.answers_name, default=default)
 
 
 @overload
 def get_sympy_ans(
-    data: pl.QuestionData,
-    answer_name: str,
-    variables: OneOrMore[Variable] = (),
+    lens: SympyQuestionLens,
     *,
     ver: Literal["submitted", "raw_submitted"],
 ) -> SympyValue | None: ...
 @overload
 def get_sympy_ans(
-    data: pl.QuestionData,
-    answer_name: str,
-    variables: OneOrMore[Variable] = (),
+    lens: SympyQuestionLens,
     *,
     ver: Literal["correct"] = "correct",
 ) -> SympyValue: ...
 def get_sympy_ans(
-    data: pl.QuestionData,
-    answer_name: str,
-    variables: OneOrMore[Variable] = (),
+    lens: SympyQuestionLens,
     *,
     ver: Literal["correct", "submitted", "raw_submitted"] = "correct",
 ) -> SympyValue | None:
     """Retrieve and parse a symbolic answer from PrairieLearn question data."""
-    raw = get_ans(data, answer_name, ver=ver)
+    raw = get_ans(lens, ver=ver)
 
     if raw is None:
         return None
 
     if isinstance(raw, (sympy.Expr, int, float, str)):
-        return to_expr(raw, variables)
+        return to_expr(raw, lens.variables)
 
     if psu.is_sympy_json(raw):
         return _pl_json_to_sympy(raw)
@@ -312,7 +308,7 @@ def latex(
     if log_base == sympy.E or log_base == math.e:
         return rendered.replace(r"\log", r"\ln")
 
-    return rendered.replace(r"\log", rf"\log_{{ {log_base} }}")
+    return rendered.replace(r"\log", rf"\log_{{{log_base}}}")
 
 
 def lim_latex(
@@ -333,13 +329,12 @@ def lim_latex(
 
 
 def submitted_ans_latex_contains(
-    data: pl.QuestionData,
-    answer_name: str,
+    lens: QuestionLens,
     *values: str,
     ver: Literal["raw_submitted", "submitted"] = "submitted",
 ) -> int:
     """Count occurrences of LaTeX fragments in a submitted symbolic answer."""
-    ans = get_sympy_ans(data, answer_name=answer_name, ver=ver)
+    ans = get_sympy_ans(lens.as_sympy_lens(), ver=ver)
     if ans is None:
         return 0
     l = latex(ans)

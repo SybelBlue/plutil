@@ -7,7 +7,6 @@ from collections.abc import Callable
 from itertools import pairwise
 from typing import Any, Final, Literal
 
-import prairielearn as pl
 import sympy
 
 from .common import (
@@ -22,6 +21,7 @@ from .common import (
     var_to_symbol,
 )
 from .functions import eval_at, eval_at_
+from .lenses import SympyQuestionLens
 from .partial_credit import award_partial_credit, rule
 
 DEFAULT_FEEDBACK: Final[str] = (
@@ -31,9 +31,7 @@ DEFAULT_FEEDBACK: Final[str] = (
 
 # NOTE: partial_score default chosen according to Serena's memory of AP scoring
 def award_missing_constant_credit(
-    data: pl.QuestionData,
-    answer_name: str,
-    variables: OneOrMore[Variable],
+    lens: SympyQuestionLens,
     C: Variable = "C",
     partial_score: float = 0.8,
     feedback: str | None = DEFAULT_FEEDBACK,
@@ -43,10 +41,8 @@ def award_missing_constant_credit(
     Returns True when partial credit was applied, False otherwise.
     """
     return award_partial_credit(
-        data,
-        answer_name,
+        lens.as_sympy_lens((C, *_normalize_one_or_more(lens.variables))),
         rule(partial_score, change_correct=eval_at_(**{var_name(C): 0})),
-        variables=(C, *_normalize_one_or_more(variables)),
         feedback=feedback,
     )
 

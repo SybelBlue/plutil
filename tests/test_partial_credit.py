@@ -1,14 +1,16 @@
-import plutil.partial_credit as partial_credit_mod
 import prairielearn as pl
 import pytest
+from sympy.abc import x
+
+import plutil.partial_credit as partial_credit_mod
 from plutil.functions import eval_at
+from plutil.lenses import SympyQuestionLens
 from plutil.partial_credit import (
     CompoundRule,
     Transform,
     award_partial_credit,
     rule,
 )
-from sympy.abc import x
 
 
 def test_rule_matches_submitted_value() -> None:
@@ -94,10 +96,8 @@ def test_award_partial_credit_maps_correct_answer(monkeypatch) -> None:
     }
 
     awarded = award_partial_credit(
-        data,  # type: ignore[arg-type]
-        "answer",
+        SympyQuestionLens(data, "answer", ("x", "C")),  # type: ignore[arg-type]
         rule(0.65, change_correct=lambda correct: eval_at(correct, C=0)),
-        variables=("x", "C"),
         feedback=feedback,
     )
 
@@ -124,10 +124,8 @@ def test_award_partial_credit_ignores_rules_when_answer_is_correct(
     }
 
     awarded = award_partial_credit(
-        data,  # type: ignore[arg-type]
-        "answer",
+        SympyQuestionLens(data, "answer", "x"),  # type: ignore[arg-type]
         rule(0.5, change_correct=lambda _: rule_called.append(True) or x**2 + 1),
-        variables="x",
     )
 
     assert awarded is True
@@ -150,10 +148,8 @@ def test_award_partial_credit_accepts_json_correct_answer(monkeypatch) -> None:
     }
 
     awarded = award_partial_credit(
-        data,  # type: ignore[arg-type]
-        "answer",
+        SympyQuestionLens(data, "answer", "x"),  # type: ignore[arg-type]
         rule(0.5, submitted_is=x**2 + 1),
-        variables="x",
     )
 
     assert awarded is True
@@ -175,10 +171,8 @@ def test_award_partial_credit_can_replace_existing_partial_score(monkeypatch) ->
     }
 
     awarded = award_partial_credit(
-        data,  # type: ignore[arg-type]
-        "answer",
+        SympyQuestionLens(data, "answer", ("x", "C")),  # type: ignore[arg-type]
         rule(0.8, change_correct=lambda correct: eval_at(correct, C=0)),
-        variables=("x", "C"),
     )
 
     assert awarded is True
@@ -201,10 +195,8 @@ def test_award_partial_credit_can_preserve_existing_partial_score(monkeypatch) -
     }
 
     awarded = award_partial_credit(
-        data,  # type: ignore[arg-type]
-        "answer",
+        SympyQuestionLens(data, "answer", "x"),  # type: ignore[arg-type]
         rule(0.4, submitted_is=x**2),
-        variables="x",
         clobber_existing_score=False,
     )
 
@@ -227,10 +219,8 @@ def test_award_partial_credit_does_nothing_when_no_rule_matches(monkeypatch) -> 
     }
 
     awarded = award_partial_credit(
-        data,  # type: ignore[arg-type]
-        "answer",
+        SympyQuestionLens(data, "answer", ("x", "C")),  # type: ignore[arg-type]
         rule(0.5, submitted_is=x**2 + 1),
-        variables=("x", "C"),
     )
 
     assert awarded is False
@@ -255,10 +245,8 @@ def test_award_partial_credit_uses_additional_correct_answers_for_rules(
     }
 
     awarded = award_partial_credit(
-        data,  # type: ignore[arg-type]
-        "answer",
+        SympyQuestionLens(data, "answer", ("x", "C")),  # type: ignore[arg-type]
         rule(0.5, change_correct=lambda correct: correct + 1),
-        variables=("x", "C"),
         addl_correct_ans="x^2",
     )
 
