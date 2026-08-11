@@ -3,10 +3,11 @@
 import math
 import re
 from collections.abc import Iterable
+from pathlib import Path
 from typing import Any, Literal, cast, overload
 
-import prairielearn as pl  # type: ignore
-import prairielearn.sympy_utils as psu  # type: ignore
+import prairielearn as pl
+import prairielearn.sympy_utils as psu
 import sympy
 
 type SympyExpr = sympy.Expr
@@ -17,6 +18,7 @@ type OneOrMany[T] = T | Iterable[T]
 
 
 def dbg[T](value: T) -> T:
+    """A debugging helepr. Prints the representation of ``value`` and returns it"""
     import inspect
 
     loc_str = "<no location found>"
@@ -24,13 +26,18 @@ def dbg[T](value: T) -> T:
         caller_frame := current_frame.f_back
     ):
         caller_info = inspect.getframeinfo(caller_frame)
-        loc_str = f"[{caller_info.filename}:{caller_frame.f_lineno}]"
+        filepath = Path(caller_info.filename).resolve()
+        for parent in filepath.parents:
+            if (parent / "infoCourse.json").is_file():
+                filepath = filepath.relative_to(parent)
+                break
+        loc_str = f"[{filepath}:{caller_frame.f_lineno}]"
 
-    print("dbg", f"[{loc_str}]", value)
+    print("[dbg]", f"[{loc_str}]", value)
     return value
 
 
-def pl_json_to_sympy(value: object | None) -> SympyExpr | None:
+def _pl_json_to_sympy(value: object | None) -> SympyExpr | None:
     """Parses PrairieLearn JSON objects into a sympy Expression"""
     if value is None or not psu.is_sympy_json(value):
         return None
@@ -200,7 +207,7 @@ def to_expr(expr: SympyParsable | dict, variables: OneOrMany[Variable]) -> Sympy
     if isinstance(expr, str):
         return str_to_sympy(expr, variables)
     if isinstance(expr, dict):
-        out = pl_json_to_sympy(expr)
+        out = _pl_json_to_sympy(expr)
         if out is not None:
             return out
         raise TypeError(
@@ -269,7 +276,7 @@ def get_sympy_ans(
         return to_expr(raw, variables)
 
     if psu.is_sympy_json(raw):
-        return pl_json_to_sympy(raw)
+        return _pl_json_to_sympy(raw)
 
     return None
 
@@ -299,7 +306,7 @@ def latex(
     if log_base == sympy.E or log_base == math.e:
         return rendered.replace(r"\log", r"\ln")
 
-    return rendered.replace(r"\log", rf"\log_{{{log_base}}}")
+    return rendered.replace(r"\log", rf"\log_{{ {log_base} }}")
 
 
 def lim_latex(

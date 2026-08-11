@@ -10,7 +10,7 @@ from plutil.common import (
     getrec,
     latex,
     lim_latex,
-    pl_json_to_sympy,
+    _pl_json_to_sympy,
     set_correct_sympy_ans,
     set_format_error,
     setrec,
@@ -21,14 +21,14 @@ from sympy.abc import t, x
 
 
 def test_pl_json_to_sympy_round_trips_pl_json():
-    expr = pl_json_to_sympy(pl.to_json(2 * x + 3))
+    expr = _pl_json_to_sympy(pl.to_json(2 * x + 3))
 
     assert expr is not None
     assert sympy_eq(expr, 2 * x + 3)
 
 
 def test_pl_json_to_sympy_returns_none_for_none():
-    assert pl_json_to_sympy(None) is None
+    assert _pl_json_to_sympy(None) is None
 
 
 def test_set_correct_sympy_ans_stores_pl_json():

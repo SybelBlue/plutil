@@ -16,6 +16,7 @@ from .common import (
     Variable,
     _normalize_one_or_many,
     _var_names,
+    latex,
     to_expr,
     var_name,
     var_to_symbol,
@@ -197,7 +198,7 @@ def diffeq_latex(
         `pfrac`: `\\frac{\\partial f}{\\partial x}`
         `prime`: `f'` (intended for use only with an ode)
     """
-    out = sp.latex(expr)
+    out = latex(expr, reparse=False)
 
     for fn in _var_names(dependent_vars):
         f = Function(fn)
@@ -212,12 +213,15 @@ def diffeq_latex(
                 case "prime":
                     replacement = rf"{fn}'"
 
-            out = out.replace(sp.latex(sp.diff(f(t), t)), replacement)
+            out = out.replace(
+                latex(derivative(f(t), d=t), reparse=False),  # type: ignore
+                replacement,
+            )
             out = re.sub(
                 rf"{re.escape(fn)}\^\{{([^{{}}]+)\}}\{{\\left\({re.escape(var)} \\right\)\}}",
                 rf"{fn}^{{\1}}",
                 out,
             )
-            out = out.replace(sp.latex(f(t)), fn)  # type: ignore
+            out = out.replace(latex(f(t), reparse=False), fn)  # type: ignore
 
     return out

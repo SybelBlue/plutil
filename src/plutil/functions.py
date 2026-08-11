@@ -3,163 +3,20 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Final, cast, overload
+from typing import Final, cast
 
-import prairielearn as pl  # type: ignore
 import sympy
 
 from .common import (
     SympyEquiv,
     SympyExpr,
     SympyParsable,
-    _normalize_one_or_many,
-    get_sympy_ans,
-    setrec,
-    sympy_eq,
     to_expr,
 )
 
 DEFAULT_FEEDBACK: Final[str] = (
     "The correct answer was computed based on the other answers in this question."
 )
-
-type TransformOne = Callable[[SympyExpr], SympyEquiv]
-type TransformMany = Callable[..., SympyEquiv]
-type OneAnswerName = str | tuple[str]
-type ManyAnswerNames = tuple[str, str, *tuple[str, ...]]
-type AnswerNames = OneAnswerName | ManyAnswerNames
-
-
-@overload
-def transform_submitted_answers(
-    data: pl.QuestionData, answer_names: OneAnswerName, *, transformation: TransformOne
-) -> SympyExpr | None: ...
-@overload
-def transform_submitted_answers(
-    data: pl.QuestionData,
-    answer_names: ManyAnswerNames,
-    *,
-    transformation: TransformMany,
-) -> SympyExpr | None: ...
-def transform_submitted_answers(
-    data: pl.QuestionData, answer_names: AnswerNames, *, transformation: TransformMany
-) -> SympyEquiv | None:
-    names = tuple(_normalize_one_or_many(answer_names))
-
-    sympys: list[SympyExpr] = []
-    for answer_name in names:
-        source_expr = get_sympy_ans(
-            data, answer_name, ver="submitted"
-        ) or get_sympy_ans(data, answer_name, ver="raw_submitted")
-        if source_expr is None:
-            return None
-        sympys.append(source_expr)
-
-    return transformation(*sympys)
-
-
-@overload
-def set_answer_based_on_another(
-    data: pl.QuestionData,
-    *,
-    src_names: OneAnswerName,
-    dest_name: str,
-    transformation: TransformOne,
-) -> SympyExpr | None: ...
-@overload
-def set_answer_based_on_another(
-    data: pl.QuestionData,
-    *,
-    src_names: ManyAnswerNames,
-    dest_name: str,
-    transformation: TransformMany,
-) -> SympyExpr | None: ...
-def set_answer_based_on_another(
-    data: pl.QuestionData,
-    *,
-    src_names: AnswerNames,
-    dest_name: str,
-    transformation: TransformMany,
-) -> SympyExpr | None:
-    """Sets the correct answer for `dest_name` using
-    `transformation(data['submitted_answers'][src_names])`.
-
-    Returns None if derivation is not possible, the new answer otherwise.
-    """
-    correct_expr = transform_submitted_answers(
-        data,
-        src_names,
-        transformation=transformation,
-    )
-
-    if correct_expr is None:
-        return None
-
-    setrec(data, "correct_answers", dest_name, v=str(correct_expr))
-    return correct_expr
-
-
-@overload
-def grade_answer_based_on_another(
-    data: pl.QuestionData,
-    *,
-    src_names: OneAnswerName,
-    dest_name: str,
-    transformation: TransformOne,
-    feedback: str | None = DEFAULT_FEEDBACK,
-) -> bool: ...
-@overload
-def grade_answer_based_on_another(
-    data: pl.QuestionData,
-    *,
-    src_names: ManyAnswerNames,
-    dest_name: str,
-    transformation: TransformMany,
-    feedback: str | None = DEFAULT_FEEDBACK,
-) -> bool: ...
-def grade_answer_based_on_another(
-    data: pl.QuestionData,
-    *,
-    src_names: AnswerNames,
-    dest_name: str,
-    transformation: TransformMany,
-    feedback: str | None = DEFAULT_FEEDBACK,
-) -> bool:
-    """Grades the submission to `dest_name` for correctness against
-    `transformation(data['submitted_answers'][src_names])`.
-
-    Does not clobber the absolute correct answer for display.
-
-    Returns False if no scoring occurred, True if the answer was set.
-    """
-
-    submitted_expr = get_sympy_ans(data, dest_name, ver="submitted")
-    if submitted_expr is None:
-        return False
-
-    correct_expr = transform_submitted_answers(
-        data, src_names, transformation=transformation
-    )
-    if correct_expr is None:
-        return False
-
-    dest_score = setrec(data, "partial_scores", dest_name, default={})
-    existing_score = dest_score.get("score", None)
-    correct = sympy_eq(correct_expr, submitted_expr)
-    new_score = 1.0 if correct else 0.0
-
-    if existing_score is not None and existing_score >= new_score:
-        return False
-
-    setrec(data, "correct_answers", dest_name, default=str(correct_expr))
-
-    dest_score["score"] = new_score
-    pl.set_weighted_score_data(data)  # type: ignore
-
-    if feedback is not None:
-        dest_score["feedback"] = feedback
-
-    return True
 
 
 def eval_at(

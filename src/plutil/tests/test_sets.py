@@ -2,8 +2,8 @@ import prairielearn as pl
 import pytest
 import sympy as sp
 from plutil.sets import (
-    reject_non_set_input,
-    score_set_answer,
+    reject_non_sympy_set_input,
+    grade_sympy_set,
 )
 from plutil.tests.helpers import question_data
 from sympy.abc import x
@@ -14,7 +14,7 @@ def test_reject_non_set_input_adds_format_error() -> None:
         submitted_answers={"answer": pl.to_json(x + 1)}, format_errors={}
     )
 
-    rejected = reject_non_set_input(data, "answer")
+    rejected = reject_non_sympy_set_input(data, "answer")
 
     assert rejected is True
     assert data["format_errors"]["answer"] == (
@@ -28,7 +28,7 @@ def test_reject_non_set_input_accepts_set() -> None:
         format_errors={},
     )
 
-    rejected = reject_non_set_input(data, "answer")
+    rejected = reject_non_sympy_set_input(data, "answer")
 
     assert rejected is False
     assert "answer" not in data["format_errors"]
@@ -40,7 +40,7 @@ def test_reject_non_set_input_preserves_existing_format_error() -> None:
         format_errors={"answer": "Original error."},
     )
 
-    rejected = reject_non_set_input(data, "answer")
+    rejected = reject_non_sympy_set_input(data, "answer")
 
     assert rejected is False
     assert data["format_errors"]["answer"] == "Original error."
@@ -53,7 +53,7 @@ def test_score_set_answer_awards_credit_per_correct_element() -> None:
         partial_scores={},
     )
 
-    scored = score_set_answer(data, "answer")
+    scored = grade_sympy_set(data, "answer")
 
     assert scored is True
     assert data["partial_scores"]["answer"]["score"] == pytest.approx(2 / 3)
@@ -66,7 +66,7 @@ def test_score_set_answer_penalizes_extra_elements() -> None:
         partial_scores={},
     )
 
-    scored = score_set_answer(data, "answer")
+    scored = grade_sympy_set(data, "answer")
 
     assert scored is True
     assert data["partial_scores"]["answer"]["score"] == pytest.approx(1 / 3**0.5)
@@ -79,7 +79,7 @@ def test_score_set_answer_skips_non_set_input() -> None:
         partial_scores={},
     )
 
-    scored = score_set_answer(data, "answer")
+    scored = grade_sympy_set(data, "answer")
 
     assert scored is False
     assert "answer" not in data["partial_scores"]

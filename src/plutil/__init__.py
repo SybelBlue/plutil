@@ -7,7 +7,7 @@ from .common import (
     getrec,
     latex,
     lim_latex,
-    pl_json_to_sympy,
+    _pl_json_to_sympy,
     set_correct_sympy_ans,
     set_format_error,
     setrec,
@@ -25,8 +25,8 @@ from .partial_credit import (
     set_partial_score,
 )
 from .sets import (
-    reject_non_set_input,
-    score_set_answer,
+    reject_non_sympy_set_input,
+    grade_sympy_set,
 )
 
 __all__: Final[tuple[str, ...]] = (
@@ -43,10 +43,10 @@ __all__: Final[tuple[str, ...]] = (
     "getrec",
     "latex",
     "lim_latex",
-    "pl_json_to_sympy",
-    "reject_non_set_input",
+    "_pl_json_to_sympy",
+    "reject_non_sympy_set_input",
     "rule",
-    "score_set_answer",
+    "grade_sympy_set",
     "set_correct_sympy_ans",
     "set_format_error",
     "set_partial_score",
