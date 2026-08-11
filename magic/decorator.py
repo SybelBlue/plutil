@@ -13,7 +13,7 @@ from plutil.lenses import QuestionDataLens, QuestionLens
 from .element_data import PlElementData, get_data_factory
 
 type AnswersName = str
-type AnswerTagDict = dict[AnswersName, PlElementData]
+type AnswerElementDataDict = dict[AnswersName, PlElementData]
 
 type DelayedLens = Callable[[pl.QuestionData], QuestionLens]
 type LensBuilder = Callable[[str], DelayedLens]
@@ -22,8 +22,9 @@ type PlMagicFunction[**P] = Callable[P, None]
 type PlBaseFunction = Callable[[pl.QuestionData], None]
 
 
+# NOTE: consider making this a class.
 def plmagic[**P](f: PlMagicFunction[P]) -> PlBaseFunction:
-    answer_tags = _validate_question_html(f)
+    html_path, answer_tags = _validate_question_html(f)
     validated_sig = _validate_plfun_sig(f, answer_tags)
 
     def inner(data: pl.QuestionData) -> None:
@@ -31,6 +32,7 @@ def plmagic[**P](f: PlMagicFunction[P]) -> PlBaseFunction:
         # inner_frame_info = inner_frame and inspect.getframeinfo(inner_frame)
 
         validated_sig.call(f, data)
+        _validate_question_data_output(data, f.__name__, html_path)
 
     return inner
 
@@ -49,7 +51,9 @@ class ValidatedSig:
         return p_f(**kwargs)
 
 
-def _validate_plfun_sig(f: PlMagicFunction, tag_dict: AnswerTagDict) -> ValidatedSig:
+def _validate_plfun_sig(
+    f: PlMagicFunction, tag_dict: AnswerElementDataDict
+) -> ValidatedSig:
     f_name = f.__name__
     f_sig = inspect.signature(f)
     type_hints = get_type_hints(f)
@@ -91,10 +95,10 @@ def _validate_plfun_sig(f: PlMagicFunction, tag_dict: AnswerTagDict) -> Validate
     return out
 
 
-html_file_cache: dict[Path, AnswerTagDict] = {}
+html_file_cache: dict[Path, AnswerElementDataDict] = {}
 
 
-def _validate_question_html(f: PlMagicFunction) -> AnswerTagDict:
+def _validate_question_html(f: PlMagicFunction) -> tuple[Path, AnswerElementDataDict]:
     f_name = f.__name__
     f_filepath = Path(inspect.getfile(f)).resolve()
     html_path = f_filepath.parent / "question.html"
@@ -104,17 +108,19 @@ def _validate_question_html(f: PlMagicFunction) -> AnswerTagDict:
         )
     answers = html_file_cache.get(html_path)
     if answers is None:
-        answers = _build_answers_tag_dict(f_name, html_path)
+        answers = _build_answers_element_data_dict(f_name, html_path)
         html_file_cache[html_path] = answers
-    return answers
+    return html_path, answers
 
 
-def _build_answers_tag_dict(f_name: str, html_path: Path) -> AnswerTagDict:
+def _build_answers_element_data_dict(
+    f_name: str, html_path: Path
+) -> AnswerElementDataDict:
     from lxml import etree  # type: ignore
 
     element = html.fragment_fromstring(html_path.read_text())
     answer_elements = etree.XPath("//*[@answers-name]")(element)
-    answers: AnswerTagDict = {}
+    answers: AnswerElementDataDict = {}
     for answer_element in answer_elements:
         answer_name: str = answer_element.attrib["answers-name"]
         if answer_name in answers:
@@ -126,3 +132,33 @@ def _build_answers_tag_dict(f_name: str, html_path: Path) -> AnswerTagDict:
         answers[answer_name] = get_data_factory(answer_tag)(answer_element)
 
     return answers
+
+
+class PlMagicError(Exception):
+    pass
+
+
+class InvalidQuestionDataError(PlMagicError, ValueError):
+    pass
+
+
+@dataclass(slots=True, frozen=True)
+class MissingCorrectAnswer(InvalidQuestionDataError):
+    data: pl.QuestionData
+    answers_name: str
+    function_name: str
+    html_path: Path
+
+    def __str__(self) -> str:
+        return (
+            f"data['correct_answers'] is missing an entry for `{self.answers_name}`\n"
+            f"\thint: set this in {self.function_name} or in {self.html_path}"
+        )
+
+
+def _validate_question_data_output(
+    data: pl.QuestionData, f_name: str, html_path: Path
+) -> None:
+    for a_name in data["answers_names"]:
+        if a_name not in data["correct_answers"]:
+            raise MissingCorrectAnswer(data, a_name, f_name, html_path)

@@ -7,6 +7,7 @@ from types import ModuleType
 import pytest
 from pyfakefs.fake_filesystem import FakeFilesystem
 
+from plutil.magic.decorator import MissingCorrectAnswer
 from plutil.tests.helpers import question_data
 
 _module_ids = count()
@@ -51,6 +52,7 @@ def test_plmagic_injects_lenses_from_question_html(fs: FakeFilesystem) -> None:
         ) -> None:
             data.params["called"] = True
             number.correct_answer = 7
+            expression.data["correct_answers"]["expression"] = "x + y"
             data.params["expression_lens_type"] = type(expression).__name__
             data.params["expression_variables"] = expression.variables
         """,
@@ -70,6 +72,70 @@ def test_plmagic_injects_lenses_from_question_html(fs: FakeFilesystem) -> None:
     assert data["params"]["expression_lens_type"] == "SympyQuestionLens"
     assert data["params"]["expression_variables"] == ("x", "y")
     assert data["correct_answers"]["number"] == 7
+    assert data["correct_answers"]["expression"] == "x + y"
+
+
+def test_plmagic_rejects_missing_correct_answer_after_generation(
+    fs: FakeFilesystem,
+) -> None:
+    server = load_server(
+        fs,
+        """
+        from plutil.lenses import QuestionLens
+        from plutil.magic import plmagic
+
+        @plmagic
+        def generate(answer: QuestionLens) -> None:
+            answer.data["params"]["generate_was_called"] = True
+        """,
+        '<pl-number-input answers-name="answer"></pl-number-input>',
+    )
+    data = question_data(answers_names={"answer": True})
+
+    with pytest.raises(MissingCorrectAnswer) as exc_info:
+        server.generate(data)
+
+    error = exc_info.value
+    assert data["params"]["generate_was_called"] is True
+    assert error.data is data
+    assert error.answers_name == "answer"
+    assert error.function_name == "generate"
+    assert error.html_path.name == "question.html"
+    assert str(error) == (
+        "data['correct_answers'] is missing an entry for `answer`\n"
+        f"\thint: set this in generate or in {error.html_path}"
+    )
+
+
+def test_plmagic_accepts_correct_answer_set_only_in_html(
+    fs: FakeFilesystem,
+) -> None:
+    server = load_server(
+        fs,
+        """
+        from plutil.lenses import QuestionLens
+        from plutil.magic import plmagic
+
+        @plmagic
+        def generate(answer: QuestionLens) -> None:
+            pass
+        """,
+        """
+        <pl-number-input
+          answers-name="answer"
+          correct-answer="7"
+        ></pl-number-input>
+        """,
+    )
+    # PrairieLearn parses correct-answer from question.html before calling generate.
+    data = question_data(
+        answers_names={"answer": True},
+        correct_answers={"answer": 7},
+    )
+
+    server.generate(data)
+
+    assert data["correct_answers"] == {"answer": 7}
 
 
 def test_plmagic_rejects_duplicate_answer_names(fs: FakeFilesystem) -> None:
