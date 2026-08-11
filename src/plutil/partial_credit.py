@@ -6,11 +6,11 @@ from typing import Protocol, overload
 import prairielearn as pl
 
 from .common import (
-    OneOrMany,
+    OneOrMore,
     SympyEquiv,
     SympyParsable,
     Variable,
-    _normalize_one_or_many,
+    _normalize_one_or_more,
     _var_names,
     get_ans,
     get_sympy_ans,
@@ -23,7 +23,9 @@ from .common import (
 class PartialCreditRule[T](Protocol):
     score: float
 
-    def check(self, *, correct: T, submitted: T) -> bool: ...
+    def check(self, *, correct: T, submitted: T) -> bool:
+        """Return whether this rule matches the submitted answer."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +34,7 @@ class Literal[T](PartialCreditRule[T]):
     value: T | bool
 
     def check(self, *, correct: T, submitted: T) -> bool:
+        """Compare the submitted answer with the rule's literal value."""
         if self.value is True or self.value is False:
             return self.value
         return sympy_eq(self.value, submitted)
@@ -44,6 +47,7 @@ class Transform[T](PartialCreditRule[T]):
     transform_submitted: Callable[[T], T] | bool | None = None
 
     def check(self, *, correct: T, submitted: T) -> bool:
+        """Transform the answers and compare their resulting values."""
         if self.transform_correct is True or self.transform_correct is False:
             return self.transform_correct
 
@@ -65,6 +69,7 @@ class Predicate[T](PartialCreditRule[T]):
     satisfies: Callable[[T, T], bool] | bool
 
     def check(self, *, correct: T, submitted: T) -> bool:
+        """Evaluate this rule's predicate for the two answers."""
         if self.satisfies is True or self.satisfies is False:
             return self.satisfies
         return self.satisfies(correct, submitted)
@@ -76,6 +81,7 @@ class CompoundRule[T](PartialCreditRule[T]):
     rules: tuple[PartialCreditRule[T], ...]
 
     def check(self, *, correct: T, submitted: T) -> bool:
+        """Return whether any contained rule matches the answers."""
         return any(r.check(correct=correct, submitted=submitted) for r in self.rules)
 
 
@@ -83,46 +89,46 @@ class CompoundRule[T](PartialCreditRule[T]):
 def rule(score: float, *, if_: bool) -> PartialCreditRule[SympyEquiv]: ...
 @overload
 def rule[T: SympyEquiv](
-    score: float, *, submitted_is: OneOrMany[T | bool], if_: bool | None = None
+    score: float, *, submitted_is: OneOrMore[T | bool], if_: bool | None = None
 ) -> PartialCreditRule[T]: ...
 @overload
 def rule[T: SympyEquiv](
     score: float,
     *,
-    change_correct: OneOrMany[Callable[[T], T] | bool],
-    change_submitted: OneOrMany[Callable[[T], T] | bool] = (),
+    change_correct: OneOrMore[Callable[[T], T] | bool],
+    change_submitted: OneOrMore[Callable[[T], T] | bool] = (),
     if_: bool | None = None,
 ) -> PartialCreditRule[T]: ...
 @overload
 def rule[T: SympyEquiv](
     score: float,
     *,
-    change_correct: OneOrMany[Callable[[T], T] | bool] = (),
-    change_submitted: OneOrMany[Callable[[T], T] | bool],
+    change_correct: OneOrMore[Callable[[T], T] | bool] = (),
+    change_submitted: OneOrMore[Callable[[T], T] | bool],
     if_: bool | None = None,
 ) -> PartialCreditRule[T]: ...
 @overload
 def rule[T: SympyEquiv](
     score: float,
     *,
-    change_both: OneOrMany[Callable[[T], T] | bool],
+    change_both: OneOrMore[Callable[[T], T] | bool],
     if_: bool | None = None,
 ) -> PartialCreditRule[T]: ...
 @overload
 def rule[T: SympyEquiv](
     score: float,
     *,
-    satisfies: OneOrMany[Callable[[T, T], bool] | bool],
+    satisfies: OneOrMore[Callable[[T, T], bool] | bool],
     if_: bool | None = None,
 ) -> PartialCreditRule[T]: ...
 def rule[T: SympyEquiv](
     score: float,
     *,
-    submitted_is: OneOrMany[T | bool] = (),
-    change_correct: OneOrMany[Callable[[T], T] | bool] = (),
-    change_submitted: OneOrMany[Callable[[T], T] | bool] = (),
-    change_both: OneOrMany[Callable[[T], T] | bool] = (),
-    satisfies: OneOrMany[Callable[[T, T], bool] | bool] = (),
+    submitted_is: OneOrMore[T | bool] = (),
+    change_correct: OneOrMore[Callable[[T], T] | bool] = (),
+    change_submitted: OneOrMore[Callable[[T], T] | bool] = (),
+    change_both: OneOrMore[Callable[[T], T] | bool] = (),
+    satisfies: OneOrMore[Callable[[T, T], bool] | bool] = (),
     if_: bool | None = None,
 ) -> PartialCreditRule[T]:
     """Create a partial-credit rule worth ``score``.
@@ -148,11 +154,11 @@ def rule[T: SympyEquiv](
             kind is non-empty.
     """
     match (
-        tuple(_normalize_one_or_many(submitted_is)),
-        tuple(_normalize_one_or_many(change_correct)),
-        tuple(_normalize_one_or_many(change_submitted)),
-        tuple(_normalize_one_or_many(change_both)),
-        tuple(_normalize_one_or_many(satisfies)),
+        tuple(_normalize_one_or_more(submitted_is)),
+        tuple(_normalize_one_or_more(change_correct)),
+        tuple(_normalize_one_or_more(change_submitted)),
+        tuple(_normalize_one_or_more(change_both)),
+        tuple(_normalize_one_or_more(satisfies)),
     ):
         case (), (), (), (), ():
             if if_ is not None:
@@ -202,6 +208,7 @@ def rule[T: SympyEquiv](
 
 
 def already_scored(data: pl.QuestionData, answer_name: str) -> bool:
+    """Return whether an answer already has a partial score."""
     return get_partial_score(data, answer_name) is not None
 
 
@@ -223,6 +230,7 @@ def get_partial_score(
 def get_partial_score(
     data: pl.QuestionData, answer_name: str, default: float | None = None
 ) -> float | None:
+    """Return an answer's partial score, or ``default`` when it has none."""
     v = partial_score_dict(data, answer_name).get("score", default)
     if v is None:
         return v
@@ -237,6 +245,7 @@ def set_partial_score(
     feedback: str | None = None,
     weight: int | None = None,
 ) -> pl.PartialScore:
+    """Update and return an answer's PrairieLearn partial-score record."""
     answer_score_dict = partial_score_dict(data, answer_name)
     if score is not None:
         answer_score_dict["score"] = score
@@ -255,9 +264,10 @@ class _CreditSchemeBase[T]:
         object.__setattr__(self, "ruleset", tuple(self.ruleset))
 
     def matching_rule(
-        self, *, correct_answers: OneOrMany[T], submitted: T
+        self, *, correct_answers: OneOrMore[T], submitted: T
     ) -> PartialCreditRule[T] | None:
-        correct = tuple(_normalize_one_or_many(correct_answers))
+        """Return the first rule matching any supplied correct answer."""
+        correct = tuple(_normalize_one_or_more(correct_answers))
         for r in self.ruleset:
             for c in correct:
                 if r.check(correct=c, submitted=submitted):
@@ -270,11 +280,16 @@ class CreditScheme[T](_CreditSchemeBase[T]):
         self,
         data: pl.QuestionData,
         answer_name: str,
-        addl_correct_answers: OneOrMany[T] = (),
+        addl_correct_answers: OneOrMore[T] = (),
         include_display_ans: bool = True,
         clobber_existing_score: bool = False,
         feedback: str | None = None,
     ) -> bool:
+        """Grade an answer using ordinary Python equality and this ruleset.
+
+        Returns ``True`` when a score is written and ``False`` when grading is
+        skipped or no candidate or rule matches.
+        """
         # check if already scored
         if not clobber_existing_score and already_scored(data, answer_name):
             return False
@@ -285,7 +300,7 @@ class CreditScheme[T](_CreditSchemeBase[T]):
             return False
 
         # gather correct answer candidates
-        candidates = list(_normalize_one_or_many(addl_correct_answers))
+        candidates = list(_normalize_one_or_more(addl_correct_answers))
 
         if include_display_ans:
             correct = get_ans(data, answer_name, ver="correct")
@@ -313,12 +328,17 @@ class SympyCreditScheme(_CreditSchemeBase[SympyEquiv]):
         self,
         data: pl.QuestionData,
         answer_name: str,
-        variables: OneOrMany[Variable],
-        addl_correct_answers: OneOrMany[SympyEquiv] = (),
+        variables: OneOrMore[Variable],
+        addl_correct_answers: OneOrMore[SympyEquiv] = (),
         include_display_ans: bool = True,
         clobber_existing_score: bool = False,
         feedback: str | None = None,
     ) -> bool:
+        """Grade a symbolic answer using SymPy equivalence and this ruleset.
+
+        Returns ``True`` when a score is written and ``False`` when grading is
+        skipped or no candidate or rule matches.
+        """
         # check if already scored
         if not clobber_existing_score and already_scored(data, answer_name):
             return False
@@ -331,7 +351,7 @@ class SympyCreditScheme(_CreditSchemeBase[SympyEquiv]):
             return False
 
         # gather correct answer candidates
-        candidates = list(_normalize_one_or_many(addl_correct_answers))
+        candidates = list(_normalize_one_or_more(addl_correct_answers))
 
         if include_display_ans:
             correct = get_sympy_ans(data, answer_name, vars, ver="correct")
@@ -359,8 +379,8 @@ def award_partial_credit(
     data: pl.QuestionData,
     answer_name: str,
     *rules: PartialCreditRule,
-    variables: OneOrMany[Variable],
-    addl_correct_ans: OneOrMany[SympyParsable] = (),
+    variables: OneOrMore[Variable],
+    addl_correct_ans: OneOrMore[SympyParsable] = (),
     feedback: str | None = None,
     include_display_ans: bool = True,
     clobber_existing_score: bool = True,
@@ -424,7 +444,7 @@ def award_partial_credit(
     """
     vars = tuple(_var_names(variables))
     addl_correct = tuple(
-        to_expr(e, vars) for e in _normalize_one_or_many(addl_correct_ans)
+        to_expr(e, vars) for e in _normalize_one_or_more(addl_correct_ans)
     )
     return SympyCreditScheme(rules).grade(
         data,

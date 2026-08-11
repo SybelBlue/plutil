@@ -11,12 +11,12 @@ import prairielearn as pl
 import sympy
 
 from .common import (
-    OneOrMany,
+    OneOrMore,
     SympyEquiv,
-    SympyExpr,
     SympyParsable,
+    SympyValue,
     Variable,
-    _normalize_one_or_many,
+    _normalize_one_or_more,
     to_expr,
     var_name,
     var_to_symbol,
@@ -33,7 +33,7 @@ DEFAULT_FEEDBACK: Final[str] = (
 def award_missing_constant_credit(
     data: pl.QuestionData,
     answer_name: str,
-    variables: OneOrMany[Variable],
+    variables: OneOrMore[Variable],
     C: Variable = "C",
     partial_score: float = 0.8,
     feedback: str | None = DEFAULT_FEEDBACK,
@@ -46,28 +46,33 @@ def award_missing_constant_credit(
         data,
         answer_name,
         rule(partial_score, change_correct=eval_at_(**{var_name(C): 0})),
-        variables=(C, *_normalize_one_or_many(variables)),
+        variables=(C, *_normalize_one_or_more(variables)),
         feedback=feedback,
     )
 
 
 def derivative(
     f: SympyParsable,
-    variables: OneOrMany[Variable] = (),
+    variables: OneOrMore[Variable] = (),
     *,
     d: Variable,
     evaluate: bool = True,
-) -> SympyExpr:
+) -> SympyValue:
+    """Differentiate ``f`` with respect to ``d``.
+
+    Additional ``variables`` are allowed when parsing a string expression.
+    Set ``evaluate=False`` to return an unevaluated SymPy derivative.
+    """
     return sympy.Derivative(
-        to_expr(f, (d, *_normalize_one_or_many(variables))),
+        to_expr(f, (d, *_normalize_one_or_more(variables))),
         var_to_symbol(d),
         evaluate=evaluate,
     )
 
 
 def derivative_(
-    variables: OneOrMany[Variable] = (), *, d: Variable, evaluate: bool = True
-) -> Callable[[SympyParsable], SympyExpr]:
+    variables: OneOrMore[Variable] = (), *, d: Variable, evaluate: bool = True
+) -> Callable[[SympyParsable], SympyValue]:
     """Return a callable that differentiates its argument with respect to ``d``."""
     return lambda f: derivative(f, variables, d=d, evaluate=evaluate)
 
@@ -80,7 +85,7 @@ def integrate(
     bounds: tuple[SympyEquiv, SympyEquiv] | None = None,
     known_antideriv_point: tuple[SympyEquiv, SympyEquiv] | None = None,
     evaluate: bool = True,
-) -> SympyExpr:
+) -> SympyValue:
     """Integrate ``f`` with optional integration-constant handling.
 
     If ``bounds`` is provided, returns the definite integral
@@ -96,7 +101,7 @@ def integrate(
     """
     diff_var = var_to_symbol(d)
 
-    integral: Callable[[Any, Any], SympyExpr] = (
+    integral: Callable[[Any, Any], SympyValue] = (
         sympy.integrate if evaluate else sympy.Integral
     )  # type: ignore
 
@@ -120,7 +125,7 @@ def integrate_(
     bounds: tuple[SympyEquiv, SympyEquiv] | None = None,
     known_antideriv_point: tuple[SympyEquiv, SympyEquiv] | None = None,
     evaluate: bool = True,
-) -> Callable[[SympyParsable], SympyExpr]:
+) -> Callable[[SympyParsable], SympyValue]:
     """Return a callable that integrates its argument using the given options."""
     return lambda f: integrate(
         f,
@@ -140,6 +145,14 @@ def approximate_area[num: int | float](
     n: int,
     method: Literal["left", "right", "midpoint"],
 ) -> SympyEquiv:
+    """Approximate a definite integral with a rectangular Riemann sum.
+
+    ``f`` may be an expression or a table mapping sample points to values.
+    The ``method`` selects left endpoints, right endpoints, or midpoints.
+
+    Raises:
+        ValueError: If ``n`` is not positive.
+    """
     if n <= 0:
         raise ValueError("`n` must be positive")
 
@@ -172,12 +185,21 @@ def mean_value_theorem(
     d: Variable,
     bounds: tuple[int | float | sympy.Number, int | float | sympy.Number],
 ) -> tuple[tuple[int | float], SympyEquiv]:
+    """Find points where ``f`` equals its average value on ``bounds``.
+
+    Returns a tuple containing the solutions within the closed interval and
+    the function's average value.
+
+    Raises:
+        ZeroDivisionError: If the interval has zero width.
+        ValueError: If the upper bound is less than the lower bound.
+    """
     lower, upper = bounds
     if lower == upper:
         raise ZeroDivisionError
     if upper < lower:
         raise ValueError("upper bound is less than lower bound")
-    mean_val: SympyExpr = integrate(f, d=d, bounds=bounds) / (upper - lower)  # type: ignore
+    mean_val: SympyValue = integrate(f, d=d, bounds=bounds) / (upper - lower)  # type: ignore
     sols = sympy.solve(sympy.Eq(mean_val, f), var_to_symbol(d))
     sols_in_bounds = tuple(s for s in sols if lower <= s <= upper)
     return sols_in_bounds, mean_val

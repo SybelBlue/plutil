@@ -10,11 +10,11 @@ import prairielearn as pl
 import prairielearn.sympy_utils as psu
 import sympy
 
-type SympyExpr = sympy.Expr
-type SympyEquiv = SympyExpr | int | float
+type SympyValue = sympy.Expr | sympy.Set
+type SympyEquiv = SympyValue | int | float
 type SympyParsable = SympyEquiv | str
 type Variable = sympy.Symbol | str
-type OneOrMany[T] = T | Iterable[T]
+type OneOrMore[T] = T | Iterable[T]
 
 
 def dbg[T](value: T) -> T:
@@ -37,7 +37,7 @@ def dbg[T](value: T) -> T:
     return value
 
 
-def _pl_json_to_sympy(value: object | None) -> SympyExpr | None:
+def _pl_json_to_sympy(value: object | None) -> SympyValue | None:
     """Parses PrairieLearn JSON objects into a sympy Expression"""
     if value is None or not psu.is_sympy_json(value):
         return None
@@ -98,25 +98,25 @@ def set_format_error(
 
 
 def var_name(v: Variable) -> str:
+    """Return the string name of a variable or symbol."""
     if isinstance(v, sympy.Symbol):
         return v.name
     return v
 
 
-def _var_names(variables: OneOrMany[Variable]) -> tuple[str, ...]:
-    return tuple(var_name(v) for v in _normalize_one_or_many(variables))
+def _var_names(variables: OneOrMore[Variable]) -> tuple[str, ...]:
+    return tuple(var_name(v) for v in _normalize_one_or_more(variables))
 
 
 def var_to_symbol(v: Variable) -> sympy.Symbol:
+    """Return ``v`` as a SymPy symbol."""
     if isinstance(v, sympy.Symbol):
         return v
     return sympy.Symbol(v)
 
 
-def _normalize_one_or_many[T](
-    iter_or_single: T | Iterable[T],
-) -> Iterable[T]:
-    """Turns a `OneOrMany[T]` into an `Iterable[T]`"""
+def _normalize_one_or_more[T](iter_or_single: OneOrMore[T]) -> Iterable[T]:
+    """Turns a `OneOrMore[T]` into an `Iterable[T]`"""
     if isinstance(iter_or_single, str):
         return cast(Iterable[T], (iter_or_single,))
     if isinstance(iter_or_single, Iterable):
@@ -124,7 +124,8 @@ def _normalize_one_or_many[T](
     return (iter_or_single,)
 
 
-def str_to_sympy(raw_expr: str, variables: OneOrMany[Variable]) -> sympy.Expr:
+def str_to_sympy(raw_expr: str, variables: OneOrMore[Variable]) -> sympy.Expr:
+    """Parse a string as a SymPy expression using the allowed variables."""
     if not isinstance(raw_expr, str):
         raise TypeError(
             f"Expected a string, got {raw_expr!r}\n\tHint: use to_expr instead."
@@ -201,7 +202,8 @@ def setrec[V](
     return v
 
 
-def to_expr(expr: SympyParsable | dict, variables: OneOrMany[Variable]) -> SympyExpr:
+def to_expr(expr: SympyParsable | dict, variables: OneOrMore[Variable]) -> SympyValue:
+    """Convert a supported symbolic value or PrairieLearn JSON object to SymPy."""
     if isinstance(expr, (int, float)):
         return sympy.sympify(expr)
     if isinstance(expr, str):
@@ -219,6 +221,7 @@ def to_expr(expr: SympyParsable | dict, variables: OneOrMany[Variable]) -> Sympy
 
 
 def sympy_eq(left: Any, right: Any) -> bool:
+    """Compare symbolic values by simplification and other values normally."""
     if not isinstance(left, (sympy.Basic, int, float)) or not isinstance(
         right, (sympy.Basic, int, float)
     ):
@@ -240,6 +243,7 @@ def get_ans(
     ver: Literal["correct", "submitted", "raw_submitted"] = "correct",
     default: Any | None = None,
 ) -> Any | None:
+    """Retrieve a correct, submitted, or raw submitted answer from question data."""
     assert ver in ("correct", "submitted", "raw_submitted")
     return getrec(data, f"{ver}_answers", answer_name, default=default)
 
@@ -248,25 +252,26 @@ def get_ans(
 def get_sympy_ans(
     data: pl.QuestionData,
     answer_name: str,
-    variables: OneOrMany[Variable] = (),
+    variables: OneOrMore[Variable] = (),
     *,
     ver: Literal["submitted", "raw_submitted"],
-) -> SympyExpr | None: ...
+) -> SympyValue | None: ...
 @overload
 def get_sympy_ans(
     data: pl.QuestionData,
     answer_name: str,
-    variables: OneOrMany[Variable] = (),
+    variables: OneOrMore[Variable] = (),
     *,
     ver: Literal["correct"] = "correct",
-) -> SympyExpr: ...
+) -> SympyValue: ...
 def get_sympy_ans(
     data: pl.QuestionData,
     answer_name: str,
-    variables: OneOrMany[Variable] = (),
+    variables: OneOrMore[Variable] = (),
     *,
     ver: Literal["correct", "submitted", "raw_submitted"] = "correct",
-) -> SympyExpr | None:
+) -> SympyValue | None:
+    """Retrieve and parse a symbolic answer from PrairieLearn question data."""
     raw = get_ans(data, answer_name, ver=ver)
 
     if raw is None:
@@ -290,6 +295,7 @@ def latex(
     log_base: SympyParsable | None = None,
     reparse: bool = True,
 ) -> str:
+    """Render an expression as display-style LaTeX suitable for PrairieLearn."""
     global TRIG_OPERATOR_RE
     TRIG_OPERATOR_RE = TRIG_OPERATOR_RE or re.compile(
         r"\\operatorname{a(sin|cos|tan|cos|sec|cot)}"
@@ -332,6 +338,7 @@ def submitted_ans_latex_contains(
     *values: str,
     ver: Literal["raw_submitted", "submitted"] = "submitted",
 ) -> int:
+    """Count occurrences of LaTeX fragments in a submitted symbolic answer."""
     ans = get_sympy_ans(data, answer_name=answer_name, ver=ver)
     if ans is None:
         return 0

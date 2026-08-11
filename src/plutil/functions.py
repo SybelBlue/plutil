@@ -9,8 +9,8 @@ import sympy
 
 from .common import (
     SympyEquiv,
-    SympyExpr,
     SympyParsable,
+    SympyValue,
     to_expr,
 )
 
@@ -65,7 +65,7 @@ def evalf_at_(**bindings: SympyEquiv | None) -> Callable[[SympyParsable], float]
     return lambda f: evalf_at(f, **bindings)
 
 
-def translate_through(f, *, y0_name: str = "y", **bindings: SympyEquiv) -> SympyExpr:
+def translate_through(f, *, y0_name: str = "y", **bindings: SympyEquiv) -> SympyValue:
     """Makes a transformation that takes a point `(x0..., y0)` and a
     function `f` and returns a translated `f'` s.t. `y_0 = f'(x_0,...)`
     """
@@ -80,7 +80,7 @@ def translate_through(f, *, y0_name: str = "y", **bindings: SympyEquiv) -> Sympy
 
 def translate_through_(
     *, y0_name: str = "y", **bindings: SympyEquiv
-) -> Callable[[SympyExpr], SympyExpr]:
+) -> Callable[[SympyValue], SympyValue]:
     """Makes a transformation that takes a point `(x0..., y0)` and a
     function `f` and returns a translated `f'` s.t. `y_0 = f'(x_0,...)`
     """
