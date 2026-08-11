@@ -10,11 +10,11 @@ from sympy import Eq, Function, checkodesol
 
 from .calculus import derivative
 from .common import (
-    OneOrMany,
-    SympyExpr,
+    OneOrMore,
     SympyParsable,
+    SympyValue,
     Variable,
-    _normalize_one_or_many,
+    _normalize_one_or_more,
     _var_names,
     latex,
     to_expr,
@@ -52,6 +52,7 @@ class OdeCheckResult:
     missing_constant: str | None = None
 
     def __bool__(self):
+        """Return whether the submitted ODE solution was correct."""
         return self.correct
 
 
@@ -61,7 +62,7 @@ def check_implicit_solution(
     reference_ode: SympyParsable,
     independent: Variable,
     dependent: Variable,
-    consts: OneOrMany[Variable] = (),
+    consts: OneOrMore[Variable] = (),
     C: Variable = "C",
     timeout_seconds: float = 2.5,
 ):
@@ -82,7 +83,7 @@ def check_implicit_solution(
     C_s = var_to_symbol(C)
     y_x = Function(var_name(dependent))(x_s)
 
-    vs = (x_s, y_s, *_normalize_one_or_many(consts))
+    vs = (x_s, y_s, *_normalize_one_or_more(consts))
     ref_ode = to_expr(reference_ode, vs)
     stu_sol = Eq(to_expr(student_sol, vs).subs(y_s, y_x), C_s)
 
@@ -102,7 +103,7 @@ def check_explicit_solution(
     reference_ode: SympyParsable,
     independent: Variable,
     dependent: Variable,
-    consts: OneOrMany[Variable] = (),
+    consts: OneOrMore[Variable] = (),
     C: Variable = "C",
     timeout_seconds: float = 2.5,
 ):
@@ -122,7 +123,7 @@ def check_explicit_solution(
     C_s = var_to_symbol(C)
     y_x = Function(var_name(dependent))(x_s)
 
-    vs = (x_s, y_s, *_normalize_one_or_many(consts))
+    vs = (x_s, y_s, *_normalize_one_or_more(consts))
     student_expr = to_expr(student_solution, vs)
     if C_s not in student_expr.free_symbols:
         return OdeCheckResult(missing_constant=var_name(C))
@@ -143,11 +144,11 @@ def check_explicit_solution(
 
 def implicit_diff(
     f: SympyParsable,
-    variables: OneOrMany[Variable],
+    variables: OneOrMore[Variable],
     *,
-    consts: OneOrMany[Variable] = (),
+    consts: OneOrMore[Variable] = (),
     d: Variable,
-) -> SympyExpr:
+) -> SympyValue:
     r"""The call `implicit_diff(f, (x0,x1,...), d=t)` constructs:
 
     .. math:
@@ -157,9 +158,9 @@ def implicit_diff(
     """
     from .calculus import d as d_
 
-    out: SympyExpr | None = None
-    indeps = tuple(_normalize_one_or_many(variables))
-    vs = (*indeps, *_normalize_one_or_many(consts))
+    out: SympyValue | None = None
+    indeps = tuple(_normalize_one_or_more(variables))
+    vs = (*indeps, *_normalize_one_or_more(consts))
     if not indeps:
         return to_expr(f, vs)
     for v in indeps:
@@ -175,10 +176,10 @@ def implicit_diff(
 
 
 def diffeq_latex(
-    expr: SympyExpr,
+    expr: SympyValue,
     *,
-    dependent_vars: OneOrMany[Variable],
-    independent_vars: OneOrMany[Variable],
+    dependent_vars: OneOrMore[Variable],
+    independent_vars: OneOrMore[Variable],
     display_mode: Literal["dfrac", "pfrac", "prime"] = "dfrac",
 ):
     """

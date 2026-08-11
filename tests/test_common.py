@@ -134,7 +134,7 @@ def test_str_to_sympy_respects_requested_variables():
 
 
 def test_normalize_one_or_many_wraps_single_string_without_splitting():
-    assert tuple(common_mod._normalize_one_or_many("xyz")) == ("xyz",)
+    assert tuple(common_mod._normalize_one_or_more("xyz")) == ("xyz",)
 
 
 def test_str_to_sympy_passes_single_variable_name_as_one_item(monkeypatch):

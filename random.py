@@ -5,7 +5,7 @@ from collections.abc import Callable, Sequence
 
 import sympy
 
-from .common import SympyExpr, Variable, var_to_symbol
+from .common import SympyValue, Variable, var_to_symbol
 
 
 def randint(
@@ -96,8 +96,8 @@ def randpoly(
     min_degree: int = 0,
     min_terms: int = 1,
     max_terms: int | None = None,
-    coeff_factory: Callable[[], SympyExpr | int] | None = None,
-) -> SympyExpr:
+    coeff_factory: Callable[[], SympyValue | int] | None = None,
+) -> SympyValue:
     """Build a random sparse polynomial in ``of``.
 
     When ``max_degree`` is omitted, ``degree`` is the exact degree and its term
@@ -165,15 +165,15 @@ def randpoly_factory(
     min_degree: int = 0,
     min_terms: int = 1,
     max_terms: int | None = None,
-    coeff_factory: Callable[[], SympyExpr | int] | None = None,
-) -> Callable[[], SympyExpr]:
+    coeff_factory: Callable[[], SympyValue | int] | None = None,
+) -> Callable[[], SympyValue]:
     """Return a zero-argument callable that evaluates :func:`randpoly`.
 
     Polynomial generation, including coefficient generation, is delayed until
     each invocation of the returned callable.
     """
 
-    def generate() -> SympyExpr:
+    def generate() -> SympyValue:
         return randpoly(
             of=of,
             degree=degree,
@@ -194,7 +194,7 @@ def randpoly_roots(
     root_factory: Callable[[], int] | None = None,
     y_intercept: float | None = None,
     expand: bool = False,
-) -> SympyExpr:
+) -> SympyValue:
     """Build a polynomial from known and randomly generated integer roots.
 
     ``known_roots`` are retained in order, then ``root_factory`` is called
@@ -257,14 +257,14 @@ def randpoly_roots_factory(
     root_factory: Callable[[], int] | None = None,
     y_intercept: float | None = None,
     expand: bool = False,
-) -> Callable[[], SympyExpr]:
+) -> Callable[[], SympyValue]:
     """Return a zero-argument callable that evaluates :func:`randpoly_roots`.
 
     Additional roots are not generated until the returned callable is invoked.
     Each invocation builds a new polynomial using the supplied arguments.
     """
 
-    def generate() -> SympyExpr:
+    def generate() -> SympyValue:
         return randpoly_roots(
             *known_roots,
             of=of,
