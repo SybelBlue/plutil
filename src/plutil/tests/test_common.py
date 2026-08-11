@@ -2,22 +2,24 @@ from __future__ import annotations
 
 import math
 
-import plutil.common as common_mod
 import prairielearn as pl  # type: ignore
 import pytest
 import sympy
+from sympy.abc import t, x
+
+import plutil.common as common_mod
 from plutil.common import (
+    _pl_json_to_sympy,
     getrec,
     latex,
     lim_latex,
-    _pl_json_to_sympy,
     set_correct_sympy_ans,
     set_format_error,
     setrec,
     str_to_sympy,
     sympy_eq,
 )
-from sympy.abc import t, x
+from plutil.lenses import QuestionLens
 
 
 def test_pl_json_to_sympy_round_trips_pl_json():
@@ -34,7 +36,7 @@ def test_pl_json_to_sympy_returns_none_for_none():
 def test_set_correct_sympy_ans_stores_pl_json():
     data: pl.QuestionData = {}  # type: ignore
 
-    value = set_correct_sympy_ans(data, "answer", 2 * x + 3)
+    value = set_correct_sympy_ans(QuestionLens(data, "answer"), 2 * x + 3)
 
     assert value == pl.to_json(2 * x + 3)
     assert data["correct_answers"]["answer"] == pl.to_json(2 * x + 3)
@@ -42,13 +44,16 @@ def test_set_correct_sympy_ans_stores_pl_json():
 
 def test_set_correct_sympy_ans_rejects_strings():
     with pytest.raises(TypeError, match="not text"):
-        set_correct_sympy_ans({}, "answer", "2*x + 3")  # type: ignore[arg-type]
+        set_correct_sympy_ans(
+            QuestionLens({}, "answer"),  # type: ignore[arg-type]
+            "2*x + 3",  # type: ignore[arg-type]
+        )
 
 
 def test_set_format_error_creates_format_errors_dict():
     data: pl.QuestionData = {}  # type: ignore
 
-    written = set_format_error(data, "answer", "Use a set.")
+    written = set_format_error(QuestionLens(data, "answer"), "Use a set.")
 
     assert written is True
     assert data["format_errors"] == {"answer": "Use a set."}
@@ -59,7 +64,7 @@ def test_set_format_error_clobbers_existing_error_by_default():
         "format_errors": {"answer": "Original error."}
     }
 
-    written = set_format_error(data, "answer", "Replacement error.")
+    written = set_format_error(QuestionLens(data, "answer"), "Replacement error.")
 
     assert written is True
     assert data["format_errors"]["answer"] == "Replacement error."
@@ -71,8 +76,7 @@ def test_set_format_error_can_preserve_existing_error():
     }
 
     written = set_format_error(
-        data,
-        "answer",
+        QuestionLens(data, "answer"),
         "Replacement error.",
         clobber_existing_error=False,
     )

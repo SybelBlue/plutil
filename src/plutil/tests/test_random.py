@@ -4,7 +4,7 @@ import pytest
 import sympy
 
 import plutil.random as random_mod
-from plutil.common import SympyExpr
+from plutil.common import SympyValue
 from plutil.random import (
     randint,
     randint_factory,
@@ -166,7 +166,7 @@ def test_randpoly_factory_delays_and_repeats_evaluation(
     x = sympy.Symbol("x")
     calls: list[dict[str, object]] = []
 
-    def fake_randpoly(**kwargs: object) -> SympyExpr:
+    def fake_randpoly(**kwargs: object) -> SympyValue:
         calls.append(kwargs)
         return x + len(calls)  # type: ignore[return-value]
 
@@ -237,7 +237,7 @@ def test_randpoly_roots_factory_delays_and_repeats_evaluation(
     x = sympy.Symbol("x")
     calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
 
-    def fake_randpoly_roots(*args: object, **kwargs: object) -> SympyExpr:
+    def fake_randpoly_roots(*args: object, **kwargs: object) -> SympyValue:
         calls.append((args, kwargs))
         return x - len(calls)  # type: ignore[return-value]
 

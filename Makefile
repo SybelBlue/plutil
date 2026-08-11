@@ -4,7 +4,7 @@ SHELL := /bin/bash
 .PHONY: test typecheck format
 
 test:
-	uv run --active pytest -p varspec.pytest_plugin --varspec-content --import-mode=importlib $(TEST_PATHS) $(CONTENT_TEST_PATHS) $(PYTEST_ARGS)
+	uv run --active pytest
 
 typecheck:
 	uv run --active pyright .

@@ -220,10 +220,8 @@ class SympyQuestionLens(QuestionLens):
     ):
         """Apply symbolic partial-credit rules to this answer."""
         award_partial_credit(
-            self.data,
-            self.answers_name,
+            self,
             *rules,
-            variables=self.variables,
             addl_correct_ans=addl_correct_ans,
             feedback=feedback,
             include_display_ans=include_display_ans,

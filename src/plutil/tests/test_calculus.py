@@ -13,6 +13,7 @@ from plutil.calculus import (
     integrate,
 )
 from plutil.common import sympy_eq
+from plutil.lenses import SympyQuestionLens
 from plutil.tests.helpers import question_data
 
 
@@ -116,7 +117,7 @@ def test_award_missing_constant_credit_grants_partial_credit(monkeypatch):
         partial_scores={"answer": {"score": 0.0}},
     )
 
-    awarded = award_missing_constant_credit(data, "answer", ["x"])
+    awarded = award_missing_constant_credit(SympyQuestionLens(data, "answer", ["x"]))
 
     assert awarded is True
     assert data["partial_scores"]["answer"]["score"] == 0.8
@@ -139,9 +140,7 @@ def test_award_missing_constant_credit_accepts_custom_constant_name(monkeypatch)
     )
 
     awarded = award_missing_constant_credit(
-        data,
-        "answer",
-        ["x"],
+        SympyQuestionLens(data, "answer", ["x"]),
         C="K",
     )
 
@@ -160,7 +159,7 @@ def test_award_missing_constant_credit_skips_already_correct_answers(monkeypatch
 
     data = question_data(partial_scores={"answer": {"score": 1.0}})
 
-    assert award_missing_constant_credit(data, "answer", []) is False
+    assert award_missing_constant_credit(SympyQuestionLens(data, "answer")) is False
     assert calls == []
 
 
@@ -180,6 +179,8 @@ def test_award_missing_constant_credit_does_not_grant_credit_for_other_answers(
         partial_scores={"answer": {"score": 0.0}},
     )
 
-    assert award_missing_constant_credit(data, "answer", ["x"]) is False
+    assert (
+        award_missing_constant_credit(SympyQuestionLens(data, "answer", ["x"])) is False
+    )
     assert data["partial_scores"]["answer"]["score"] == 0.0
     assert len(calls) == 0

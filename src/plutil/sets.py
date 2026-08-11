@@ -2,16 +2,15 @@ import math
 from collections.abc import Iterable
 from typing import Literal, cast
 
-import prairielearn as pl
 import sympy as sp
 
 from .common import get_sympy_ans, set_format_error
+from .lenses import QuestionLens
 from .partial_credit import set_partial_score
 
 
 def reject_non_sympy_set_input(
-    data: pl.QuestionData,
-    answer_name: str,
+    lens: QuestionLens,
     *,
     mode: Literal["all", "finite-set-only", "interval-only"] = "all",
 ) -> bool:
@@ -20,11 +19,11 @@ def reject_non_sympy_set_input(
     Returns ``True`` when the input was rejected and ``False`` when there is no
     submitted answer, another format error already exists, or the answer is a set.
     """
-    submitted = get_sympy_ans(data, answer_name, ver="submitted")
+    submitted = get_sympy_ans(lens.as_sympy_lens(), ver="submitted")
     if submitted is None:
         return False
 
-    if isinstance(submitted, sp.Set) and submitted.is_empty:
+    if isinstance(submitted, sp.Set) and (mode == "all" or submitted.is_empty):
         return False
 
     cls_dict: dict[Literal["all", "finite-set-only", "interval-only"], type[sp.Set]] = {
@@ -38,14 +37,13 @@ def reject_non_sympy_set_input(
     example = "(-1, 3] U (5, 10)" if mode == "interval-only" else "{ 0, 1, 2 }"
 
     return set_format_error(
-        data,
-        answer_name,
+        lens,
         f"The answer must be formatted as a set, e.g. {example}",
         clobber_existing_error=False,
     )
 
 
-def grade_sympy_set(data: pl.QuestionData, answer_name: str) -> bool:
+def grade_sympy_set(lens: QuestionLens) -> bool:
     """Score a finite set by the fraction of correct elements submitted.
 
     Extra submitted elements reduce the score by an inverse-square-root guessing
@@ -53,8 +51,9 @@ def grade_sympy_set(data: pl.QuestionData, answer_name: str) -> bool:
     set. Returns ``True`` when a score was set and ``False`` when either answer is
     missing or cannot be enumerated as a finite set.
     """
-    submitted = get_sympy_ans(data, answer_name, ver="submitted")
-    correct = get_sympy_ans(data, answer_name, ver="correct")
+    sympy_lens = lens.as_sympy_lens()
+    submitted = get_sympy_ans(sympy_lens, ver="submitted")
+    correct = get_sympy_ans(sympy_lens, ver="correct")
     if not isinstance(submitted, sp.Set) or not isinstance(correct, sp.Set):
         return False
 
@@ -62,7 +61,7 @@ def grade_sympy_set(data: pl.QuestionData, answer_name: str) -> bool:
     correct_values = tuple(cast(Iterable[sp.Basic], correct))
 
     if not correct_values:
-        set_partial_score(data, answer_name, 0 if submitted_values else 1)
+        set_partial_score(lens, 0 if submitted_values else 1)
         return True
 
     raw_score = sum(value in correct for value in submitted_values) / len(
@@ -70,5 +69,5 @@ def grade_sympy_set(data: pl.QuestionData, answer_name: str) -> bool:
     )
     extra_count = max(len(submitted_values) - len(correct_values), 0)
     guessing_factor = math.sqrt(1 / (1 + extra_count))
-    set_partial_score(data, answer_name, guessing_factor * raw_score)
+    set_partial_score(lens, guessing_factor * raw_score)
     return True

@@ -1,15 +1,19 @@
+from __future__ import annotations
+
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from itertools import product
-from typing import Protocol, overload
+from typing import TYPE_CHECKING, Protocol, overload
 
 import prairielearn as pl
+
+if TYPE_CHECKING:
+    from .lenses import QuestionLens, SympyQuestionLens
 
 from .common import (
     OneOrMore,
     SympyEquiv,
     SympyParsable,
-    Variable,
     _normalize_one_or_more,
     _var_names,
     get_ans,
@@ -207,46 +211,43 @@ def rule[T: SympyEquiv](
             )
 
 
-def already_scored(data: pl.QuestionData, answer_name: str) -> bool:
+def already_scored(lens: QuestionLens) -> bool:
     """Return whether an answer already has a partial score."""
-    return get_partial_score(data, answer_name) is not None
+    return get_partial_score(lens) is not None
 
 
-def partial_score_dict(data: pl.QuestionData, answer_name: str) -> pl.PartialScore:
+def partial_score_dict(lens: QuestionLens) -> pl.PartialScore:
     """Gets or creates the `"partial_score"` dict for `answer_name`"""
     d: pl.PartialScore = {"score": None}
-    answer_score = setrec(data, "partial_scores", answer_name, default=d)
+    answer_score = setrec(lens.data, "partial_scores", lens.answers_name, default=d)
     if not isinstance(answer_score, dict):
-        raise TypeError(f'`data["partial_scores"][{answer_name!r}]` is not a dict')
+        raise TypeError(
+            f'`data["partial_scores"][{lens.answers_name!r}]` is not a dict'
+        )
     return answer_score  # type: ignore
 
 
 @overload
-def get_partial_score(data: pl.QuestionData, answer_name: str) -> float | None: ...
+def get_partial_score(lens: QuestionLens) -> float | None: ...
 @overload
-def get_partial_score(
-    data: pl.QuestionData, answer_name: str, default: float
-) -> float: ...
-def get_partial_score(
-    data: pl.QuestionData, answer_name: str, default: float | None = None
-) -> float | None:
+def get_partial_score(lens: QuestionLens, default: float) -> float: ...
+def get_partial_score(lens: QuestionLens, default: float | None = None) -> float | None:
     """Return an answer's partial score, or ``default`` when it has none."""
-    v = partial_score_dict(data, answer_name).get("score", default)
+    v = partial_score_dict(lens).get("score", default)
     if v is None:
         return v
     return float(v)
 
 
 def set_partial_score(
-    data: pl.QuestionData,
-    answer_name: str,
+    lens: QuestionLens,
     score: float | None = None,
     *,
     feedback: str | None = None,
     weight: int | None = None,
 ) -> pl.PartialScore:
     """Update and return an answer's PrairieLearn partial-score record."""
-    answer_score_dict = partial_score_dict(data, answer_name)
+    answer_score_dict = partial_score_dict(lens)
     if score is not None:
         answer_score_dict["score"] = score
     if feedback is not None:
@@ -278,8 +279,7 @@ class _CreditSchemeBase[T]:
 class CreditScheme[T](_CreditSchemeBase[T]):
     def grade(
         self,
-        data: pl.QuestionData,
-        answer_name: str,
+        lens: QuestionLens,
         addl_correct_answers: OneOrMore[T] = (),
         include_display_ans: bool = True,
         clobber_existing_score: bool = False,
@@ -291,11 +291,11 @@ class CreditScheme[T](_CreditSchemeBase[T]):
         skipped or no candidate or rule matches.
         """
         # check if already scored
-        if not clobber_existing_score and already_scored(data, answer_name):
+        if not clobber_existing_score and already_scored(lens):
             return False
 
         # find submitted answer
-        submitted = get_ans(data, answer_name, ver="submitted")
+        submitted = get_ans(lens, ver="submitted")
         if submitted is None:
             return False
 
@@ -303,7 +303,7 @@ class CreditScheme[T](_CreditSchemeBase[T]):
         candidates = list(_normalize_one_or_more(addl_correct_answers))
 
         if include_display_ans:
-            correct = get_ans(data, answer_name, ver="correct")
+            correct = get_ans(lens, ver="correct")
             if correct is not None:
                 candidates.insert(0, correct)
 
@@ -318,17 +318,15 @@ class CreditScheme[T](_CreditSchemeBase[T]):
         else:
             return False
 
-        set_partial_score(data, answer_name, score=final_score, feedback=feedback)
-        pl.set_weighted_score_data(data)  # type: ignore
+        set_partial_score(lens, score=final_score, feedback=feedback)
+        pl.set_weighted_score_data(lens.data)  # type: ignore
         return True
 
 
 class SympyCreditScheme(_CreditSchemeBase[SympyEquiv]):
     def grade(
         self,
-        data: pl.QuestionData,
-        answer_name: str,
-        variables: OneOrMore[Variable],
+        lens: SympyQuestionLens,
         addl_correct_answers: OneOrMore[SympyEquiv] = (),
         include_display_ans: bool = True,
         clobber_existing_score: bool = False,
@@ -340,13 +338,11 @@ class SympyCreditScheme(_CreditSchemeBase[SympyEquiv]):
         skipped or no candidate or rule matches.
         """
         # check if already scored
-        if not clobber_existing_score and already_scored(data, answer_name):
+        if not clobber_existing_score and already_scored(lens):
             return False
 
         # find submitted answer
-        vars = _var_names(variables)
-
-        submitted = get_sympy_ans(data, answer_name, vars, ver="submitted")
+        submitted = get_sympy_ans(lens, ver="submitted")
         if submitted is None:
             return False
 
@@ -354,7 +350,7 @@ class SympyCreditScheme(_CreditSchemeBase[SympyEquiv]):
         candidates = list(_normalize_one_or_more(addl_correct_answers))
 
         if include_display_ans:
-            correct = get_sympy_ans(data, answer_name, vars, ver="correct")
+            correct = get_sympy_ans(lens, ver="correct")
             if correct is not None:
                 candidates.insert(0, correct)
 
@@ -369,17 +365,15 @@ class SympyCreditScheme(_CreditSchemeBase[SympyEquiv]):
         else:
             return False
 
-        set_partial_score(data, answer_name, score=final_score, feedback=feedback)
-        pl.set_weighted_score_data(data)  # type: ignore
+        set_partial_score(lens, score=final_score, feedback=feedback)
+        pl.set_weighted_score_data(lens.data)  # type: ignore
 
         return True
 
 
 def award_partial_credit(
-    data: pl.QuestionData,
-    answer_name: str,
+    lens: SympyQuestionLens,
     *rules: PartialCreditRule,
-    variables: OneOrMore[Variable],
     addl_correct_ans: OneOrMore[SympyParsable] = (),
     feedback: str | None = None,
     include_display_ans: bool = True,
@@ -402,8 +396,7 @@ def award_partial_credit(
 
             ```
             award_partial_credit(
-                data,
-                ans_name,
+                lens,
                 # broken problem, a should never be 0
                 rule(1.0, if_=a == 0),
                 # small error in pow rule, denom off by one
@@ -419,37 +412,32 @@ def award_partial_credit(
                 ),
                 # sign of C should never matter
                 addl_correct_ans=a * x**3 / 3 - C,
-                variables=(x, C),
             )
             ```
 
     Args:
-        data: PrairieLearn question data containing the submitted and correct
-            answers.
-        answer_name: Name of the answer to grade.
+        lens: Symbolic lens containing the question data, answer name, and
+            variables used to parse answers.
         *rules: Partial-credit rules, checked in order after fully correct
             answers.
-        variables: Symbols or symbol names allowed while parsing the answers.
         addl_correct_ans: Additional answers that receive full credit. These
             are also supplied to partial-credit rules as correct-answer
             candidates.
         feedback: Feedback stored when a score is awarded.
         include_display_ans: Whether to include the canonical correct answer
-            from ``data`` among the correct-answer candidates.
+            from the lens data among the correct-answer candidates.
         clobber_existing_score: Whether to replace an answer's existing score.
 
     Returns:
         ``True`` if a score was awarded, or ``False`` if grading was skipped or
         no answer or rule matched.
     """
-    vars = tuple(_var_names(variables))
+    vars = tuple(_var_names(lens.variables))
     addl_correct = tuple(
         to_expr(e, vars) for e in _normalize_one_or_more(addl_correct_ans)
     )
     return SympyCreditScheme(rules).grade(
-        data,
-        answer_name,
-        variables=vars,
+        lens,
         addl_correct_answers=addl_correct,
         include_display_ans=include_display_ans,
         clobber_existing_score=clobber_existing_score,
