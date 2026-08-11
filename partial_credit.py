@@ -1,0 +1,440 @@
+import math
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
+from itertools import product
+from typing import Protocol, cast, overload
+
+import prairielearn as pl
+import sympy as sp
+
+from .common import (
+    OneOrMany,
+    SympyEquiv,
+    SympyParsable,
+    Variable,
+    _normalize_one_or_many,
+    _var_names,
+    get_ans,
+    get_sympy_ans,
+    set_format_error,
+    setrec,
+    sympy_eq,
+    to_expr,
+)
+
+
+class PartialCreditRule[T](Protocol):
+    score: float
+
+    def check(self, *, correct: T, submitted: T) -> bool: ...
+
+
+@dataclass(frozen=True, slots=True)
+class Literal[T](PartialCreditRule[T]):
+    score: float
+    value: T | bool
+
+    def check(self, *, correct: T, submitted: T) -> bool:
+        if self.value is True or self.value is False:
+            return self.value
+        return sympy_eq(self.value, submitted)
+
+
+@dataclass(frozen=True, slots=True)
+class Transform[T](PartialCreditRule[T]):
+    score: float
+    transform_correct: Callable[[T], T] | bool | None = None
+    transform_submitted: Callable[[T], T] | bool | None = None
+
+    def check(self, *, correct: T, submitted: T) -> bool:
+        if self.transform_correct is True or self.transform_correct is False:
+            return self.transform_correct
+
+        if self.transform_submitted is True or self.transform_submitted is False:
+            return self.transform_submitted
+
+        if self.transform_correct is not None:
+            correct = self.transform_correct(correct)
+
+        if self.transform_submitted is not None:
+            submitted = self.transform_submitted(submitted)
+
+        return sympy_eq(correct, submitted)
+
+
+@dataclass(frozen=True, slots=True)
+class Predicate[T](PartialCreditRule[T]):
+    score: float
+    satisfies: Callable[[T, T], bool] | bool
+
+    def check(self, *, correct: T, submitted: T) -> bool:
+        if self.satisfies is True or self.satisfies is False:
+            return self.satisfies
+        return self.satisfies(correct, submitted)
+
+
+@dataclass
+class CompoundRule[T](PartialCreditRule[T]):
+    score: float
+    rules: tuple[PartialCreditRule[T], ...]
+
+    def check(self, *, correct: T, submitted: T) -> bool:
+        return any(r.check(correct=correct, submitted=submitted) for r in self.rules)
+
+
+@overload
+def rule(score: float, *, if_: bool) -> PartialCreditRule[SympyEquiv]: ...
+@overload
+def rule[T: SympyEquiv](
+    score: float, *, submitted_is: OneOrMany[T | bool], if_: bool | None = None
+) -> PartialCreditRule[T]: ...
+@overload
+def rule[T: SympyEquiv](
+    score: float,
+    *,
+    change_correct: OneOrMany[Callable[[T], T] | bool],
+    change_submitted: OneOrMany[Callable[[T], T] | bool] = (),
+    if_: bool | None = None,
+) -> PartialCreditRule[T]: ...
+@overload
+def rule[T: SympyEquiv](
+    score: float,
+    *,
+    change_correct: OneOrMany[Callable[[T], T] | bool] = (),
+    change_submitted: OneOrMany[Callable[[T], T] | bool],
+    if_: bool | None = None,
+) -> PartialCreditRule[T]: ...
+@overload
+def rule[T: SympyEquiv](
+    score: float,
+    *,
+    change_both: OneOrMany[Callable[[T], T] | bool],
+    if_: bool | None = None,
+) -> PartialCreditRule[T]: ...
+@overload
+def rule[T: SympyEquiv](
+    score: float,
+    *,
+    satisfies: OneOrMany[Callable[[T, T], bool] | bool],
+    if_: bool | None = None,
+) -> PartialCreditRule[T]: ...
+def rule[T: SympyEquiv](
+    score: float,
+    *,
+    submitted_is: OneOrMany[T | bool] = (),
+    change_correct: OneOrMany[Callable[[T], T] | bool] = (),
+    change_submitted: OneOrMany[Callable[[T], T] | bool] = (),
+    change_both: OneOrMany[Callable[[T], T] | bool] = (),
+    satisfies: OneOrMany[Callable[[T, T], bool] | bool] = (),
+    if_: bool | None = None,
+) -> PartialCreditRule[T]:
+    """Create a partial-credit rule worth ``score``.
+
+    Exactly one rule condition must be provided, except that ``map_correct``
+    and ``map_submitted`` may be used together:
+
+    - ``submitted_is`` accepts one or more expected submitted values to compare symbolically
+    - ``change_correct`` transforms the correct answer before comparison
+    - ``change_submitted`` transforms the submitted answer before comparison
+    - ``change_both`` applies the same transformation to both answers before comparison
+    - ``satisfies`` accepts one or more predicates like `lambda correct, submitted: <correct?>`
+    - Lastly, just ``if_`` can be provided to make an unconditional rule
+
+    When multiple values are supplied, the resulting rule satisfies if any of
+    them match. If both mapping arguments contain multiple functions, every
+    combination is tried. Passing ``if_=False`` disables a rule, which is
+    useful for conditionally enabling rules without changing the ruleset's
+    structure.
+
+    Raises:
+        TypeError: If no condition is provided, or if more than one condition
+            kind is non-empty.
+    """
+    match (
+        tuple(_normalize_one_or_many(submitted_is)),
+        tuple(_normalize_one_or_many(change_correct)),
+        tuple(_normalize_one_or_many(change_submitted)),
+        tuple(_normalize_one_or_many(change_both)),
+        tuple(_normalize_one_or_many(satisfies)),
+    ):
+        case (), (), (), (), ():
+            if if_ is not None:
+                return Literal(score, if_)
+            raise TypeError(
+                "Exactly one non-empty submitted_is=, change_correct=/change_submitted=, "
+                "change_both=, satisfies=, or if_= must be passed to rule"
+            )
+        case (value,), (), (), (), ():
+            return Literal(score, if_ if if_ is False else value)
+        case values, (), (), (), ():
+            if if_ is False:
+                return Literal(score, False)
+            return CompoundRule(score, tuple(Literal(score, v) for v in values))
+        case (), correct_maps, submitted_maps, (), () if correct_maps or submitted_maps:
+            if if_ is False:
+                return Transform(score, False)
+            transforms = tuple(
+                Transform(score, correct_map, submitted_map)
+                for correct_map, submitted_map in product(
+                    correct_maps or (None,), submitted_maps or (None,)
+                )
+            )
+            if len(transforms) == 1:
+                return transforms[0]
+            return CompoundRule(score, transforms)
+        case (), (), (), (transform,), ():
+            t = if_ if if_ is False else transform
+            return Transform(score, t, t)
+        case (), (), (), transforms, ():
+            if if_ is False:
+                return Transform(score, False)
+            return CompoundRule(
+                score, tuple(Transform(score, t, t) for t in transforms)
+            )
+        case (), (), (), (), (m,):
+            return Predicate(score, if_ if if_ is False else m)
+        case (), (), (), (), satisfies:
+            if if_ is False:
+                return Predicate(score, False)
+            return CompoundRule(score, tuple(Predicate(score, m) for m in satisfies))
+        case _:
+            raise TypeError(
+                "Exactly one non-empty submitted_is=, change_correct=/change_submitted=, "
+                "change_both=, or satisfies= must be passed to rule"
+            )
+
+
+def already_scored(data: pl.QuestionData, answer_name: str) -> bool:
+    return get_partial_score(data, answer_name) is not None
+
+
+def partial_score_dict(data: pl.QuestionData, answer_name: str) -> pl.PartialScore:
+    """Gets or creates the `"partial_score"` dict for `answer_name`"""
+    d: pl.PartialScore = {"score": None}
+    answer_score = setrec(data, "partial_scores", answer_name, default=d)
+    if not isinstance(answer_score, dict):
+        raise TypeError(f'`data["partial_scores"][{answer_name!r}]` is not a dict')
+    return answer_score  # type: ignore
+
+
+@overload
+def get_partial_score(data: pl.QuestionData, answer_name: str) -> float | None: ...
+@overload
+def get_partial_score(
+    data: pl.QuestionData, answer_name: str, default: float
+) -> float: ...
+def get_partial_score(
+    data: pl.QuestionData, answer_name: str, default: float | None = None
+) -> float | None:
+    v = partial_score_dict(data, answer_name).get("score", default)
+    if v is None:
+        return v
+    return float(v)
+
+
+def set_partial_score(
+    data: pl.QuestionData,
+    answer_name: str,
+    score: float | None = None,
+    *,
+    feedback: str | None = None,
+    weight: int | None = None,
+) -> pl.PartialScore:
+    answer_score_dict = partial_score_dict(data, answer_name)
+    if score is not None:
+        answer_score_dict["score"] = score
+    if feedback is not None:
+        answer_score_dict["feedback"] = feedback
+    if weight is not None:
+        answer_score_dict["weight"] = weight
+    return answer_score_dict
+
+
+@dataclass(frozen=True, slots=True)
+class _CreditSchemeBase[T]:
+    ruleset: Sequence[PartialCreditRule[T]]
+
+    def __post_init__(self):
+        object.__setattr__(self, "ruleset", tuple(self.ruleset))
+
+    def matching_rule(
+        self, *, correct_answers: OneOrMany[T], submitted: T
+    ) -> PartialCreditRule[T] | None:
+        correct = tuple(_normalize_one_or_many(correct_answers))
+        for r in self.ruleset:
+            for c in correct:
+                if r.check(correct=c, submitted=submitted):
+                    return r
+        return None
+
+
+class CreditScheme[T](_CreditSchemeBase[T]):
+    def grade(
+        self,
+        data: pl.QuestionData,
+        answer_name: str,
+        addl_correct_answers: OneOrMany[T] = (),
+        include_display_ans: bool = True,
+        clobber_existing_score: bool = False,
+        feedback: str | None = None,
+    ) -> bool:
+        # check if already scored
+        if not clobber_existing_score and already_scored(data, answer_name):
+            return False
+
+        # find submitted answer
+        submitted = get_ans(data, answer_name, ver="submitted")
+        if submitted is None:
+            return False
+
+        # gather correct answer candidates
+        candidates = list(_normalize_one_or_many(addl_correct_answers))
+
+        if include_display_ans:
+            correct = get_ans(data, answer_name, ver="correct")
+            if correct is not None:
+                candidates.insert(0, correct)
+
+        candidates = tuple(candidates)
+
+        # perform scoring
+        final_score: float
+        if any(c == submitted for c in candidates):
+            final_score = 1.0
+        elif r := self.matching_rule(correct_answers=candidates, submitted=submitted):
+            final_score = r.score
+        else:
+            return False
+
+        set_partial_score(data, answer_name, score=final_score, feedback=feedback)
+        pl.set_weighted_score_data(data)  # type: ignore
+        return True
+
+
+class SympyCreditScheme(_CreditSchemeBase[SympyEquiv]):
+    def grade(
+        self,
+        data: pl.QuestionData,
+        answer_name: str,
+        variables: OneOrMany[Variable],
+        addl_correct_answers: OneOrMany[SympyEquiv] = (),
+        include_display_ans: bool = True,
+        clobber_existing_score: bool = False,
+        feedback: str | None = None,
+    ) -> bool:
+        # check if already scored
+        if not clobber_existing_score and already_scored(data, answer_name):
+            return False
+
+        # find submitted answer
+        vars = _var_names(variables)
+
+        submitted = get_sympy_ans(data, answer_name, vars, ver="submitted")
+        if submitted is None:
+            return False
+
+        # gather correct answer candidates
+        candidates = list(_normalize_one_or_many(addl_correct_answers))
+
+        if include_display_ans:
+            correct = get_sympy_ans(data, answer_name, vars, ver="correct")
+            if correct is not None:
+                candidates.insert(0, correct)
+
+        candidates = tuple(candidates)
+
+        # perform scoring
+        final_score: float
+        if any(sympy_eq(c, submitted) for c in candidates):
+            final_score = 1.0
+        elif r := self.matching_rule(correct_answers=candidates, submitted=submitted):
+            final_score = r.score
+        else:
+            return False
+
+        set_partial_score(data, answer_name, score=final_score, feedback=feedback)
+        pl.set_weighted_score_data(data)  # type: ignore
+
+        return True
+
+
+def award_partial_credit(
+    data: pl.QuestionData,
+    answer_name: str,
+    *rules: PartialCreditRule,
+    variables: OneOrMany[Variable],
+    addl_correct_ans: OneOrMany[SympyParsable] = (),
+    feedback: str | None = None,
+    include_display_ans: bool = True,
+    clobber_existing_score: bool = True,
+) -> bool:
+    """Grade a symbolic answer using an ordered set of partial-credit rules.
+
+    The submitted and correct answers are parsed as SymPy expressions using
+    ``variables``. A fully correct answer receives a score of ``1.0``.
+    Otherwise, rules are tested in the order given and the score from the
+    first matching rule is awarded. If nothing satisfies, the existing score is
+    left unchanged.
+
+    Rules are created with :func:`rule`. They can match a specific expression,
+    transform the submitted answer before comparison, evaluate a predicate
+    against the correct and submitted answers, or be conditionally enabled.
+
+    Example:
+        For an integral whose correct answer is ``a*x**3/3 + C``::
+
+            ```
+            award_partial_credit(
+                data,
+                ans_name,
+                # broken problem, a should never be 0
+                rule(1.0, if_=a == 0),
+                # small error in pow rule, denom off by one
+                rule(0.8, submitted_is=a * x**3 / 2 + C),
+                # forgot C
+                rule(0.75, change_correct=lambda correct: eval_at(correct, C=0)),
+                # forgot a and C
+                rule(
+                    0.7,
+                    satisfies=lambda correct, submitted: sympy_eq(
+                        correct / a, submitted
+                    ),
+                ),
+                # sign of C should never matter
+                addl_correct_ans=a * x**3 / 3 - C,
+                variables=(x, C),
+            )
+            ```
+
+    Args:
+        data: PrairieLearn question data containing the submitted and correct
+            answers.
+        answer_name: Name of the answer to grade.
+        *rules: Partial-credit rules, checked in order after fully correct
+            answers.
+        variables: Symbols or symbol names allowed while parsing the answers.
+        addl_correct_ans: Additional answers that receive full credit. These
+            are also supplied to partial-credit rules as correct-answer
+            candidates.
+        feedback: Feedback stored when a score is awarded.
+        include_display_ans: Whether to include the canonical correct answer
+            from ``data`` among the correct-answer candidates.
+        clobber_existing_score: Whether to replace an answer's existing score.
+
+    Returns:
+        ``True`` if a score was awarded, or ``False`` if grading was skipped or
+        no answer or rule matched.
+    """
+    vars = tuple(_var_names(variables))
+    addl_correct = tuple(
+        to_expr(e, vars) for e in _normalize_one_or_many(addl_correct_ans)
+    )
+    return SympyCreditScheme(rules).grade(
+        data,
+        answer_name,
+        variables=vars,
+        addl_correct_answers=addl_correct,
+        include_display_ans=include_display_ans,
+        clobber_existing_score=clobber_existing_score,
+        feedback=feedback,
+    )
