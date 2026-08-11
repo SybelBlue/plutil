@@ -4,13 +4,13 @@ from typing import Literal, cast
 
 import sympy as sp
 
-from .common import get_sympy_ans, set_format_error
-from .lenses import QuestionLens
+from .common import set_format_error
+from .lenses import SympyQuestionLens
 from .partial_credit import set_partial_score
 
 
 def reject_non_sympy_set_input(
-    lens: QuestionLens,
+    lens: SympyQuestionLens,
     *,
     mode: Literal["all", "finite-set-only", "interval-only"] = "all",
 ) -> bool:
@@ -19,7 +19,7 @@ def reject_non_sympy_set_input(
     Returns ``True`` when the input was rejected and ``False`` when there is no
     submitted answer, another format error already exists, or the answer is a set.
     """
-    submitted = get_sympy_ans(lens.as_sympy_lens(), ver="submitted")
+    submitted = lens.submitted_answer
     if submitted is None:
         return False
 
@@ -43,7 +43,7 @@ def reject_non_sympy_set_input(
     )
 
 
-def grade_sympy_set(lens: QuestionLens) -> bool:
+def grade_sympy_set(lens: SympyQuestionLens) -> bool:
     """Score a finite set by the fraction of correct elements submitted.
 
     Extra submitted elements reduce the score by an inverse-square-root guessing
@@ -51,9 +51,8 @@ def grade_sympy_set(lens: QuestionLens) -> bool:
     set. Returns ``True`` when a score was set and ``False`` when either answer is
     missing or cannot be enumerated as a finite set.
     """
-    sympy_lens = lens.as_sympy_lens()
-    submitted = get_sympy_ans(sympy_lens, ver="submitted")
-    correct = get_sympy_ans(sympy_lens, ver="correct")
+    submitted = lens.submitted_answer
+    correct = lens.correct_answer
     if not isinstance(submitted, sp.Set) or not isinstance(correct, sp.Set):
         return False
 

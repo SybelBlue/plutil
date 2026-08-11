@@ -16,8 +16,6 @@ from .common import (
     SympyParsable,
     _normalize_one_or_more,
     _var_names,
-    get_ans,
-    get_sympy_ans,
     setrec,
     sympy_eq,
     to_expr,
@@ -295,7 +293,7 @@ class CreditScheme[T](_CreditSchemeBase[T]):
             return False
 
         # find submitted answer
-        submitted = get_ans(lens, ver="submitted")
+        submitted = lens.get_ans(ver="submitted")
         if submitted is None:
             return False
 
@@ -303,7 +301,7 @@ class CreditScheme[T](_CreditSchemeBase[T]):
         candidates = list(_normalize_one_or_more(addl_correct_answers))
 
         if include_display_ans:
-            correct = get_ans(lens, ver="correct")
+            correct = lens.get_ans(ver="correct")
             if correct is not None:
                 candidates.insert(0, correct)
 
@@ -342,7 +340,7 @@ class SympyCreditScheme(_CreditSchemeBase[SympyEquiv]):
             return False
 
         # find submitted answer
-        submitted = get_sympy_ans(lens, ver="submitted")
+        submitted = lens.submitted_answer
         if submitted is None:
             return False
 
@@ -350,7 +348,7 @@ class SympyCreditScheme(_CreditSchemeBase[SympyEquiv]):
         candidates = list(_normalize_one_or_more(addl_correct_answers))
 
         if include_display_ans:
-            correct = get_sympy_ans(lens, ver="correct")
+            correct = lens.correct_answer
             if correct is not None:
                 candidates.insert(0, correct)
 

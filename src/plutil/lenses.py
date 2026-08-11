@@ -2,13 +2,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from difflib import get_close_matches
 from functools import wraps
-from typing import Any
+from typing import Any, Literal
 
 import prairielearn as pl
 import sympy as sp
 from prairielearn import PartialScore, QuestionData
 
-from .common import OneOrMore, SympyParsable, SympyValue, Variable, to_expr
+from .common import OneOrMore, SympyParsable, SympyValue, Variable, getrec, to_expr
 from .partial_credit import PartialCreditRule, award_partial_credit
 
 
@@ -132,14 +132,14 @@ class QuestionLens:
         sdict["feedback"] = feedback
 
     @property
-    def raw_submitted_answer(self) -> str:
+    def raw_submitted_answer(self) -> str | None:
         """Return the answer's raw submitted text."""
-        return self.data["raw_submitted_answers"][self.answers_name]
+        return self.data["raw_submitted_answers"].get(self.answers_name)
 
     @property
-    def submitted_answer(self) -> Any:
+    def submitted_answer(self) -> object | None:
         """Return the answer's parsed submitted value."""
-        return self.data["submitted_answers"][self.answers_name]
+        return self.data["submitted_answers"].get(self.answers_name)
 
     @property
     def correct_answer_shown(self) -> bool:
@@ -149,6 +149,12 @@ class QuestionLens:
     def as_sympy_lens(self, variables: OneOrMore[Variable] = ()) -> "SympyQuestionLens":
         """Return a symbolic lens for this answer using ``variables``."""
         return SympyQuestionLens(self.data, self.answers_name, variables=variables)
+
+    def get_ans(
+        self, ver: Literal["correct", "submitted", "raw_submitted"]
+    ) -> Any | None:
+        """Returns the value or None if it does not exist"""
+        return getrec(self.data, f"{ver}_answers", self.answers_name, default=None)
 
 
 @dataclass(slots=True)
@@ -162,11 +168,11 @@ class SympyQuestionLens(QuestionLens):
     @property
     def unparsed_correct_answer(self):
         """Return the stored, unparsed correct answer."""
-        return super().correct_answer
+        return super(SympyQuestionLens, self).correct_answer
 
     @unparsed_correct_answer.setter
     def unparsed_correct_answer(self, value):
-        super().correct_answer = value
+        super(SympyQuestionLens, self).correct_answer = value
 
     @property
     def correct_answer(self):
@@ -201,14 +207,16 @@ class SympyQuestionLens(QuestionLens):
         self.unparsed_correct_answer = out
 
     @property
-    def submitted_answer(self) -> SympyValue:
+    def submitted_answer(self) -> SympyValue | None:
         """Return the submitted answer as a SymPy expression."""
-        return self.to_expr(super().submitted_answer)
+        if raw := super(SympyQuestionLens, self).submitted_answer:
+            return self.to_expr(raw)  # type: ignore
+        return None
 
     @property
     def unparsed_raw_submitted_answer(self):
         """Return the raw submitted answer without symbolic parsing."""
-        return super().raw_submitted_answer
+        return super(SympyQuestionLens, self).raw_submitted_answer
 
     def award_partial_credit(
         self,
@@ -217,9 +225,9 @@ class SympyQuestionLens(QuestionLens):
         feedback: str | None = None,
         include_display_ans: bool = True,
         clobber_existing_score: bool = True,
-    ):
+    ) -> bool:
         """Apply symbolic partial-credit rules to this answer."""
-        award_partial_credit(
+        return award_partial_credit(
             self,
             *rules,
             addl_correct_ans=addl_correct_ans,

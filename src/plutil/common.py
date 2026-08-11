@@ -13,7 +13,7 @@ import prairielearn.sympy_utils as psu
 import sympy
 
 if TYPE_CHECKING:
-    from .lenses import QuestionLens, SympyQuestionLens
+    from .lenses import QuestionLens
 
 type SympyValue = sympy.Expr | sympy.Set
 type SympyEquiv = SympyValue | int | float
@@ -239,49 +239,6 @@ def sympy_eq(left: Any, right: Any) -> bool:
     return sympy.simplify(left - right) == 0  # type: ignore
 
 
-def get_ans(
-    lens: QuestionLens,
-    *,
-    ver: Literal["correct", "submitted", "raw_submitted"] = "correct",
-    default: Any | None = None,
-) -> Any | None:
-    """Retrieve a correct, submitted, or raw submitted answer from question data."""
-    assert ver in ("correct", "submitted", "raw_submitted")
-    return getrec(lens.data, f"{ver}_answers", lens.answers_name, default=default)
-
-
-@overload
-def get_sympy_ans(
-    lens: SympyQuestionLens,
-    *,
-    ver: Literal["submitted", "raw_submitted"],
-) -> SympyValue | None: ...
-@overload
-def get_sympy_ans(
-    lens: SympyQuestionLens,
-    *,
-    ver: Literal["correct"] = "correct",
-) -> SympyValue: ...
-def get_sympy_ans(
-    lens: SympyQuestionLens,
-    *,
-    ver: Literal["correct", "submitted", "raw_submitted"] = "correct",
-) -> SympyValue | None:
-    """Retrieve and parse a symbolic answer from PrairieLearn question data."""
-    raw = get_ans(lens, ver=ver)
-
-    if raw is None:
-        return None
-
-    if isinstance(raw, (sympy.Expr, int, float, str)):
-        return to_expr(raw, lens.variables)
-
-    if psu.is_sympy_json(raw):
-        return _pl_json_to_sympy(raw)
-
-    return None
-
-
 TRIG_OPERATOR_RE: re.Pattern[str] | None = None
 
 
@@ -328,14 +285,12 @@ def lim_latex(
     return rf"\displaystyle \lim_{{{var_tex} \to {val_tex}{direction}}} {{{body_tex}}}"
 
 
-def submitted_ans_latex_contains(
-    lens: QuestionLens,
-    *values: str,
-    ver: Literal["raw_submitted", "submitted"] = "submitted",
+def count_in_latex(
+    value: SympyValue | None,
+    *substrings: str,
 ) -> int:
     """Count occurrences of LaTeX fragments in a submitted symbolic answer."""
-    ans = get_sympy_ans(lens.as_sympy_lens(), ver=ver)
-    if ans is None:
+    if value is None:
         return 0
-    l = latex(ans)
-    return sum(l.count(s) for s in values)
+    l = latex(value, reparse=False)
+    return sum(l.count(s) for s in substrings)
