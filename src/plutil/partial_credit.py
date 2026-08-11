@@ -1,11 +1,9 @@
-import math
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from itertools import product
-from typing import Protocol, cast, overload
+from typing import Protocol, overload
 
 import prairielearn as pl
-import sympy as sp
 
 from .common import (
     OneOrMany,
@@ -16,7 +14,6 @@ from .common import (
     _var_names,
     get_ans,
     get_sympy_ans,
-    set_format_error,
     setrec,
     sympy_eq,
     to_expr,

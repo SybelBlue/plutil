@@ -76,15 +76,19 @@ Returns `True` if a score was written; `False` if already fully correct, nothing
 from plutil import award_partial_credit_from_rules, sympy_eq
 from plutil.calculus import derivative
 
+
 def grade(data):
     award_partial_credit_from_rules(
         data,
         "f",
         ["x"],
-        (0.8, lambda correct, submitted: sympy_eq(
-            derivative(correct, d="x"),
-            derivative(submitted, d="x"),
-        )),
+        (
+            0.8,
+            lambda correct, submitted: sympy_eq(
+                derivative(correct, d="x"),
+                derivative(submitted, d="x"),
+            ),
+        ),
         feedback="Derivative matches; check the original function.",
     )
 ```
@@ -139,7 +143,7 @@ Substitute values into `f` (string, number, or SymPy) and simplify. Pass `symbol
 ```python
 from plutil import eval_at
 
-eval_at("x + y", x=2, y=None)   # 2 + y
+eval_at("x + y", x=2, y=None)  # 2 + y
 eval_at("4 - t/2 + t^2/10", t=8)
 ```
 
@@ -150,6 +154,7 @@ Read the submission for `src_answer_name`, apply `transformation`, store the res
 ```python
 from plutil.functions import eval_at, set_answer_based_on_another
 from math import floor
+
 
 def parse(data):
     set_answer_based_on_another(
@@ -167,6 +172,7 @@ Like `set_answer_based_on_another`, but also scores `dest_answer_name` (0 or 1) 
 ```python
 from plutil.functions import grade_answer_based_on_another
 
+
 def grade(data):
     grade_answer_based_on_another(
         data,
@@ -183,8 +189,8 @@ Build a vertical-shift transformation so a function passes through a given point
 ```python
 from plutil.functions import translate_through_
 
-shift = translate_through_(x=0, y=2)   # f -> f shifted so f(0) = 2
-g = shift(x**2)                        # x**2 + 2
+shift = translate_through_(x=0, y=2)  # f -> f shifted so f(0) = 2
+g = shift(x**2)  # x**2 + 2
 ```
 
 Use as `transformation` in `set_answer_based_on_another` / `grade_answer_based_on_another`.
@@ -238,6 +244,7 @@ Grant partial credit when the student’s antiderivative is correct up to a miss
 
 ```python
 from plutil.calculus import award_missing_constant_credit
+
 
 def grade(data):
     award_missing_constant_credit(data, "answer1", ["x"])

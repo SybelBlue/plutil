@@ -9,7 +9,6 @@ from prairielearn import timeout_utils
 from sympy import Eq, Function, checkodesol
 
 from .calculus import derivative
-
 from .common import (
     OneOrMany,
     SympyExpr,
