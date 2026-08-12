@@ -9,7 +9,7 @@ import chevron
 import prairielearn as pl
 from lxml import html
 
-from plutil.lenses import BaseQuestion, Question, QuestionData
+from plutil.lenses import BaseQuestion, Question, BaseData
 
 from .element_data import PlElementData, get_data_factory
 from .errors import (
@@ -85,7 +85,7 @@ class ValidatedSig:
     """
 
     include_data: bool = False
-    data_lens_type: type[QuestionData] = QuestionData
+    data_lens_type: type[BaseData] = BaseData
     kwarg_types: dict[str, DelayedLens] = field(default_factory=dict)
 
     def call(self, f: PlMagicFunction, data: pl.QuestionData) -> None:
@@ -164,11 +164,11 @@ class plmagic[**P]:
                 if (
                     p_type is not inspect.Parameter.empty
                     and inspect.isclass(p_type)
-                    and not issubclass(p_type, QuestionData)
+                    and not issubclass(p_type, BaseData)
                 ):
-                    raise ArgumentTypeError(self.f_name, p_name, QuestionData)
+                    raise ArgumentTypeError(self.f_name, p_name, BaseData)
                 out.include_data = True
-                if inspect.isclass(p_type) and issubclass(p_type, QuestionData):
+                if inspect.isclass(p_type) and issubclass(p_type, BaseData):
                     out.data_lens_type = p_type
                 continue
 

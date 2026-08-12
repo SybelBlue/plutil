@@ -1,7 +1,5 @@
-from collections.abc import Callable
 from dataclasses import dataclass
 from difflib import get_close_matches
-from functools import wraps
 from types import UnionType
 from typing import (
     Any,
@@ -80,7 +78,7 @@ class NoPreferences(TypedDict):
 
 
 @dataclass(slots=True)
-class QuestionData[PreferencesT](metaclass=_QuestionDataMeta):
+class BaseData[PreferencesT](metaclass=_QuestionDataMeta):
     """Provide convenient access to a PrairieLearn question data mapping.
 
     Attributes:
@@ -136,19 +134,8 @@ class QuestionData[PreferencesT](metaclass=_QuestionDataMeta):
         return self.data.__getitem__(key)
 
 
-type Data = QuestionData[NoPreferences]
-
-
-def datalens(
-    f: Callable[[QuestionData], None],
-) -> Callable[[pl.QuestionData], None]:
-    """Adapt a function accepting ``QuestionData`` to PrairieLearn data."""
-
-    @wraps(f)
-    def inner(data: pl.QuestionData) -> None:
-        return f(QuestionData(data))
-
-    return inner
+class Data(BaseData[NoPreferences]):
+    pass
 
 
 @dataclass(slots=True)
