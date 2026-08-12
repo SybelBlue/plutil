@@ -5,7 +5,6 @@ from typing import Literal, cast
 import sympy as sp
 
 from .lenses import SympyQuestionLens
-from .partial_credit import set_partial_score
 
 
 def reject_non_sympy_set_input(
@@ -58,7 +57,7 @@ def grade_sympy_set(lens: SympyQuestionLens) -> bool:
     correct_values = tuple(cast(Iterable[sp.Basic], correct))
 
     if not correct_values:
-        set_partial_score(lens, 0 if submitted_values else 1)
+        lens.score = 0 if submitted_values else 1
         return True
 
     raw_score = sum(value in correct for value in submitted_values) / len(
@@ -66,5 +65,5 @@ def grade_sympy_set(lens: SympyQuestionLens) -> bool:
     )
     extra_count = max(len(submitted_values) - len(correct_values), 0)
     guessing_factor = math.sqrt(1 / (1 + extra_count))
-    set_partial_score(lens, guessing_factor * raw_score)
+    lens.score = guessing_factor * raw_score
     return True
