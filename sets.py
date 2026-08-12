@@ -4,11 +4,11 @@ from typing import Literal, cast
 
 import sympy as sp
 
-from .lenses import SympyQuestionLens
+from .lenses import SympyQuestion
 
 
 def reject_non_sympy_set_input(
-    lens: SympyQuestionLens,
+    lens: SympyQuestion,
     *,
     mode: Literal["all", "finite-set-only", "interval-only"] = "all",
 ) -> bool:
@@ -41,7 +41,7 @@ def reject_non_sympy_set_input(
     return True
 
 
-def grade_sympy_set(lens: SympyQuestionLens) -> bool:
+def grade_sympy_set(lens: SympyQuestion) -> bool:
     """Score a finite set by the fraction of correct elements submitted.
 
     Extra submitted elements reduce the score by an inverse-square-root guessing

@@ -21,7 +21,7 @@ from .common import (
     var_to_symbol,
 )
 from .functions import eval_at, eval_at_
-from .lenses import SympyQuestionLens
+from .lenses import SympyQuestion
 from .partial_credit import rule
 
 DEFAULT_FEEDBACK: Final[str] = (
@@ -31,7 +31,7 @@ DEFAULT_FEEDBACK: Final[str] = (
 
 # NOTE: partial_score default chosen according to Serena's memory of AP scoring
 def award_missing_constant_credit(
-    lens: SympyQuestionLens,
+    lens: SympyQuestion,
     C: Variable = "C",
     partial_score: float = 0.8,
     feedback: str = DEFAULT_FEEDBACK,

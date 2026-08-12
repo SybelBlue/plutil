@@ -6,7 +6,6 @@ from typing import Any, Literal
 
 import prairielearn as pl
 import sympy as sp
-from prairielearn import PartialScore, QuestionData
 
 from .common import (
     OneOrMore,
@@ -20,14 +19,14 @@ from .partial_credit import PartialCreditRule, award_partial_credit
 
 
 @dataclass(slots=True)
-class QuestionDataLens:
+class QuestionData:
     """Provide convenient access to a PrairieLearn question data mapping.
 
     Attributes:
         data: The underlying PrairieLearn question data.
     """
 
-    data: QuestionData
+    data: pl.QuestionData
 
     @property
     def preferences(self):
@@ -49,7 +48,7 @@ class QuestionDataLens:
         """Return the answer names registered in the question data."""
         return tuple(self.data["answers_names"].keys())
 
-    def question(self, answer_name: str, skip_valiation: bool = True) -> "QuestionLens":
+    def question(self, answer_name: str, skip_valiation: bool = True) -> "Question":
         """Return a lens for one answer, optionally validating its name."""
         if not skip_valiation and answer_name not in self.answer_names:
             msg = f"Unknown answers_name: {answer_name}"
@@ -57,7 +56,7 @@ class QuestionDataLens:
                 msg += f", did you mean `{l[0]}`"
             raise ValueError(msg)
 
-        return QuestionLens(self.data, answer_name)
+        return Question(self.data, answer_name)
 
     def __getitem__(self, key: str):
         """Return an answer lens or a value from the underlying question data."""
@@ -67,19 +66,19 @@ class QuestionDataLens:
 
 
 def datalens(
-    f: Callable[[QuestionDataLens], None],
+    f: Callable[[QuestionData], None],
 ) -> Callable[[pl.QuestionData], None]:
     """Adapt a function accepting ``QuestionDataLens`` to PrairieLearn data."""
 
     @wraps(f)
     def inner(data: pl.QuestionData) -> None:
-        return f(QuestionDataLens(data))
+        return f(QuestionData(data))
 
     return inner
 
 
 @dataclass(slots=True)
-class QuestionLens:
+class Question:
     """Read and update data associated with one PrairieLearn answer.
 
     Attributes:
@@ -87,7 +86,7 @@ class QuestionLens:
         answers_name: The ``answers-name`` identifying the answer.
     """
 
-    data: QuestionData
+    data: pl.QuestionData
     answers_name: str
     _already_scored: bool = False
 
@@ -113,13 +112,13 @@ class QuestionLens:
         adict[self.answers_name] = value
 
     @property
-    def score_dict(self) -> PartialScore | None:
+    def score_dict(self) -> pl.PartialScore | None:
         """Return the answer's partial-score record, if present."""
         adict = self.data.setdefault("partial_scores", {})
         return adict.get(self.answers_name, None)
 
     @score_dict.setter
-    def score_dict(self, score: PartialScore) -> None:
+    def score_dict(self, score: pl.PartialScore) -> None:
         adict = self.data.setdefault("partial_scores", {})
         adict[self.answers_name] = score
         self.already_scored = True
@@ -132,7 +131,7 @@ class QuestionLens:
         feedback: str | None = None,
     ):
         """Set a score together with optional weight and feedback."""
-        score_dict: PartialScore = {"score": score}
+        score_dict: pl.PartialScore = {"score": score}
         if weight is not None:
             score_dict["weight"] = weight
         if feedback is not None:
@@ -208,9 +207,9 @@ class QuestionLens:
         else:
             format_errors[self.answers_name] = message
 
-    def as_sympy_lens(self, variables: OneOrMore[Variable] = ()) -> "SympyQuestionLens":
+    def as_sympy_lens(self, variables: OneOrMore[Variable] = ()) -> "SympyQuestion":
         """Return a symbolic lens for this answer using ``variables``."""
-        return SympyQuestionLens(self.data, self.answers_name, variables=variables)
+        return SympyQuestion(self.data, self.answers_name, variables=variables)
 
     def get_ans(
         self, ver: Literal["correct", "submitted", "raw_submitted"]
@@ -223,7 +222,7 @@ class QuestionLens:
 
 
 @dataclass(slots=True)
-class SympyQuestionLens(QuestionLens):
+class SympyQuestion(Question):
     """A question lens that converts answer values to SymPy objects.
 
     Attributes:
@@ -236,16 +235,16 @@ class SympyQuestionLens(QuestionLens):
         """Convert a supported value to SymPy using this lens's variables."""
         return to_expr(o, self.variables)
 
-    @QuestionLens.correct_answer.getter
+    @Question.correct_answer.getter
     def unparsed_correct_answer(self):
         """Return the stored, unparsed correct answer."""
         return super().correct_answer
 
     @unparsed_correct_answer.setter
     def unparsed_correct_answer(self, value):
-        QuestionLens.correct_answer.fset(self, value)  # type: ignore[union-attr]
+        Question.correct_answer.fset(self, value)  # type: ignore[union-attr]
 
-    @QuestionLens.correct_answer.getter
+    @Question.correct_answer.getter
     def correct_answer(self):
         """Return the correct answer as a SymPy expression."""
         return self.to_expr(self.unparsed_correct_answer)
@@ -277,7 +276,7 @@ class SympyQuestionLens(QuestionLens):
 
         self.unparsed_correct_answer = out
 
-    @QuestionLens.submitted_answer.getter
+    @Question.submitted_answer.getter
     def submitted_answer(self) -> SympyValue | None:
         """Return the submitted answer as a SymPy expression."""
         if raw := super().submitted_answer:
@@ -305,41 +304,4 @@ class SympyQuestionLens(QuestionLens):
             feedback=feedback,
             include_display_ans=include_display_ans,
             clobber_existing_score=clobber_existing_score,
-        )
-
-
-@dataclass(slots=True, frozen=True)
-class Question:
-    """Describe an answer that can be bound to PrairieLearn question data.
-
-    Attributes:
-        answer_name: The ``answers-name`` identifying the answer.
-    """
-
-    answer_name: str
-
-    def lens(self, data: QuestionData) -> QuestionLens:
-        """Create a lens for this question answer in ``data``."""
-        return QuestionLens(data, self.answer_name)
-
-
-@dataclass(slots=True, frozen=True)
-class SympyQuestion(Question):
-    """Describe a symbolic answer that can be bound to question data.
-
-    Attributes:
-        variables: Variables accepted while parsing symbolic values.
-    """
-
-    variables: OneOrMore[Variable] = ()
-
-    def lens(
-        self,
-        data: QuestionData,
-    ) -> SympyQuestionLens:
-        """Create a symbolic lens for this question answer in ``data``."""
-        return SympyQuestionLens(
-            data,
-            self.answer_name,
-            variables=self.variables,
         )

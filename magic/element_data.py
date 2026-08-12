@@ -6,7 +6,7 @@ from typing import Self
 import prairielearn as pl
 from lxml import html
 
-from plutil.lenses import QuestionLens, SympyQuestionLens
+from plutil.lenses import Question, SympyQuestion
 
 type HtmlTag = str
 type DataFactory = Callable[[html.HtmlElement], PlElementData]
@@ -22,9 +22,9 @@ class PlElementData:
 
     html_tag: HtmlTag
 
-    def build_lens(self, data: pl.QuestionData, answers_name: str) -> QuestionLens:
+    def build_lens(self, data: pl.QuestionData, answers_name: str) -> Question:
         """Build a question lens for this element."""
-        return QuestionLens(data, answers_name)
+        return Question(data, answers_name)
 
     @property
     def lens_builder(self):
@@ -47,9 +47,9 @@ class PlSymbolicInputData(PlElementData):
 
     variable_names: tuple[str, ...]
 
-    def build_lens(self, data: pl.QuestionData, answers_name: str) -> QuestionLens:
+    def build_lens(self, data: pl.QuestionData, answers_name: str) -> Question:
         """Build a symbolic question lens for this element."""
-        return SympyQuestionLens(data, answers_name, variables=self.variable_names)
+        return SympyQuestion(data, answers_name, variables=self.variable_names)
 
     @classmethod
     def build_from_element(cls, el: html.HtmlElement) -> Self:
