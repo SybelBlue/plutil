@@ -16,7 +16,9 @@ def test_reject_non_set_input_adds_format_error() -> None:
         submitted_answers={"answer": pl.to_json(x + 1)}, format_errors={}
     )
 
-    rejected = reject_non_sympy_set_input(SympyQuestionLens(data, "answer", x))
+    rejected = reject_non_sympy_set_input(
+        SympyQuestionLens(data, "answer", variables=x)
+    )
 
     assert rejected is True
     assert data["format_errors"]["answer"] == (
@@ -30,7 +32,9 @@ def test_reject_non_set_input_accepts_set() -> None:
         format_errors={},
     )
 
-    rejected = reject_non_sympy_set_input(SympyQuestionLens(data, "answer", x))
+    rejected = reject_non_sympy_set_input(
+        SympyQuestionLens(data, "answer", variables=x)
+    )
 
     assert rejected is False
     assert "answer" not in data["format_errors"]
@@ -42,7 +46,9 @@ def test_reject_non_set_input_preserves_existing_format_error() -> None:
         format_errors={"answer": "Original error."},
     )
 
-    rejected = reject_non_sympy_set_input(SympyQuestionLens(data, "answer", x))
+    rejected = reject_non_sympy_set_input(
+        SympyQuestionLens(data, "answer", variables=x)
+    )
 
     assert rejected is False
     assert data["format_errors"]["answer"] == "Original error."
@@ -55,7 +61,7 @@ def test_score_set_answer_awards_credit_per_correct_element() -> None:
         partial_scores={},
     )
 
-    scored = grade_sympy_set(SympyQuestionLens(data, "answer", x))
+    scored = grade_sympy_set(SympyQuestionLens(data, "answer", variables=x))
 
     assert scored is True
     assert data["partial_scores"]["answer"]["score"] == pytest.approx(2 / 3)
@@ -68,7 +74,7 @@ def test_score_set_answer_penalizes_extra_elements() -> None:
         partial_scores={},
     )
 
-    scored = grade_sympy_set(SympyQuestionLens(data, "answer", x))
+    scored = grade_sympy_set(SympyQuestionLens(data, "answer", variables=x))
 
     assert scored is True
     assert data["partial_scores"]["answer"]["score"] == pytest.approx(1 / 3**0.5)
@@ -81,7 +87,7 @@ def test_score_set_answer_skips_non_set_input() -> None:
         partial_scores={},
     )
 
-    scored = grade_sympy_set(SympyQuestionLens(data, "answer", x))
+    scored = grade_sympy_set(SympyQuestionLens(data, "answer", variables=x))
 
     assert scored is False
     assert "answer" not in data["partial_scores"]

@@ -34,9 +34,10 @@ def reject_non_sympy_set_input(
 
     example = "(-1, 3] U (5, 10)" if mode == "interval-only" else "{ 0, 1, 2 }"
 
-    if lens.format_error is None:
-        lens.format_error = f"The answer must be formatted as a set, e.g. {example}"
+    if lens.format_error is not None:
+        return False
 
+    lens.format_error = f"The answer must be formatted as a set, e.g. {example}"
     return True
 
 

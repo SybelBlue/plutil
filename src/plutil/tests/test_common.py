@@ -10,16 +10,14 @@ from sympy.abc import t, x
 import plutil.common as common_mod
 from plutil.common import (
     _pl_json_to_sympy,
+    _str_to_sympy,
+    eq,
     getrec,
     latex,
     lim_latex,
-    set_correct_sympy_ans,
-    set_format_error,
     setrec,
-    _str_to_sympy,
-    eq,
 )
-from plutil.lenses import QuestionLens
+from plutil.lenses import QuestionLens, SympyQuestionLens
 
 
 def test_pl_json_to_sympy_round_trips_pl_json():
@@ -33,56 +31,56 @@ def test_pl_json_to_sympy_returns_none_for_none():
     assert _pl_json_to_sympy(None) is None
 
 
-def test_set_correct_sympy_ans_stores_pl_json():
+def test_sympy_lens_correct_answer_stores_pl_json():
     data: pl.QuestionData = {}  # type: ignore
+    lens = SympyQuestionLens(data, "answer")
 
-    value = set_correct_sympy_ans(QuestionLens(data, "answer"), 2 * x + 3)
+    lens.correct_answer = 2 * x + 3
 
-    assert value == pl.to_json(2 * x + 3)
     assert data["correct_answers"]["answer"] == pl.to_json(2 * x + 3)
+    assert lens.correct_answer == 2 * x + 3
 
 
-def test_set_correct_sympy_ans_rejects_strings():
-    with pytest.raises(TypeError, match="not text"):
-        set_correct_sympy_ans(
-            QuestionLens({}, "answer"),  # type: ignore[arg-type]
-            "2*x + 3",  # type: ignore[arg-type]
-        )
-
-
-def test_set_format_error_creates_format_errors_dict():
+def test_sympy_lens_correct_answer_parses_strings():
     data: pl.QuestionData = {}  # type: ignore
+    lens = SympyQuestionLens(data, "answer", variables=x)
 
-    written = set_format_error(QuestionLens(data, "answer"), "Use a set.")
+    lens.correct_answer = "2*x + 3"
 
-    assert written is True
+    assert lens.correct_answer == 2 * x + 3
+
+
+def test_lens_format_error_sets_error():
+    data: pl.QuestionData = {"format_errors": {}}  # type: ignore
+    lens = QuestionLens(data, "answer")
+
+    lens.format_error = "Use a set."
+
     assert data["format_errors"] == {"answer": "Use a set."}
+    assert lens.format_error == "Use a set."
 
 
-def test_set_format_error_clobbers_existing_error_by_default():
+def test_lens_format_error_replaces_existing_error():
     data: pl.QuestionData = {  # type: ignore
         "format_errors": {"answer": "Original error."}
     }
+    lens = QuestionLens(data, "answer")
 
-    written = set_format_error(QuestionLens(data, "answer"), "Replacement error.")
+    lens.format_error = "Replacement error."
 
-    assert written is True
     assert data["format_errors"]["answer"] == "Replacement error."
 
 
-def test_set_format_error_can_preserve_existing_error():
+def test_lens_format_error_can_be_cleared():
     data: pl.QuestionData = {  # type: ignore
         "format_errors": {"answer": "Original error."}
     }
+    lens = QuestionLens(data, "answer")
 
-    written = set_format_error(
-        QuestionLens(data, "answer"),
-        "Replacement error.",
-        clobber_existing_error=False,
-    )
+    lens.format_error = None
 
-    assert written is False
-    assert data["format_errors"]["answer"] == "Original error."
+    assert lens.format_error is None
+    assert data["format_errors"] == {}
 
 
 def test_getrec_walks_nested_indexables_and_uses_default():
