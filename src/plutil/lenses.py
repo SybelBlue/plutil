@@ -21,6 +21,12 @@ from .partial_credit import PartialCreditRule, award_partial_credit
 
 @dataclass(slots=True)
 class QuestionDataLens:
+    """Provide convenient access to a PrairieLearn question data mapping.
+
+    Attributes:
+        data: The underlying PrairieLearn question data.
+    """
+
     data: QuestionData
 
     @property
@@ -54,6 +60,7 @@ class QuestionDataLens:
         return QuestionLens(self.data, answer_name)
 
     def __getitem__(self, key: str):
+        """Return an answer lens or a value from the underlying question data."""
         if key in self.answer_names:
             return self.question(key, skip_valiation=True)
         return self.data.__getitem__(key)
@@ -73,12 +80,20 @@ def datalens(
 
 @dataclass(slots=True)
 class QuestionLens:
+    """Read and update data associated with one PrairieLearn answer.
+
+    Attributes:
+        data: The underlying PrairieLearn question data.
+        answers_name: The ``answers-name`` identifying the answer.
+    """
+
     data: QuestionData
     answers_name: str
     _already_scored: bool = False
 
     @property
     def already_scored(self):
+        """Return whether this lens has assigned a score to the answer."""
         return self._already_scored
 
     @already_scored.setter
@@ -116,6 +131,7 @@ class QuestionLens:
         weight: int | None = None,
         feedback: str | None = None,
     ):
+        """Set a score together with optional weight and feedback."""
         score_dict: PartialScore = {"score": score}
         if weight is not None:
             score_dict["weight"] = weight
@@ -181,6 +197,7 @@ class QuestionLens:
 
     @property
     def format_error(self) -> str | None:
+        """Return the answer's format error, if present."""
         return self.data.get("format_errors", {}).get(self.answers_name)
 
     @format_error.setter
@@ -207,6 +224,12 @@ class QuestionLens:
 
 @dataclass(slots=True)
 class SympyQuestionLens(QuestionLens):
+    """A question lens that converts answer values to SymPy objects.
+
+    Attributes:
+        variables: Variables accepted while parsing symbolic values.
+    """
+
     variables: OneOrMore[Variable] = ()
 
     def to_expr(self, o: SympyParsable | dict):
@@ -287,6 +310,12 @@ class SympyQuestionLens(QuestionLens):
 
 @dataclass(slots=True, frozen=True)
 class Question:
+    """Describe an answer that can be bound to PrairieLearn question data.
+
+    Attributes:
+        answer_name: The ``answers-name`` identifying the answer.
+    """
+
     answer_name: str
 
     def lens(self, data: QuestionData) -> QuestionLens:
@@ -296,6 +325,12 @@ class Question:
 
 @dataclass(slots=True, frozen=True)
 class SympyQuestion(Question):
+    """Describe a symbolic answer that can be bound to question data.
+
+    Attributes:
+        variables: Variables accepted while parsing symbolic values.
+    """
+
     variables: OneOrMore[Variable] = ()
 
     def lens(
