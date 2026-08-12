@@ -7,9 +7,16 @@ import prairielearn as pl
 
 @dataclass(slots=True)
 class PlMagicError(Exception, abc.ABC):
+    """Base class for errors raised while adapting a magic function.
+
+    Attributes:
+        function_name: Name of the function that could not be adapted.
+    """
+
     function_name: str
 
     def prefix(self):
+        """Return the common prefix used by magic error messages."""
         return f"Plmagic cannot parse {self.function_name}"
 
     @abc.abstractmethod
@@ -19,6 +26,8 @@ class PlMagicError(Exception, abc.ABC):
 
 @dataclass(slots=True)
 class MissingPlFileError(PlMagicError):
+    """Report a missing PrairieLearn file adjacent to a server module."""
+
     server_py: Path
     missing: Path
 
@@ -32,6 +41,8 @@ class MissingPlFileError(PlMagicError):
 
 @dataclass(slots=True)
 class DuplicateAnswersName(PlMagicError):
+    """Report duplicate ``answers-name`` values in a question template."""
+
     question_html: Path
     name: str
     first_lineno: int
@@ -47,11 +58,13 @@ class DuplicateAnswersName(PlMagicError):
 
 
 class InvalidMagicFunctionError(PlMagicError, TypeError):
-    pass
+    """Base class for invalid magic-function signatures."""
 
 
 @dataclass(slots=True)
 class HasVariadicArgsError(InvalidMagicFunctionError):
+    """Report a variadic parameter in a magic-function signature."""
+
     args_name: str
 
     def __str__(self) -> str:
@@ -63,6 +76,8 @@ class HasVariadicArgsError(InvalidMagicFunctionError):
 
 @dataclass(slots=True)
 class BadPositionalArgError(InvalidMagicFunctionError):
+    """Report an unsupported positional magic-function parameter."""
+
     arg_name: str
 
     def __str__(self) -> str:
@@ -76,6 +91,8 @@ class BadPositionalArgError(InvalidMagicFunctionError):
 
 @dataclass(slots=True)
 class ArgumentTypeError(InvalidMagicFunctionError):
+    """Report a magic-function parameter with an incompatible type."""
+
     arg_name: str
     required_type: type
 
@@ -89,6 +106,8 @@ class ArgumentTypeError(InvalidMagicFunctionError):
 
 @dataclass(slots=True)
 class UnknownAnswersNameError(InvalidMagicFunctionError):
+    """Report a parameter that does not match an answer element."""
+
     arg_name: str
     valid_names: tuple[str, ...]
 
@@ -104,11 +123,13 @@ class UnknownAnswersNameError(InvalidMagicFunctionError):
 
 
 class InvalidQuestionDataError(PlMagicError, ValueError):
-    pass
+    """Base class for invalid data produced by a magic function."""
 
 
 @dataclass(slots=True)
 class MissingCorrectAnswer(InvalidQuestionDataError):
+    """Report an answer for which no correct answer was produced."""
+
     data: pl.QuestionData
     answers_name: str
     html_path: Path

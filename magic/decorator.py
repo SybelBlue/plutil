@@ -22,20 +22,30 @@ from .errors import (
 )
 
 type AnswersName = str
+"""The value of a PrairieLearn element's ``answers-name`` attribute."""
+
 type AnswerElementDataDict = dict[AnswersName, PlElementData]
+"""PrairieLearn element metadata indexed by its answer name."""
 
 type DelayedLens = Callable[[pl.QuestionData], QuestionLens]
+"""A callable that binds a question lens to PrairieLearn question data."""
+
 type LensBuilder = Callable[[str], DelayedLens]
+"""A callable that creates a delayed lens for an answer name."""
 
 type PlMagicFunction[**P] = Callable[P, None]
+"""A PrairieLearn lifecycle function that returns no value."""
 
 
-html_file_cache: dict[Path, AnswerElementDataDict] = {}
+_html_file_cache: dict[Path, AnswerElementDataDict] = {}
 
 
 def _build_answers_element_data_dict(
     f_name: str, html_path: Path
 ) -> AnswerElementDataDict:
+    if html_path in _html_file_cache:
+        return _html_file_cache[html_path]
+
     from lxml import etree  # type: ignore
 
     element = html.fragment_fromstring(html_path.read_text())
@@ -56,15 +66,24 @@ def _build_answers_element_data_dict(
         answers[answer_name] = get_data_factory(answer_tag)(answer_element)
         line_dict[answer_name] = answer_element.sourceline
 
+    _html_file_cache[html_path] = answers
     return answers
 
 
 @dataclass(slots=True)
 class ValidatedSig:
+    """Store the validated argument bindings for a magic function.
+
+    Attributes:
+        include_data: Whether to pass a :class:`QuestionDataLens` positionally.
+        kwarg_types: Mapping from parameter names to delayed lens builders.
+    """
+
     include_data: bool = False
     kwarg_types: dict[str, DelayedLens] = field(default_factory=dict)
 
     def call(self, f: PlMagicFunction, data: pl.QuestionData) -> None:
+        """Call ``f`` with lenses constructed from ``data``."""
         p_f = partial(f)
         datalens = QuestionDataLens(data)
         if self.include_data:
@@ -75,6 +94,19 @@ class ValidatedSig:
 
 @dataclass(slots=True)
 class plmagic[**P]:
+    """Validate and adapt a function for use as a PrairieLearn lifecycle hook.
+
+    The decorated function's parameters are matched to answer elements in the
+    neighboring ``question.html`` file and receive the corresponding lenses.
+
+    Attributes:
+        f: The PrairieLearn lifecycle function being adapted.
+        answer_tags: Metadata for answer elements indexed by ``answers-name``.
+        html_path: Path to the question's ``question.html`` file.
+        info_json_path: Path to the question's ``info.json`` file.
+        validated_sig: Validated bindings used to invoke the function.
+    """
+
     f: PlMagicFunction[P]
 
     answer_tags: AnswerElementDataDict = field(init=False)
@@ -83,11 +115,13 @@ class plmagic[**P]:
     validated_sig: "ValidatedSig" = field(init=False)
 
     def __post_init__(self) -> None:
+        """Locate companion files and validate the decorated function."""
         self.html_path, self.info_json_path = self._build_paths()
-        self.answer_tags = self._validate_question_html(self.html_path)
+        self.answer_tags = _build_answers_element_data_dict(self.f_name, self.html_path)
         self.validated_sig = self._validate_plfun_sig(self.answer_tags)
 
     def __call__(self, data: pl.QuestionData) -> None:
+        """Invoke the decorated function and validate its resulting data."""
         self.validated_sig.call(self.f, data)
         self._validate_question_data_output(data)
 
@@ -101,14 +135,8 @@ class plmagic[**P]:
 
     @property
     def f_name(self):
+        """Return the decorated function's name."""
         return self.f.__name__
-
-    def _validate_question_html(self, html_path: Path) -> AnswerElementDataDict:
-        answers = html_file_cache.get(html_path)
-        if answers is None:
-            answers = _build_answers_element_data_dict(self.f_name, html_path)
-            html_file_cache[html_path] = answers
-        return answers
 
     def _validate_plfun_sig(self, tag_dict: AnswerElementDataDict) -> ValidatedSig:
         f_sig = inspect.signature(self.f)
