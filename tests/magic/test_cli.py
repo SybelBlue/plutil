@@ -52,6 +52,7 @@ def test_cli_generates_types_for_all_plmagic_questions(
             "async def grade(data):\n"
             "    pass\n"
         ),
+        preferences={"seed": {"type": "number"}},
     )
     _create_question(
         fs,
@@ -62,6 +63,7 @@ def test_cli_generates_types_for_all_plmagic_questions(
             "def generate(data):\n"
             "    pass\n"
         ),
+        preferences={"seed": {"type": "number"}},
     )
     _create_question(
         fs,
@@ -112,6 +114,7 @@ def test_cli_defaults_to_current_directory(
         fs,
         question_path,
         server_source="@plmagic\ndef generate(data):\n    pass\n",
+        preferences={"seed": {"type": "number"}},
     )
     os.chdir("/course")
 
@@ -146,6 +149,7 @@ def test_package_main_runs_plmagic_type_generation(
         fs,
         question_path,
         server_source="@plmagic\ndef generate(data):\n    pass\n",
+        preferences={"seed": {"type": "number"}},
     )
 
     assert package_main(["/course/questions"]) == 0
@@ -153,3 +157,76 @@ def test_package_main_runs_plmagic_type_generation(
     output_path = Path(question_path) / "__plmagic_types__.py"
     assert output_path.is_file()
     assert capsys.readouterr().out.strip() == str(output_path)
+
+
+def test_cli_ignores_unparsable_python_without_plmagic(
+    fs: FakeFilesystem, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _create_question(
+        fs,
+        "/course/questions/magic",
+        server_source="@plmagic\ndef generate(data):\n    pass\n",
+        preferences={"seed": {"type": "number"}},
+    )
+    fs.create_file(
+        "/course/questions/legacy/server.py",
+        contents="def generate(data):\n    unmatched = )\n",
+        create_missing_dirs=True,
+    )
+
+    assert main(["/course/questions"]) == 0
+    assert Path("/course/questions/magic/__plmagic_types__.py").is_file()
+    assert "magic/__plmagic_types__.py" in capsys.readouterr().out
+
+
+def test_cli_does_not_write_or_print_all_empty_types(
+    fs: FakeFilesystem, capsys: pytest.CaptureFixture[str]
+) -> None:
+    question_path = "/course/questions/no-preferences"
+    _create_question(
+        fs,
+        question_path,
+        server_source="@plmagic\ndef generate(data):\n    pass\n",
+    )
+
+    assert main(["/course/questions"]) == 0
+    assert capsys.readouterr().out == ""
+    assert not Path(question_path, "__plmagic_types__.py").exists()
+
+
+def test_cli_overwrites_and_prints_stale_empty_type_file(
+    fs: FakeFilesystem, capsys: pytest.CaptureFixture[str]
+) -> None:
+    question_path = "/course/questions/stale"
+    _create_question(
+        fs,
+        question_path,
+        server_source="@plmagic\ndef generate(data):\n    pass\n",
+    )
+    output_path = Path(question_path, "__plmagic_types__.py")
+    fs.create_file(str(output_path), contents="class StalePreference: ...\n")
+
+    assert main(["/course/questions"]) == 0
+    assert capsys.readouterr().out.strip() == str(output_path)
+    generated_source = output_path.read_text(encoding="utf-8")
+    assert "StalePreference" not in generated_source
+    assert "class Preferences(TypedDict):\n    pass" in generated_source
+
+
+def test_cli_reports_full_path_for_unparsable_plmagic_candidate(
+    fs: FakeFilesystem, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fs.create_file(
+        "/course/questions/broken/server.py",
+        contents="from plutil import plmagic\n\n@plmagic\ndef generate(data):\n    value = )\n",
+        create_missing_dirs=True,
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(["/course/questions"])
+
+    error = capsys.readouterr().err
+    assert exc_info.value.code == 2
+    assert "/course/questions/broken/server.py:5:13" in error
+    assert "unmatched ')'" in error
+    assert "value = )" in error
