@@ -7,6 +7,8 @@ under a directory (searched recursively):
 
 ```sh
 plmagic-types path/to/questions
+# Equivalent package invocation:
+python -m plutil path/to/questions
 ```
 
 The directory defaults to the current working directory.

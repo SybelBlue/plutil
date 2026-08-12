@@ -5,17 +5,33 @@ import ast
 from collections.abc import Sequence
 from pathlib import Path
 
-from .type_gen import write_plmagic_types_file
+from .type_gen import DEFAULT_TYPE_FILE_NAME, write_plmagic_types_file
 
 
 def _uses_plmagic(path: Path) -> bool:
     """Return whether *path* contains a function decorated with ``plmagic``."""
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    plmagic_names = {"plmagic"}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        if node.module not in {"plutil", "plutil.magic"}:
+            continue
+        plmagic_names.update(
+            alias.asname or alias.name
+            for alias in node.names
+            if alias.name == "plmagic"
+        )
+
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         for decorator in node.decorator_list:
-            if isinstance(decorator, ast.Name) and decorator.id == "plmagic":
+            # Accept both ``@plmagic`` and configurable decorator forms such as
+            # ``@plmagic(...)`` without importing or executing the module.
+            while isinstance(decorator, ast.Call):
+                decorator = decorator.func
+            if isinstance(decorator, ast.Name) and decorator.id in plmagic_names:
                 return True
             if isinstance(decorator, ast.Attribute) and decorator.attr == "plmagic":
                 return True
@@ -36,7 +52,7 @@ def generate_plmagic_type_files(directory: Path) -> list[Path]:
     question_directories = {
         source.parent
         for source in directory.rglob("*.py")
-        if source.name != "__plmagic_types__.py" and _uses_plmagic(source)
+        if source.name != DEFAULT_TYPE_FILE_NAME and _uses_plmagic(source)
     }
     output_paths: list[Path] = []
     for question_directory in sorted(question_directories):
@@ -46,7 +62,7 @@ def generate_plmagic_type_files(directory: Path) -> list[Path]:
                 f"A Python file using @plmagic has no companion info.json in "
                 f"{question_directory}"
             )
-        output_path = question_directory / "__plmagic_types__.py"
+        output_path = question_directory / DEFAULT_TYPE_FILE_NAME
         write_plmagic_types_file(info_json_path, output_path.name)
         output_paths.append(output_path)
     return output_paths

@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-plmagic-types = "plutil.magic.cli:main"
+plmagic-types = "plutil.__main__:main"
 
 [tool.uv]
 package = true

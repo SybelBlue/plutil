@@ -40,7 +40,8 @@ def test_dataclass_source_builder_builds_annotated_class() -> None:
     assert builder.build() == (
         "class Preferences(TypedDict):\n"
         "    mode: Literal['a', 'b']\n"
-        "    count: float = 1.0"
+        "    count: float\n"
+        '    """Default value: `1.0`"""'
     )
 
 
