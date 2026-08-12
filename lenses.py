@@ -142,7 +142,7 @@ type Data = QuestionData[NoPreferences]
 def datalens(
     f: Callable[[QuestionData], None],
 ) -> Callable[[pl.QuestionData], None]:
-    """Adapt a function accepting ``QuestionDataLens`` to PrairieLearn data."""
+    """Adapt a function accepting ``QuestionData`` to PrairieLearn data."""
 
     @wraps(f)
     def inner(data: pl.QuestionData) -> None:
@@ -152,7 +152,7 @@ def datalens(
 
 
 @dataclass(slots=True)
-class Question:
+class BaseQuestion[AnswerT]:
     """Read and update data associated with one PrairieLearn answer.
 
     Attributes:
@@ -175,13 +175,13 @@ class Question:
         self._update_weighted_score()
 
     @property
-    def correct_answer(self):
+    def correct_answer(self) -> AnswerT:
         """Return the answer's stored correct value."""
         adict = self.data.setdefault("correct_answers", {})
-        return adict[self.answers_name]
+        return cast(AnswerT, adict[self.answers_name])
 
     @correct_answer.setter
-    def correct_answer(self, value):
+    def correct_answer(self, value: AnswerT) -> None:
         adict = self.data.setdefault("correct_answers", {})
         adict[self.answers_name] = value
 
@@ -259,9 +259,11 @@ class Question:
         return self.data["raw_submitted_answers"].get(self.answers_name)
 
     @property
-    def submitted_answer(self) -> object | None:
+    def submitted_answer(self) -> AnswerT | None:
         """Return the answer's parsed submitted value."""
-        return self.data["submitted_answers"].get(self.answers_name)
+        return cast(
+            AnswerT | None, self.data["submitted_answers"].get(self.answers_name)
+        )
 
     @property
     def correct_answer_shown(self) -> bool:
@@ -296,7 +298,12 @@ class Question:
 
 
 @dataclass(slots=True)
-class SympyQuestion(Question):
+class Question(BaseQuestion[object]):
+    """A question lens whose parsed answers are arbitrary Python objects."""
+
+
+@dataclass(slots=True)
+class SympyQuestion(BaseQuestion[SympyValue]):
     """A question lens that converts answer values to SymPy objects.
 
     Attributes:
@@ -309,17 +316,18 @@ class SympyQuestion(Question):
         """Convert a supported value to SymPy using this lens's variables."""
         return to_expr(o, self.variables)
 
-    @Question.correct_answer.getter
+    @property
     def unparsed_correct_answer(self):
         """Return the stored, unparsed correct answer."""
-        return super().correct_answer
+        return self.data.setdefault("correct_answers", {})[self.answers_name]
 
     @unparsed_correct_answer.setter
     def unparsed_correct_answer(self, value):
-        Question.correct_answer.fset(self, value)  # type: ignore[union-attr]
+        adict = self.data.setdefault("correct_answers", {})
+        adict[self.answers_name] = value
 
-    @Question.correct_answer.getter
-    def correct_answer(self):
+    @property
+    def correct_answer(self) -> SympyValue:
         """Return the correct answer as a SymPy expression."""
         return self.to_expr(self.unparsed_correct_answer)
 
@@ -350,17 +358,17 @@ class SympyQuestion(Question):
 
         self.unparsed_correct_answer = out
 
-    @Question.submitted_answer.getter
+    @property
     def submitted_answer(self) -> SympyValue | None:
         """Return the submitted answer as a SymPy expression."""
-        if raw := super().submitted_answer:
+        if raw := self.data["submitted_answers"].get(self.answers_name):
             return self.to_expr(raw)  # type: ignore
         return None
 
     @property
     def unparsed_raw_submitted_answer(self):
         """Return the raw submitted answer without symbolic parsing."""
-        return super().raw_submitted_answer
+        return self.data["raw_submitted_answers"].get(self.answers_name)
 
     def award_partial_credit(
         self,

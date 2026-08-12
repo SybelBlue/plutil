@@ -48,15 +48,15 @@ def test_plmagic_injects_lenses_from_question_html(fs: FakeFilesystem) -> None:
         """
         from __future__ import annotations
 
-        from plutil.lenses import QuestionDataLens, QuestionLens, SympyQuestionLens
+        from plutil.lenses import QuestionData, Question, SympyQuestion
         from plutil.magic import plmagic
 
         @plmagic
         def generate(
-            data: QuestionDataLens,
-            /,
-            number: QuestionLens,
-            expression: SympyQuestionLens,
+            data: QuestionData,
+            *,
+            number: Question,
+            expression: SympyQuestion,
         ) -> None:
             data.params["called"] = True
             number.correct_answer = 7
@@ -77,7 +77,7 @@ def test_plmagic_injects_lenses_from_question_html(fs: FakeFilesystem) -> None:
     server.generate(data)
 
     assert data["params"]["called"] is True
-    assert data["params"]["expression_lens_type"] == "SympyQuestionLens"
+    assert data["params"]["expression_lens_type"] == "SympyQuestion"
     assert data["params"]["expression_variables"] == ("x", "y")
     assert data["correct_answers"]["number"] == 7
     assert data["correct_answers"]["expression"] == "x + y"
@@ -89,11 +89,11 @@ def test_plmagic_rejects_missing_correct_answer_after_generation(
     server = load_server(
         fs,
         """
-        from plutil.lenses import QuestionLens
+        from plutil.lenses import Question
         from plutil.magic import plmagic
 
         @plmagic
-        def generate(answer: QuestionLens) -> None:
+        def generate(*, answer: Question) -> None:
             answer.data["params"]["generate_was_called"] = True
         """,
         '<pl-number-input answers-name="answer"></pl-number-input>',
@@ -117,11 +117,11 @@ def test_plmagic_accepts_correct_answer_set_only_in_html(
     server = load_server(
         fs,
         """
-        from plutil.lenses import QuestionLens
+        from plutil.lenses import Question
         from plutil.magic import plmagic
 
         @plmagic
-        def generate(answer: QuestionLens) -> None:
+        def generate(*, answer: Question) -> None:
             pass
         """,
         """
@@ -147,11 +147,11 @@ def test_plmagic_rejects_duplicate_answer_names(fs: FakeFilesystem) -> None:
         load_server(
             fs,
             """
-            from plutil.lenses import QuestionLens
+            from plutil.lenses import Question
             from plutil.magic import plmagic
 
             @plmagic
-            def generate(answer: QuestionLens) -> None:
+            def generate(*, answer: Question) -> None:
                 answer.correct_answer = 1
             """,
             """
@@ -184,11 +184,11 @@ def test_plmagic_rejects_parameter_without_matching_answer_name(
         load_server(
             fs,
             """
-            from plutil.lenses import QuestionLens
+            from plutil.lenses import Question
             from plutil.magic import plmagic
 
             @plmagic
-            def generate(unknown: QuestionLens) -> None:
+            def generate(*, unknown: Question) -> None:
                 unknown.correct_answer = 1
             """,
             '<pl-number-input answers-name="known"></pl-number-input>',

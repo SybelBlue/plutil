@@ -1,12 +1,12 @@
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Self
+from typing import Any, Self
 
 import prairielearn as pl
 from lxml import html
 
-from plutil.lenses import Question, SympyQuestion
+from plutil.lenses import BaseQuestion, Question, SympyQuestion
 
 type HtmlTag = str
 type DataFactory = Callable[[html.HtmlElement], PlElementData]
@@ -22,7 +22,7 @@ class PlElementData:
 
     html_tag: HtmlTag
 
-    def build_lens(self, data: pl.QuestionData, answers_name: str) -> Question:
+    def build_lens(self, data: pl.QuestionData, answers_name: str) -> BaseQuestion[Any]:
         """Build a question lens for this element."""
         return Question(data, answers_name)
 
@@ -32,7 +32,7 @@ class PlElementData:
         return lambda answers_name: lambda data: self.build_lens(data, answers_name)
 
     @classmethod
-    def build_from_element(cls, el: html.HtmlElement) -> Self:
+    def from_element(cls, el: html.HtmlElement) -> Self:
         """Create element metadata from an HTML element."""
         return cls(el.tag)
 
@@ -47,12 +47,12 @@ class PlSymbolicInputData(PlElementData):
 
     variable_names: tuple[str, ...]
 
-    def build_lens(self, data: pl.QuestionData, answers_name: str) -> Question:
+    def build_lens(self, data: pl.QuestionData, answers_name: str) -> BaseQuestion[Any]:
         """Build a symbolic question lens for this element."""
         return SympyQuestion(data, answers_name, variables=self.variable_names)
 
     @classmethod
-    def build_from_element(cls, el: html.HtmlElement) -> Self:
+    def from_element(cls, el: html.HtmlElement) -> Self:
         """Create symbolic-input metadata from an HTML element."""
         return cls(
             el.tag,
@@ -61,7 +61,7 @@ class PlSymbolicInputData(PlElementData):
 
 
 html_tag_to_data_factory_registry: dict[HtmlTag, DataFactory] = defaultdict(
-    lambda: PlElementData.build_from_element
+    lambda: PlElementData.from_element
 )
 
 
@@ -75,4 +75,4 @@ def get_data_factory(tag: HtmlTag) -> DataFactory:
     return html_tag_to_data_factory_registry[tag]
 
 
-register_data_factory("pl-symbolic-input", PlSymbolicInputData.build_from_element)
+register_data_factory("pl-symbolic-input", PlSymbolicInputData.from_element)
