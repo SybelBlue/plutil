@@ -15,6 +15,7 @@ from .common import (
     to_expr,
 )
 from .functions import eval_at, eval_at_, evalf_at, evalf_at_
+from .magic import plmagic
 from .partial_credit import (
     already_scored,
     award_partial_credit,
@@ -42,6 +43,7 @@ __all__: Final[tuple[str, ...]] = (
     "grade_sympy_set",
     "latex",
     "lim_latex",
+    "plmagic",
     "reject_non_sympy_set_input",
     "rule",
     "set_correct_sympy_ans",
