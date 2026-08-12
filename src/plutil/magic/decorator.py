@@ -5,6 +5,7 @@ from functools import partial
 from pathlib import Path
 from typing import get_type_hints
 
+import chevron
 import prairielearn as pl
 from lxml import html
 
@@ -48,10 +49,14 @@ def _build_answers_element_data_dict(
 
     from lxml import etree  # type: ignore
 
-    element = html.fragment_fromstring(html_path.read_text())
-    answer_elements = etree.XPath("//*[@answers-name]")(element)
+    rendered = chevron.render(html_path.read_text())
+    fragments = html.fragments_fromstring(rendered)
+    if not fragments:
+        return {}
+
     answers: AnswerElementDataDict = {}
     line_dict: dict[str, int] = {}
+    answer_elements = etree.XPath("//*[@answers-name]")(fragments[0])
     for answer_element in answer_elements:
         answer_name: str = answer_element.attrib["answers-name"]
         if answer_name in answers:
@@ -151,18 +156,24 @@ class plmagic[**P]:
 
             p_type = type_hints.get(p_name, param.annotation)
 
-            if param.kind == inspect._ParameterKind.POSITIONAL_ONLY:
+            if param.kind != inspect._ParameterKind.KEYWORD_ONLY:
                 if p_name not in ("data",):
                     raise BadPositionalArgError(self.f_name, p_name)
 
-                if not inspect.isclass(p_type) or not issubclass(
-                    p_type, QuestionDataLens
+                if (
+                    p_type is not inspect.Parameter.empty
+                    and inspect.isclass(p_type)
+                    and not issubclass(p_type, QuestionDataLens)
                 ):
                     raise ArgumentTypeError(self.f_name, p_name, QuestionDataLens)
                 out.include_data = True
                 continue
 
-            if not inspect.isclass(p_type) or not issubclass(p_type, QuestionLens):
+            if (
+                p_type is not inspect.Parameter.empty
+                and inspect.isclass(p_type)
+                and not issubclass(p_type, QuestionLens)
+            ):
                 raise ArgumentTypeError(self.f_name, p_name, QuestionLens)
 
             if p_name not in tag_dict:
@@ -176,6 +187,6 @@ class plmagic[**P]:
         return out
 
     def _validate_question_data_output(self, data: pl.QuestionData) -> None:
-        for a_name in data["answers_names"]:
+        for a_name in self.answer_tags:
             if a_name not in data["correct_answers"]:
                 raise MissingCorrectAnswer(self.f_name, data, a_name, self.html_path)

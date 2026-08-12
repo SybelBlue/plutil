@@ -9,6 +9,7 @@ requires-python = ">=3.13"
 dependencies = [
   "prairielearn",
   "sympy==1.14.0",
+  "chevron>=0.14.0"
 ]
 
 [tool.uv]
