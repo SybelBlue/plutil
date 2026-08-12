@@ -11,6 +11,15 @@ from lxml import html
 from plutil.lenses import QuestionDataLens, QuestionLens
 
 from .element_data import PlElementData, get_data_factory
+from .errors import (
+    ArgumentTypeError,
+    BadPositionalArgError,
+    DuplicateAnswersName,
+    HasVariadicArgsError,
+    MissingCorrectAnswer,
+    MissingPlFileError,
+    UnknownAnswersNameError,
+)
 
 type AnswersName = str
 type AnswerElementDataDict = dict[AnswersName, PlElementData]
@@ -19,22 +28,35 @@ type DelayedLens = Callable[[pl.QuestionData], QuestionLens]
 type LensBuilder = Callable[[str], DelayedLens]
 
 type PlMagicFunction[**P] = Callable[P, None]
-type PlBaseFunction = Callable[[pl.QuestionData], None]
 
 
-# NOTE: consider making this a class.
-def plmagic[**P](f: PlMagicFunction[P]) -> PlBaseFunction:
-    html_path, answer_tags = _validate_question_html(f)
-    validated_sig = _validate_plfun_sig(f, answer_tags)
+html_file_cache: dict[Path, AnswerElementDataDict] = {}
 
-    def inner(data: pl.QuestionData) -> None:
-        # inner_frame = inspect.currentframe()
-        # inner_frame_info = inner_frame and inspect.getframeinfo(inner_frame)
 
-        validated_sig.call(f, data)
-        _validate_question_data_output(data, f.__name__, html_path)
+def _build_answers_element_data_dict(
+    f_name: str, html_path: Path
+) -> AnswerElementDataDict:
+    from lxml import etree  # type: ignore
 
-    return inner
+    element = html.fragment_fromstring(html_path.read_text())
+    answer_elements = etree.XPath("//*[@answers-name]")(element)
+    answers: AnswerElementDataDict = {}
+    line_dict: dict[str, int] = {}
+    for answer_element in answer_elements:
+        answer_name: str = answer_element.attrib["answers-name"]
+        if answer_name in answers:
+            raise DuplicateAnswersName(
+                f_name,
+                html_path,
+                answer_name,
+                line_dict[answer_name],
+                answer_element.sourceline,
+            )
+        answer_tag: str = answer_element.tag
+        answers[answer_name] = get_data_factory(answer_tag)(answer_element)
+        line_dict[answer_name] = answer_element.sourceline
+
+    return answers
 
 
 @dataclass(slots=True)
@@ -51,114 +73,81 @@ class ValidatedSig:
         return p_f(**kwargs)
 
 
-def _validate_plfun_sig(
-    f: PlMagicFunction, tag_dict: AnswerElementDataDict
-) -> ValidatedSig:
-    f_name = f.__name__
-    f_sig = inspect.signature(f)
-    type_hints = get_type_hints(f)
-    out = ValidatedSig()
-    for p_name, param in f_sig.parameters.items():
-        if param.kind in (
-            inspect._ParameterKind.VAR_KEYWORD,
-            inspect._ParameterKind.VAR_POSITIONAL,
-        ):
-            raise ValueError(
-                f"Plmagic can't process {f_name}: it has a variadic */** arg `{p_name}`"
-            )
+@dataclass(slots=True)
+class plmagic[**P]:
+    f: PlMagicFunction[P]
 
-        p_type = type_hints.get(p_name, param.annotation)
+    answer_tags: AnswerElementDataDict = field(init=False)
+    html_path: Path = field(init=False)
+    info_json_path: Path = field(init=False)
+    validated_sig: "ValidatedSig" = field(init=False)
 
-        if param.kind == inspect._ParameterKind.POSITIONAL_ONLY:
-            if p_name not in ("data",):
-                raise ValueError(
-                    f"Plmagic can't process {f_name}: the only positional arg must be named `data`, not `{p_name}`"
+    def __post_init__(self) -> None:
+        self.html_path, self.info_json_path = self._build_paths()
+        self.answer_tags = self._validate_question_html(self.html_path)
+        self.validated_sig = self._validate_plfun_sig(self.answer_tags)
+
+    def __call__(self, data: pl.QuestionData) -> None:
+        self.validated_sig.call(self.f, data)
+        self._validate_question_data_output(data)
+
+    def _build_paths(self) -> tuple[Path, Path]:
+        f_filepath = Path(inspect.getfile(self.f)).resolve()
+        out = f_filepath.parent / "question.html", f_filepath.parent / "info.json"
+        for path in out:
+            if not path.exists():
+                raise MissingPlFileError(self.f_name, f_filepath, path)
+        return out
+
+    @property
+    def f_name(self):
+        return self.f.__name__
+
+    def _validate_question_html(self, html_path: Path) -> AnswerElementDataDict:
+        answers = html_file_cache.get(html_path)
+        if answers is None:
+            answers = _build_answers_element_data_dict(self.f_name, html_path)
+            html_file_cache[html_path] = answers
+        return answers
+
+    def _validate_plfun_sig(self, tag_dict: AnswerElementDataDict) -> ValidatedSig:
+        f_sig = inspect.signature(self.f)
+        type_hints = get_type_hints(self.f)
+        out = ValidatedSig()
+        for p_name, param in f_sig.parameters.items():
+            if param.kind in (
+                inspect._ParameterKind.VAR_KEYWORD,
+                inspect._ParameterKind.VAR_POSITIONAL,
+            ):
+                raise HasVariadicArgsError(self.f_name, p_name)
+
+            p_type = type_hints.get(p_name, param.annotation)
+
+            if param.kind == inspect._ParameterKind.POSITIONAL_ONLY:
+                if p_name not in ("data",):
+                    raise BadPositionalArgError(self.f_name, p_name)
+
+                if not inspect.isclass(p_type) or not issubclass(
+                    p_type, QuestionDataLens
+                ):
+                    raise ArgumentTypeError(self.f_name, p_name, QuestionDataLens)
+                out.include_data = True
+                continue
+
+            if not inspect.isclass(p_type) or not issubclass(p_type, QuestionLens):
+                raise ArgumentTypeError(self.f_name, p_name, QuestionLens)
+
+            if p_name not in tag_dict:
+                raise UnknownAnswersNameError(
+                    self.f_name, p_name, tuple(tag_dict.keys())
                 )
-            if not inspect.isclass(p_type) or not issubclass(p_type, QuestionDataLens):
-                raise TypeError(
-                    f"Plmagic can't process {f_name}: the parameters must have a type that extends `{QuestionDataLens.__name__.__qualname__}`"
-                )
-            out.include_data = True
-            continue
 
-        if not inspect.isclass(p_type) or not issubclass(p_type, QuestionLens):
-            raise TypeError(
-                f"Plmagic can't process {f_name}: the parameters must have a type that extends `{QuestionLens.__name__.__qualname__}`"
-            )
+            answers_name = p_name
+            out.kwarg_types[p_name] = tag_dict[answers_name].lens_builder(answers_name)
 
-        if p_name not in tag_dict:
-            raise ValueError(f"Unknown answers-name value: {p_name}")
+        return out
 
-        answers_name = p_name
-        out.kwarg_types[p_name] = tag_dict[answers_name].lens_builder(answers_name)
-
-    return out
-
-
-html_file_cache: dict[Path, AnswerElementDataDict] = {}
-
-
-def _validate_question_html(f: PlMagicFunction) -> tuple[Path, AnswerElementDataDict]:
-    f_name = f.__name__
-    f_filepath = Path(inspect.getfile(f)).resolve()
-    html_path = f_filepath.parent / "question.html"
-    if not html_path.exists():
-        raise ValueError(
-            f"Plmagic cannot parse {f_name}: there is no corresponding question.html file in {f_filepath.parent}"
-        )
-    answers = html_file_cache.get(html_path)
-    if answers is None:
-        answers = _build_answers_element_data_dict(f_name, html_path)
-        html_file_cache[html_path] = answers
-    return html_path, answers
-
-
-def _build_answers_element_data_dict(
-    f_name: str, html_path: Path
-) -> AnswerElementDataDict:
-    from lxml import etree  # type: ignore
-
-    element = html.fragment_fromstring(html_path.read_text())
-    answer_elements = etree.XPath("//*[@answers-name]")(element)
-    answers: AnswerElementDataDict = {}
-    for answer_element in answer_elements:
-        answer_name: str = answer_element.attrib["answers-name"]
-        if answer_name in answers:
-            raise ValueError(
-                f"Plmagic cannot parse {f_name}: duplicate answers-name "
-                f"{answer_name!r} in {html_path}:{answer_element.sourceline}"
-            )
-        answer_tag: str = answer_element.tag
-        answers[answer_name] = get_data_factory(answer_tag)(answer_element)
-
-    return answers
-
-
-class PlMagicError(Exception):
-    pass
-
-
-class InvalidQuestionDataError(PlMagicError, ValueError):
-    pass
-
-
-@dataclass(slots=True, frozen=True)
-class MissingCorrectAnswer(InvalidQuestionDataError):
-    data: pl.QuestionData
-    answers_name: str
-    function_name: str
-    html_path: Path
-
-    def __str__(self) -> str:
-        return (
-            f"data['correct_answers'] is missing an entry for `{self.answers_name}`\n"
-            f"\thint: set this in {self.function_name} or in {self.html_path}"
-        )
-
-
-def _validate_question_data_output(
-    data: pl.QuestionData, f_name: str, html_path: Path
-) -> None:
-    for a_name in data["answers_names"]:
-        if a_name not in data["correct_answers"]:
-            raise MissingCorrectAnswer(data, a_name, f_name, html_path)
+    def _validate_question_data_output(self, data: pl.QuestionData) -> None:
+        for a_name in data["answers_names"]:
+            if a_name not in data["correct_answers"]:
+                raise MissingCorrectAnswer(self.f_name, data, a_name, self.html_path)

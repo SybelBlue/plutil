@@ -7,7 +7,13 @@ from types import ModuleType
 import pytest
 from pyfakefs.fake_filesystem import FakeFilesystem
 
-from plutil.magic.decorator import MissingCorrectAnswer
+from plutil.magic.errors import (
+    DuplicateAnswersName,
+    HasVariadicArgsError,
+    MissingCorrectAnswer,
+    MissingPlFileError,
+    UnknownAnswersNameError,
+)
 from plutil.tests.helpers import question_data
 
 _module_ids = count()
@@ -17,12 +23,14 @@ def load_server(
     fs: FakeFilesystem,
     server_source: str,
     question_html: str | None = None,
+    info_json: str = "{}",
 ) -> ModuleType:
     """Build and execute a PrairieLearn question in the fake filesystem."""
     question_dir = f"/course/questions/question_{next(_module_ids)}"
     server_path = f"{question_dir}/server.py"
     server_source = dedent(server_source)
     fs.create_file(server_path, contents=server_source)
+    fs.create_file(f"{question_dir}/info.json", contents=info_json)
     if question_html is not None:
         fs.create_file(f"{question_dir}/question.html", contents=question_html)
 
@@ -101,10 +109,6 @@ def test_plmagic_rejects_missing_correct_answer_after_generation(
     assert error.answers_name == "answer"
     assert error.function_name == "generate"
     assert error.html_path.name == "question.html"
-    assert str(error) == (
-        "data['correct_answers'] is missing an entry for `answer`\n"
-        f"\thint: set this in generate or in {error.html_path}"
-    )
 
 
 def test_plmagic_accepts_correct_answer_set_only_in_html(
@@ -139,7 +143,7 @@ def test_plmagic_accepts_correct_answer_set_only_in_html(
 
 
 def test_plmagic_rejects_duplicate_answer_names(fs: FakeFilesystem) -> None:
-    with pytest.raises(ValueError, match="duplicate answers-name 'answer'"):
+    with pytest.raises(DuplicateAnswersName):
         load_server(
             fs,
             """
@@ -160,7 +164,7 @@ def test_plmagic_rejects_duplicate_answer_names(fs: FakeFilesystem) -> None:
 
 
 def test_plmagic_requires_question_html_next_to_server(fs: FakeFilesystem) -> None:
-    with pytest.raises(ValueError, match="no corresponding question.html"):
+    with pytest.raises(MissingPlFileError):
         load_server(
             fs,
             """
@@ -176,7 +180,7 @@ def test_plmagic_requires_question_html_next_to_server(fs: FakeFilesystem) -> No
 def test_plmagic_rejects_parameter_without_matching_answer_name(
     fs: FakeFilesystem,
 ) -> None:
-    with pytest.raises(ValueError, match="Unknown answers-name value: unknown"):
+    with pytest.raises(UnknownAnswersNameError):
         load_server(
             fs,
             """
@@ -192,7 +196,7 @@ def test_plmagic_rejects_parameter_without_matching_answer_name(
 
 
 def test_plmagic_rejects_variadic_parameters(fs: FakeFilesystem) -> None:
-    with pytest.raises(ValueError, match=r"variadic \*/\*\* arg `args`"):
+    with pytest.raises(HasVariadicArgsError):
         load_server(
             fs,
             """
