@@ -2,6 +2,15 @@
 
 Utilities for PrairieLearn question `server.py` files: SymPy parsing, nested `data` access, partial credit, calculus helpers, and derived-answer grading.
 
+Generate `__plmagic_types__.py` beside every Python file using `@plmagic`
+under a directory (searched recursively):
+
+```sh
+plmagic-types path/to/questions
+```
+
+The directory defaults to the current working directory.
+
 Import from course `serverFilesCourse` (available in every question in the course):
 
 ```python

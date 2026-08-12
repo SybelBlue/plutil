@@ -3,13 +3,13 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
-from typing import get_type_hints
+from typing import Any, get_type_hints
 
 import chevron
 import prairielearn as pl
 from lxml import html
 
-from plutil.lenses import Question, QuestionData
+from plutil.lenses import BaseQuestion, Question, QuestionData
 
 from .element_data import PlElementData, get_data_factory
 from .errors import (
@@ -28,7 +28,7 @@ type AnswersName = str
 type AnswerElementDataDict = dict[AnswersName, PlElementData]
 """PrairieLearn element metadata indexed by its answer name."""
 
-type DelayedLens = Callable[[pl.QuestionData], Question]
+type DelayedLens = Callable[[pl.QuestionData], BaseQuestion[Any]]
 """A callable that binds a question lens to PrairieLearn question data."""
 
 type LensBuilder = Callable[[str], DelayedLens]
@@ -80,7 +80,7 @@ class ValidatedSig:
     """Store the validated argument bindings for a magic function.
 
     Attributes:
-        include_data: Whether to pass a :class:`QuestionDataLens` positionally.
+        include_data: Whether to pass a :class:`QuestionData` positionally.
         kwarg_types: Mapping from parameter names to delayed lens builders.
     """
 
@@ -175,7 +175,7 @@ class plmagic[**P]:
             if (
                 p_type is not inspect.Parameter.empty
                 and inspect.isclass(p_type)
-                and not issubclass(p_type, Question)
+                and not issubclass(p_type, BaseQuestion)
             ):
                 raise ArgumentTypeError(self.f_name, p_name, Question)
 

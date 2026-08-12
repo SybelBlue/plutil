@@ -12,6 +12,9 @@ dependencies = [
   "chevron>=0.14.0"
 ]
 
+[project.scripts]
+plmagic-types = "plutil.magic.cli:main"
+
 [tool.uv]
 package = true
 
