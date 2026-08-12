@@ -4,7 +4,7 @@ import pytest
 from sympy.abc import x, y
 
 from plutil import functions as functions_mod
-from plutil.common import sympy_eq
+from plutil.common import eq
 from plutil.functions import (
     eval_at,
     translate_through_,
@@ -12,14 +12,14 @@ from plutil.functions import (
 
 
 def test_eval_at_substitutes_values_and_leaves_unbound_symbols():
-    assert sympy_eq(eval_at("x + y", x=2, y=None), y + 2)
-    assert sympy_eq(functions_mod.eval_at(x + y, x=2), y + 2)
+    assert eq(eval_at("x + y", x=2, y=None), y + 2)
+    assert eq(functions_mod.eval_at(x + y, x=2), y + 2)
 
 
 def test_translate_through__shifts_function_to_hit_target_point():
     translate = translate_through_(x=0, y=2)
 
-    assert sympy_eq(translate(x**2), x**2 + 2)
+    assert eq(translate(x**2), x**2 + 2)
 
 
 def test_translate_through__requires_output_binding():

@@ -16,8 +16,8 @@ from .common import (
     SympyParsable,
     _normalize_one_or_more,
     _var_names,
+    eq,
     setrec,
-    sympy_eq,
     to_expr,
 )
 
@@ -39,7 +39,7 @@ class Literal[T](PartialCreditRule[T]):
         """Compare the submitted answer with the rule's literal value."""
         if self.value is True or self.value is False:
             return self.value
-        return sympy_eq(self.value, submitted)
+        return eq(self.value, submitted)
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,7 +62,7 @@ class Transform[T](PartialCreditRule[T]):
         if self.transform_submitted is not None:
             submitted = self.transform_submitted(submitted)
 
-        return sympy_eq(correct, submitted)
+        return eq(correct, submitted)
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,52 +209,6 @@ def rule[T: SympyEquiv](
             )
 
 
-def already_scored(lens: QuestionLens) -> bool:
-    """Return whether an answer already has a partial score."""
-    return get_partial_score(lens) is not None
-
-
-def partial_score_dict(lens: QuestionLens) -> pl.PartialScore:
-    """Gets or creates the `"partial_score"` dict for `answer_name`"""
-    d: pl.PartialScore = {"score": None}
-    answer_score = setrec(lens.data, "partial_scores", lens.answers_name, default=d)
-    if not isinstance(answer_score, dict):
-        raise TypeError(
-            f'`data["partial_scores"][{lens.answers_name!r}]` is not a dict'
-        )
-    return answer_score  # type: ignore
-
-
-@overload
-def get_partial_score(lens: QuestionLens) -> float | None: ...
-@overload
-def get_partial_score(lens: QuestionLens, default: float) -> float: ...
-def get_partial_score(lens: QuestionLens, default: float | None = None) -> float | None:
-    """Return an answer's partial score, or ``default`` when it has none."""
-    v = partial_score_dict(lens).get("score", default)
-    if v is None:
-        return v
-    return float(v)
-
-
-def set_partial_score(
-    lens: QuestionLens,
-    score: float | None = None,
-    *,
-    feedback: str | None = None,
-    weight: int | None = None,
-) -> pl.PartialScore:
-    """Update and return an answer's PrairieLearn partial-score record."""
-    answer_score_dict = partial_score_dict(lens)
-    if score is not None:
-        answer_score_dict["score"] = score
-    if feedback is not None:
-        answer_score_dict["feedback"] = feedback
-    if weight is not None:
-        answer_score_dict["weight"] = weight
-    return answer_score_dict
-
-
 @dataclass(frozen=True, slots=True)
 class _CreditSchemeBase[T]:
     ruleset: Sequence[PartialCreditRule[T]]
@@ -289,7 +243,7 @@ class CreditScheme[T](_CreditSchemeBase[T]):
         skipped or no candidate or rule matches.
         """
         # check if already scored
-        if not clobber_existing_score and already_scored(lens):
+        if not clobber_existing_score and lens.already_scored:
             return False
 
         # find submitted answer
@@ -316,8 +270,7 @@ class CreditScheme[T](_CreditSchemeBase[T]):
         else:
             return False
 
-        set_partial_score(lens, score=final_score, feedback=feedback)
-        pl.set_weighted_score_data(lens.data)  # type: ignore
+        lens.set_rich_score(final_score, feedback=feedback)
         return True
 
 
@@ -336,7 +289,7 @@ class SympyCreditScheme(_CreditSchemeBase[SympyEquiv]):
         skipped or no candidate or rule matches.
         """
         # check if already scored
-        if not clobber_existing_score and already_scored(lens):
+        if not clobber_existing_score and lens.already_scored:
             return False
 
         # find submitted answer
@@ -356,15 +309,14 @@ class SympyCreditScheme(_CreditSchemeBase[SympyEquiv]):
 
         # perform scoring
         final_score: float
-        if any(sympy_eq(c, submitted) for c in candidates):
+        if any(eq(c, submitted) for c in candidates):
             final_score = 1.0
         elif r := self.matching_rule(correct_answers=candidates, submitted=submitted):
             final_score = r.score
         else:
             return False
 
-        set_partial_score(lens, score=final_score, feedback=feedback)
-        pl.set_weighted_score_data(lens.data)  # type: ignore
+        lens.set_rich_score(final_score, feedback=feedback)
 
         return True
 
