@@ -5,7 +5,7 @@ import pytest
 import sympy
 from sympy.abc import x
 
-import plutil.common as common_mod
+import plutil.lenses as lenses_mod
 from plutil.calculus import (
     DEFAULT_FEEDBACK,
     approximate_area,
@@ -106,7 +106,7 @@ def test_approximate_area_uses_table_values_for_each_method_at_multiple_resoluti
 def test_award_missing_constant_credit_grants_partial_credit(monkeypatch):
     calls = []
     monkeypatch.setattr(
-        common_mod.pl,
+        lenses_mod.pl,
         "set_weighted_score_data",
         lambda data: calls.append(data),
     )
@@ -117,7 +117,9 @@ def test_award_missing_constant_credit_grants_partial_credit(monkeypatch):
         partial_scores={"answer": {"score": 0.0}},
     )
 
-    awarded = award_missing_constant_credit(SympyQuestionLens(data, "answer", ["x"]))
+    awarded = award_missing_constant_credit(
+        SympyQuestionLens(data, "answer", variables=["x"])
+    )
 
     assert awarded is True
     assert data["partial_scores"]["answer"]["score"] == 0.8
@@ -128,7 +130,7 @@ def test_award_missing_constant_credit_grants_partial_credit(monkeypatch):
 def test_award_missing_constant_credit_accepts_custom_constant_name(monkeypatch):
     calls = []
     monkeypatch.setattr(
-        common_mod.pl,
+        lenses_mod.pl,
         "set_weighted_score_data",
         lambda data: calls.append(data),
     )
@@ -140,7 +142,7 @@ def test_award_missing_constant_credit_accepts_custom_constant_name(monkeypatch)
     )
 
     awarded = award_missing_constant_credit(
-        SympyQuestionLens(data, "answer", ["x"]),
+        SympyQuestionLens(data, "answer", variables=["x"]),
         C="K",
     )
 
@@ -152,7 +154,7 @@ def test_award_missing_constant_credit_accepts_custom_constant_name(monkeypatch)
 def test_award_missing_constant_credit_skips_already_correct_answers(monkeypatch):
     calls = []
     monkeypatch.setattr(
-        common_mod.pl,
+        lenses_mod.pl,
         "set_weighted_score_data",
         lambda data: calls.append(data),
     )
@@ -168,7 +170,7 @@ def test_award_missing_constant_credit_does_not_grant_credit_for_other_answers(
 ):
     calls = []
     monkeypatch.setattr(
-        common_mod.pl,
+        lenses_mod.pl,
         "set_weighted_score_data",
         lambda data: calls.append(data),
     )
@@ -180,7 +182,10 @@ def test_award_missing_constant_credit_does_not_grant_credit_for_other_answers(
     )
 
     assert (
-        award_missing_constant_credit(SympyQuestionLens(data, "answer", ["x"])) is False
+        award_missing_constant_credit(
+            SympyQuestionLens(data, "answer", variables=["x"])
+        )
+        is False
     )
     assert data["partial_scores"]["answer"]["score"] == 0.0
     assert len(calls) == 0

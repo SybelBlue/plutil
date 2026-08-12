@@ -202,9 +202,9 @@ class QuestionLens:
 
     @format_error.setter
     def format_error(self, message: str | None):
-        format_errors = self.data.get("format_errors", default={})
+        format_errors = self.data.setdefault("format_errors", {})
         if message is None:
-            del format_errors[self.answers_name]
+            format_errors.pop(self.answers_name, None)
         else:
             format_errors[self.answers_name] = message
 
@@ -236,16 +236,16 @@ class SympyQuestionLens(QuestionLens):
         """Convert a supported value to SymPy using this lens's variables."""
         return to_expr(o, self.variables)
 
-    @property
+    @QuestionLens.correct_answer.getter
     def unparsed_correct_answer(self):
         """Return the stored, unparsed correct answer."""
-        return super(SympyQuestionLens, self).correct_answer
+        return super().correct_answer
 
     @unparsed_correct_answer.setter
     def unparsed_correct_answer(self, value):
-        super(SympyQuestionLens, self).correct_answer = value
+        QuestionLens.correct_answer.fset(self, value)  # type: ignore[union-attr]
 
-    @property
+    @QuestionLens.correct_answer.getter
     def correct_answer(self):
         """Return the correct answer as a SymPy expression."""
         return self.to_expr(self.unparsed_correct_answer)
@@ -277,17 +277,17 @@ class SympyQuestionLens(QuestionLens):
 
         self.unparsed_correct_answer = out
 
-    @property
+    @QuestionLens.submitted_answer.getter
     def submitted_answer(self) -> SympyValue | None:
         """Return the submitted answer as a SymPy expression."""
-        if raw := super(SympyQuestionLens, self).submitted_answer:
+        if raw := super().submitted_answer:
             return self.to_expr(raw)  # type: ignore
         return None
 
     @property
     def unparsed_raw_submitted_answer(self):
         """Return the raw submitted answer without symbolic parsing."""
-        return super(SympyQuestionLens, self).raw_submitted_answer
+        return super().raw_submitted_answer
 
     def award_partial_credit(
         self,
