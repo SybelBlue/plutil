@@ -3,7 +3,11 @@ from pathlib import Path
 import pytest
 
 from plutil.magic.cli import generate_plmagic_type_files, main
-from plutil.magic.type_gen import DataclassSourceBuilder, TypeSourceBuilder
+from plutil.magic.type_gen import (
+    DataclassSourceBuilder,
+    TypeSourceBuilder,
+    write_plmagic_types_file,
+)
 
 
 def test_type_source_builder_builds_deduplicated_sorted_imports() -> None:
@@ -59,7 +63,9 @@ def test_generate_plmagic_type_files_recursively(tmp_path: Path) -> None:
     ignored_question = tmp_path / "questions" / "ignored"
     for question in (first_question, second_question, ignored_question):
         question.mkdir(parents=True)
-        (question / "info.json").write_text("{}", encoding="utf-8")
+        (question / "info.json").write_text(
+            '{"preferences": {"seed": {"type": "number"}}}', encoding="utf-8"
+        )
 
     (first_question / "server.py").write_text(
         "from plutil import plmagic\n\n@plmagic\ndef generate(data): pass\n",
@@ -101,7 +107,9 @@ def test_generate_plmagic_type_files_requires_companion_info_json(
 def test_plmagic_types_main_prints_generated_paths(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    (tmp_path / "info.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "info.json").write_text(
+        '{"preferences": {"seed": {"type": "number"}}}', encoding="utf-8"
+    )
     (tmp_path / "server.py").write_text(
         "@plmagic\ndef generate(data): pass\n", encoding="utf-8"
     )
@@ -109,4 +117,27 @@ def test_plmagic_types_main_prints_generated_paths(
     assert main([str(tmp_path)]) == 0
     assert capsys.readouterr().out.strip() == str(
         tmp_path / "__plmagic_types__.py"
+    )
+
+
+def test_write_plmagic_types_file_skips_all_empty_builders(tmp_path: Path) -> None:
+    info_json_path = tmp_path / "info.json"
+    info_json_path.write_text("{}", encoding="utf-8")
+
+    assert not write_plmagic_types_file(info_json_path)
+    assert not (tmp_path / "__plmagic_types__.py").exists()
+
+
+def test_write_plmagic_types_file_overwrites_stale_file_with_empty_builders(
+    tmp_path: Path,
+) -> None:
+    info_json_path = tmp_path / "info.json"
+    info_json_path.write_text("{}", encoding="utf-8")
+    output_path = tmp_path / "__plmagic_types__.py"
+    output_path.write_text("class StalePreference: ...\n", encoding="utf-8")
+
+    assert write_plmagic_types_file(info_json_path)
+    assert "StalePreference" not in output_path.read_text(encoding="utf-8")
+    assert "class Preferences(TypedDict):\n    pass" in output_path.read_text(
+        encoding="utf-8"
     )

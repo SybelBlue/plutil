@@ -10,7 +10,18 @@ from .type_gen import DEFAULT_TYPE_FILE_NAME, write_plmagic_types_file
 
 def _uses_plmagic(path: Path) -> bool:
     """Return whether *path* contains a function decorated with ``plmagic``."""
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    source = path.read_text(encoding="utf-8")
+    # Large courses can contain legacy or otherwise unparsable Python files. Avoid
+    # parsing files that cannot possibly use the decorator.
+    if "plmagic" not in source:
+        return False
+    try:
+        tree = ast.parse(source, filename=str(path))
+    except SyntaxError as error:
+        location = f"{path}:{error.lineno or 1}:{error.offset or 1}"
+        source_line = (error.text or "").strip()
+        detail = f": {source_line}" if source_line else ""
+        raise SyntaxError(f"Cannot inspect {location}: {error.msg}{detail}") from error
     plmagic_names = {"plmagic"}
     for node in ast.walk(tree):
         if not isinstance(node, ast.ImportFrom):
@@ -63,8 +74,8 @@ def generate_plmagic_type_files(directory: Path) -> list[Path]:
                 f"{question_directory}"
             )
         output_path = question_directory / DEFAULT_TYPE_FILE_NAME
-        write_plmagic_types_file(info_json_path, output_path.name)
-        output_paths.append(output_path)
+        if write_plmagic_types_file(info_json_path, output_path.name):
+            output_paths.append(output_path)
     return output_paths
 
 

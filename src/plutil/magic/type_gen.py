@@ -120,8 +120,16 @@ def _add_custom_data_type(
 
 def write_plmagic_types_file(
     info_json_path: Path, path_name: str = DEFAULT_TYPE_FILE_NAME
-) -> None:
+) -> bool:
+    """Write useful generated types, or refresh an existing stale type file."""
     builder = TypeSourceBuilder()
     preferences_type = _add_preferences_type(builder, info_json_path)
     _add_custom_data_type(builder, preferences_type)
-    builder.write(info_json_path.parent / path_name)
+    output_path = info_json_path.parent / path_name
+    if (
+        not any(type_builder.fields for type_builder in builder.builders)
+        and not output_path.exists()
+    ):
+        return False
+    builder.write(output_path)
+    return True
