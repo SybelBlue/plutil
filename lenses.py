@@ -2,7 +2,17 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from difflib import get_close_matches
 from functools import wraps
-from typing import Any, Literal
+from types import UnionType
+from typing import (
+    Any,
+    ClassVar,
+    Literal,
+    TypedDict,
+    cast,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
 import prairielearn as pl
 import sympy as sp
@@ -17,9 +27,60 @@ from .common import (
 )
 from .partial_credit import PartialCreditRule, award_partial_credit
 
+_question_data_types: dict[tuple[type, type], type] = {}
+
+
+def _matches_type(value: object, expected: object) -> bool:
+    if expected is Any:
+        return True
+    origin = get_origin(expected)
+    if origin is Literal:
+        return value in get_args(expected)
+    if origin is UnionType:
+        return any(_matches_type(value, member) for member in get_args(expected))
+    if isinstance(expected, type) and hasattr(expected, "__required_keys__"):
+        if not isinstance(value, dict):
+            return False
+        hints = get_type_hints(expected)
+        required = expected.__required_keys__
+        return required <= value.keys() <= hints.keys() and all(
+            key not in value or _matches_type(value[key], annotation)
+            for key, annotation in hints.items()
+        )
+    if expected is float:
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if origin is not None:
+        return isinstance(value, origin)
+    return isinstance(expected, type) and isinstance(value, expected)
+
+
+class _QuestionDataMeta(type):
+    def __getitem__(cls, preferences_type: type) -> type:
+        if not (
+            isinstance(preferences_type, type)
+            and hasattr(preferences_type, "__required_keys__")
+        ):
+            raise TypeError("QuestionData preferences type must be a TypedDict")
+        key = (cls, preferences_type)
+        if key not in _question_data_types:
+            name = f"{cls.__name__}[{preferences_type.__name__}]"
+            _question_data_types[key] = _QuestionDataMeta(
+                name,
+                (cls,),
+                {
+                    "__module__": cls.__module__,
+                    "_preferences_type": preferences_type,
+                },
+            )
+        return _question_data_types[key]
+
+
+class NoPreferences(TypedDict):
+    pass
+
 
 @dataclass(slots=True)
-class QuestionData:
+class QuestionData[PreferencesT](metaclass=_QuestionDataMeta):
     """Provide convenient access to a PrairieLearn question data mapping.
 
     Attributes:
@@ -27,11 +88,21 @@ class QuestionData:
     """
 
     data: pl.QuestionData
+    _preferences_type: ClassVar[type] = NoPreferences
+
+    def __post_init__(self) -> None:
+        """Validate preferences against the specialized ``TypedDict`` type."""
+        if self._preferences_type is not None and not _matches_type(
+            self.data.setdefault("preferences", {}), self._preferences_type
+        ):
+            raise TypeError(
+                f"preferences do not conform to {self._preferences_type.__name__}"
+            )
 
     @property
-    def preferences(self):
+    def preferences(self) -> PreferencesT:
         """Return the question preferences mapping, creating it if needed."""
-        return self.data.setdefault("preferences", {})
+        return cast(PreferencesT, self.data.setdefault("preferences", {}))
 
     @property
     def params(self) -> dict[str, Any]:
@@ -63,6 +134,9 @@ class QuestionData:
         if key in self.answer_names:
             return self.question(key, skip_valiation=True)
         return self.data.__getitem__(key)
+
+
+type Data = QuestionData[NoPreferences]
 
 
 def datalens(

@@ -85,12 +85,13 @@ class ValidatedSig:
     """
 
     include_data: bool = False
+    data_lens_type: type[QuestionData] = QuestionData
     kwarg_types: dict[str, DelayedLens] = field(default_factory=dict)
 
     def call(self, f: PlMagicFunction, data: pl.QuestionData) -> None:
         """Call ``f`` with lenses constructed from ``data``."""
         p_f = partial(f)
-        datalens = QuestionData(data)
+        datalens = self.data_lens_type(data)
         if self.include_data:
             p_f = partial(p_f, datalens)
         kwargs = {p_name: p_type(data) for p_name, p_type in self.kwarg_types.items()}
@@ -167,6 +168,8 @@ class plmagic[**P]:
                 ):
                     raise ArgumentTypeError(self.f_name, p_name, QuestionData)
                 out.include_data = True
+                if inspect.isclass(p_type) and issubclass(p_type, QuestionData):
+                    out.data_lens_type = p_type
                 continue
 
             if (
