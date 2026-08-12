@@ -6,7 +6,7 @@ from itertools import product
 from typing import TYPE_CHECKING, Protocol, overload
 
 if TYPE_CHECKING:
-    from .lenses import QuestionLens, SympyQuestionLens
+    from .lenses import Question, SympyQuestion
 
 from .common import (
     OneOrMore,
@@ -228,7 +228,7 @@ class _CreditSchemeBase[T]:
 class CreditScheme[T](_CreditSchemeBase[T]):
     def grade(
         self,
-        lens: QuestionLens,
+        lens: Question,
         addl_correct_answers: OneOrMore[T] = (),
         include_display_ans: bool = True,
         clobber_existing_score: bool = False,
@@ -274,7 +274,7 @@ class CreditScheme[T](_CreditSchemeBase[T]):
 class SympyCreditScheme(_CreditSchemeBase[SympyEquiv]):
     def grade(
         self,
-        lens: SympyQuestionLens,
+        lens: SympyQuestion,
         addl_correct_answers: OneOrMore[SympyEquiv] = (),
         include_display_ans: bool = True,
         clobber_existing_score: bool = False,
@@ -290,7 +290,7 @@ class SympyCreditScheme(_CreditSchemeBase[SympyEquiv]):
             return False
 
         # find submitted answer
-        submitted = lens.submitted_answer
+        submitted: SympyEquiv | None = lens.submitted_answer  # type: ignore
         if submitted is None:
             return False
 
@@ -319,7 +319,7 @@ class SympyCreditScheme(_CreditSchemeBase[SympyEquiv]):
 
 
 def award_partial_credit(
-    lens: SympyQuestionLens,
+    lens: SympyQuestion,
     *rules: PartialCreditRule,
     addl_correct_ans: OneOrMore[SympyParsable] = (),
     feedback: str | None = None,

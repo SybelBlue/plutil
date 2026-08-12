@@ -9,7 +9,7 @@ import chevron
 import prairielearn as pl
 from lxml import html
 
-from plutil.lenses import QuestionDataLens, QuestionLens
+from plutil.lenses import Question, QuestionData
 
 from .element_data import PlElementData, get_data_factory
 from .errors import (
@@ -28,7 +28,7 @@ type AnswersName = str
 type AnswerElementDataDict = dict[AnswersName, PlElementData]
 """PrairieLearn element metadata indexed by its answer name."""
 
-type DelayedLens = Callable[[pl.QuestionData], QuestionLens]
+type DelayedLens = Callable[[pl.QuestionData], Question]
 """A callable that binds a question lens to PrairieLearn question data."""
 
 type LensBuilder = Callable[[str], DelayedLens]
@@ -90,7 +90,7 @@ class ValidatedSig:
     def call(self, f: PlMagicFunction, data: pl.QuestionData) -> None:
         """Call ``f`` with lenses constructed from ``data``."""
         p_f = partial(f)
-        datalens = QuestionDataLens(data)
+        datalens = QuestionData(data)
         if self.include_data:
             p_f = partial(p_f, datalens)
         kwargs = {p_name: p_type(data) for p_name, p_type in self.kwarg_types.items()}
@@ -163,18 +163,18 @@ class plmagic[**P]:
                 if (
                     p_type is not inspect.Parameter.empty
                     and inspect.isclass(p_type)
-                    and not issubclass(p_type, QuestionDataLens)
+                    and not issubclass(p_type, QuestionData)
                 ):
-                    raise ArgumentTypeError(self.f_name, p_name, QuestionDataLens)
+                    raise ArgumentTypeError(self.f_name, p_name, QuestionData)
                 out.include_data = True
                 continue
 
             if (
                 p_type is not inspect.Parameter.empty
                 and inspect.isclass(p_type)
-                and not issubclass(p_type, QuestionLens)
+                and not issubclass(p_type, Question)
             ):
-                raise ArgumentTypeError(self.f_name, p_name, QuestionLens)
+                raise ArgumentTypeError(self.f_name, p_name, Question)
 
             if p_name not in tag_dict:
                 raise UnknownAnswersNameError(

@@ -17,7 +17,7 @@ from plutil.common import (
     lim_latex,
     setrec,
 )
-from plutil.lenses import QuestionLens, SympyQuestionLens
+from plutil.lenses import Question, SympyQuestion
 
 
 def test_pl_json_to_sympy_round_trips_pl_json():
@@ -33,7 +33,7 @@ def test_pl_json_to_sympy_returns_none_for_none():
 
 def test_sympy_lens_correct_answer_stores_pl_json():
     data: pl.QuestionData = {}  # type: ignore
-    lens = SympyQuestionLens(data, "answer")
+    lens = SympyQuestion(data, "answer")
 
     lens.correct_answer = 2 * x + 3
 
@@ -43,7 +43,7 @@ def test_sympy_lens_correct_answer_stores_pl_json():
 
 def test_sympy_lens_correct_answer_parses_strings():
     data: pl.QuestionData = {}  # type: ignore
-    lens = SympyQuestionLens(data, "answer", variables=x)
+    lens = SympyQuestion(data, "answer", variables=x)
 
     lens.correct_answer = "2*x + 3"
 
@@ -52,7 +52,7 @@ def test_sympy_lens_correct_answer_parses_strings():
 
 def test_lens_format_error_sets_error():
     data: pl.QuestionData = {"format_errors": {}}  # type: ignore
-    lens = QuestionLens(data, "answer")
+    lens = Question(data, "answer")
 
     lens.format_error = "Use a set."
 
@@ -64,7 +64,7 @@ def test_lens_format_error_replaces_existing_error():
     data: pl.QuestionData = {  # type: ignore
         "format_errors": {"answer": "Original error."}
     }
-    lens = QuestionLens(data, "answer")
+    lens = Question(data, "answer")
 
     lens.format_error = "Replacement error."
 
@@ -75,7 +75,7 @@ def test_lens_format_error_can_be_cleared():
     data: pl.QuestionData = {  # type: ignore
         "format_errors": {"answer": "Original error."}
     }
-    lens = QuestionLens(data, "answer")
+    lens = Question(data, "answer")
 
     lens.format_error = None
 
