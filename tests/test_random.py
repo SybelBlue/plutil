@@ -3,9 +3,9 @@ from typing import Any
 import pytest
 import sympy
 
-import plutil.random as random_mod
+import plutil.rand as random_mod
 from plutil.common import SympyValue
-from plutil.random import (
+from plutil.rand import (
     randint,
     randint_factory,
     randpoly,
