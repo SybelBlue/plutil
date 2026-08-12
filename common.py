@@ -6,14 +6,10 @@ import math
 import re
 from collections.abc import Iterable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, cast, overload
+from typing import Any, Literal, cast, overload
 
-import prairielearn as pl
 import prairielearn.sympy_utils as psu
 import sympy
-
-if TYPE_CHECKING:
-    from .lenses import QuestionLens
 
 type SympyValue = sympy.Expr | sympy.Set
 type SympyEquiv = SympyValue | int | float
@@ -58,48 +54,6 @@ def _pl_json_to_sympy(value: object | None) -> SympyValue | None:
         return None
 
 
-def set_correct_sympy_ans(
-    lens: QuestionLens,
-    answer: sympy.Basic | sympy.Set | int,
-) -> Any:
-    """Store a SymPy correct answer using PrairieLearn's JSON encoding."""
-    if isinstance(answer, bool | str):
-        raise TypeError("answer must be a SymPy expression or exact integer, not text")
-
-    sympy_answer = sympy.sympify(answer)
-    if not isinstance(sympy_answer, sympy.Basic | sympy.Set):
-        raise TypeError(f"answer must be a SymPy expression or set, got {answer!r}")
-
-    return setrec(
-        lens.data,
-        "correct_answers",
-        lens.answers_name,
-        v=pl.to_json(sympy_answer),
-    )
-
-
-def set_format_error(
-    lens: QuestionLens,
-    message: str,
-    *,
-    clobber_existing_error: bool = True,
-) -> bool:
-    """Set a formatting error for an answer.
-
-    Returns ``True`` when the error was written. If
-    ``clobber_existing_error=False`` and the answer already has a formatting
-    error, preserves the existing message and returns ``False``.
-    """
-    format_errors = setrec(lens.data, "format_errors", default={})
-    if not isinstance(format_errors, dict):
-        raise TypeError('`data["format_errors"]` is not a dict')
-    if not clobber_existing_error and lens.answers_name in format_errors:
-        return False
-
-    format_errors[lens.answers_name] = message
-    return True
-
-
 def var_name(v: Variable) -> str:
     """Return the string name of a variable or symbol."""
     if isinstance(v, sympy.Symbol):
@@ -127,7 +81,7 @@ def _normalize_one_or_more[T](iter_or_single: OneOrMore[T]) -> Iterable[T]:
     return (iter_or_single,)
 
 
-def str_to_sympy(raw_expr: str, variables: OneOrMore[Variable]) -> sympy.Expr:
+def _str_to_sympy(raw_expr: str, variables: OneOrMore[Variable]) -> sympy.Expr:
     """Parse a string as a SymPy expression using the allowed variables."""
     if not isinstance(raw_expr, str):
         raise TypeError(
@@ -210,7 +164,7 @@ def to_expr(expr: SympyParsable | dict, variables: OneOrMore[Variable]) -> Sympy
     if isinstance(expr, (int, float)):
         return sympy.sympify(expr)
     if isinstance(expr, str):
-        return str_to_sympy(expr, variables)
+        return _str_to_sympy(expr, variables)
     if isinstance(expr, dict):
         out = _pl_json_to_sympy(expr)
         if out is not None:
@@ -223,7 +177,7 @@ def to_expr(expr: SympyParsable | dict, variables: OneOrMore[Variable]) -> Sympy
     raise TypeError(f"Expected a str, int, float, or sympy expression, got {expr!r}")
 
 
-def sympy_eq(left: Any, right: Any) -> bool:
+def eq(left: Any, right: Any) -> bool:
     """Compare symbolic values by simplification and other values normally."""
     if not isinstance(left, (sympy.Basic, int, float)) or not isinstance(
         right, (sympy.Basic, int, float)

@@ -16,8 +16,8 @@ from plutil.common import (
     set_correct_sympy_ans,
     set_format_error,
     setrec,
-    str_to_sympy,
-    sympy_eq,
+    _str_to_sympy,
+    eq,
 )
 from plutil.lenses import QuestionLens
 
@@ -26,7 +26,7 @@ def test_pl_json_to_sympy_round_trips_pl_json():
     expr = _pl_json_to_sympy(pl.to_json(2 * x + 3))
 
     assert expr is not None
-    assert sympy_eq(expr, 2 * x + 3)
+    assert eq(expr, 2 * x + 3)
 
 
 def test_pl_json_to_sympy_returns_none_for_none():
@@ -129,12 +129,12 @@ def test_setrec_default_preserves_existing_value():
 
 
 def test_sympy_eq_recognizes_equivalent_expressions():
-    assert sympy_eq((x + 1) ** 2, x**2 + 2 * x + 1)
+    assert eq((x + 1) ** 2, x**2 + 2 * x + 1)
 
 
 def test_str_to_sympy_respects_requested_variables():
-    expr = str_to_sympy("4 - t/2 + t^2/10", ["t"])
-    assert sympy_eq(expr, 4 - t / 2 + t**2 / 10)
+    expr = _str_to_sympy("4 - t/2 + t^2/10", ["t"])
+    assert eq(expr, 4 - t / 2 + t**2 / 10)
 
 
 def test_normalize_one_or_many_wraps_single_string_without_splitting():
@@ -154,7 +154,7 @@ def test_str_to_sympy_passes_single_variable_name_as_one_item(monkeypatch):
         fake_convert_string_to_sympy,
     )
 
-    expr = str_to_sympy("x", list("xyz"))
+    expr = _str_to_sympy("x", list("xyz"))
 
     assert expr == x
     assert len(seen_variable_names) == 1

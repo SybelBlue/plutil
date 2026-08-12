@@ -8,7 +8,14 @@ import prairielearn as pl
 import sympy as sp
 from prairielearn import PartialScore, QuestionData
 
-from .common import OneOrMore, SympyParsable, SympyValue, Variable, getrec, to_expr
+from .common import (
+    OneOrMore,
+    SympyParsable,
+    SympyValue,
+    Variable,
+    getrec,
+    to_expr,
+)
 from .partial_credit import PartialCreditRule, award_partial_credit
 
 
@@ -68,6 +75,16 @@ def datalens(
 class QuestionLens:
     data: QuestionData
     answers_name: str
+    _already_scored: bool = False
+
+    @property
+    def already_scored(self):
+        return self._already_scored
+
+    @already_scored.setter
+    def already_scored(self, value: bool):
+        self._already_scored = value
+        self._update_weighted_score()
 
     @property
     def correct_answer(self):
@@ -90,6 +107,21 @@ class QuestionLens:
     def score_dict(self, score: PartialScore) -> None:
         adict = self.data.setdefault("partial_scores", {})
         adict[self.answers_name] = score
+        self.already_scored = True
+
+    def set_rich_score(
+        self,
+        score: float,
+        *,
+        weight: int | None = None,
+        feedback: str | None = None,
+    ):
+        score_dict: PartialScore = {"score": score}
+        if weight is not None:
+            score_dict["weight"] = weight
+        if feedback is not None:
+            score_dict["feedback"] = feedback
+        self.score_dict = score_dict
 
     @property
     def score(self) -> float | None:
@@ -103,6 +135,7 @@ class QuestionLens:
         adict = self.data.setdefault("partial_scores", {})
         sdict = adict.setdefault(self.answers_name, {})  # type: ignore
         sdict["score"] = score
+        self.already_scored = True
 
     @property
     def weight(self) -> int:
@@ -146,6 +179,18 @@ class QuestionLens:
         """Return whether PrairieLearn is displaying the correct answer."""
         return self.data["correct_answer_shown"]
 
+    @property
+    def format_error(self) -> str | None:
+        return self.data.get("format_errors", {}).get(self.answers_name)
+
+    @format_error.setter
+    def format_error(self, message: str | None):
+        format_errors = self.data.get("format_errors", default={})
+        if message is None:
+            del format_errors[self.answers_name]
+        else:
+            format_errors[self.answers_name] = message
+
     def as_sympy_lens(self, variables: OneOrMore[Variable] = ()) -> "SympyQuestionLens":
         """Return a symbolic lens for this answer using ``variables``."""
         return SympyQuestionLens(self.data, self.answers_name, variables=variables)
@@ -155,6 +200,9 @@ class QuestionLens:
     ) -> Any | None:
         """Returns the value or None if it does not exist"""
         return getrec(self.data, f"{ver}_answers", self.answers_name, default=None)
+
+    def _update_weighted_score(self):
+        pl.set_weighted_score_data(self.data)
 
 
 @dataclass(slots=True)

@@ -4,7 +4,6 @@ from typing import Literal, cast
 
 import sympy as sp
 
-from .common import set_format_error
 from .lenses import SympyQuestionLens
 from .partial_credit import set_partial_score
 
@@ -36,11 +35,10 @@ def reject_non_sympy_set_input(
 
     example = "(-1, 3] U (5, 10)" if mode == "interval-only" else "{ 0, 1, 2 }"
 
-    return set_format_error(
-        lens,
-        f"The answer must be formatted as a set, e.g. {example}",
-        clobber_existing_error=False,
-    )
+    if lens.format_error is None:
+        lens.format_error = f"The answer must be formatted as a set, e.g. {example}"
+
+    return True
 
 
 def grade_sympy_set(lens: SympyQuestionLens) -> bool:

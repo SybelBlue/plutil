@@ -12,7 +12,7 @@ from plutil.calculus import (
     award_missing_constant_credit,
     integrate,
 )
-from plutil.common import sympy_eq
+from plutil.common import eq
 from plutil.lenses import SympyQuestionLens
 from plutil.tests.helpers import question_data
 
@@ -20,37 +20,37 @@ from plutil.tests.helpers import question_data
 def test_integrate_indefinite_adds_constant():
     indefinite = integrate(x, d="x")
 
-    assert sympy_eq(indefinite, x**2 / 2 + sympy.Symbol("C"))
+    assert eq(indefinite, x**2 / 2 + sympy.Symbol("C"))
 
 
 def test_integrate_indefinite_accepts_symbol():
     indefinite = integrate(x, d=x)
 
-    assert sympy_eq(indefinite, x**2 / 2 + sympy.Symbol("C"))
+    assert eq(indefinite, x**2 / 2 + sympy.Symbol("C"))
 
 
 def test_integrate_indefinite_skips_false_constant():
     indefinite = integrate(x, d="x", C=False)
 
-    assert sympy_eq(indefinite, x**2 / 2)
+    assert eq(indefinite, x**2 / 2)
 
 
 def test_integrate_accepts_str():
     indefinite = integrate("x", d=x)
 
-    assert sympy_eq(indefinite, x**2 / 2 + sympy.Symbol("C"))
+    assert eq(indefinite, x**2 / 2 + sympy.Symbol("C"))
 
 
 def test_integrate_definite_respects_bounds():
     definite = integrate(x, d="x", bounds=(0, 1))
 
-    assert sympy_eq(definite, sympy.Rational(1, 2))
+    assert eq(definite, sympy.Rational(1, 2))
 
 
 def test_integrate_known_point_shifts_antiderivative():
     shifted = integrate(2 * x, d="x", known_antideriv_point=(0, 5))
 
-    assert sympy_eq(shifted, x**2 + 5)
+    assert eq(shifted, x**2 + 5)
 
 
 @pytest.mark.parametrize(
@@ -69,7 +69,7 @@ def test_approximate_area_supports_each_method_at_multiple_resolutions(
 ):
     area = approximate_area(x**2, d="x", bounds=(0, 1), n=n, method=method)
 
-    assert sympy_eq(area, expected)
+    assert eq(area, expected)
 
 
 @pytest.mark.parametrize(
@@ -100,7 +100,7 @@ def test_approximate_area_uses_table_values_for_each_method_at_multiple_resoluti
 
     area = approximate_area(table, d="x", bounds=(0, 1), n=n, method=method)
 
-    assert sympy_eq(area, expected)
+    assert eq(area, expected)
 
 
 def test_award_missing_constant_credit_grants_partial_credit(monkeypatch):
