@@ -5,8 +5,6 @@ from dataclasses import dataclass
 from itertools import product
 from typing import TYPE_CHECKING, Protocol, overload
 
-import prairielearn as pl
-
 if TYPE_CHECKING:
     from .lenses import QuestionLens, SympyQuestionLens
 
@@ -17,7 +15,6 @@ from .common import (
     _normalize_one_or_more,
     _var_names,
     eq,
-    setrec,
     to_expr,
 )
 
