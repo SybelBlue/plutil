@@ -11,7 +11,8 @@ usage() {
 Usage: scripts/update-src-dist.sh [--push]
 
 Rebuild src-dist from the contents and history of main:src/plutil. The files
-under src/plutil become the root of src-dist; nothing else from main is kept.
+under src/plutil become the root of src-dist, alongside main:.gitignore;
+nothing else from main is kept.
 
 Options:
   --push  Force-push the rebuilt branch to origin using --force-with-lease.
@@ -50,31 +51,61 @@ git cat-file -e "${source_branch}:src/plutil" || {
   exit 1
 }
 
+git cat-file -e "${source_branch}:.gitignore" || {
+  printf '%s does not contain .gitignore.\n' "$source_branch" >&2
+  exit 1
+}
+
 if git worktree list --porcelain | grep -Fxq "branch refs/heads/${target_branch}"; then
   printf 'Branch %s is checked out in a worktree; switch that worktree to another branch first.\n' \
     "$target_branch" >&2
   exit 1
 fi
 
-old_target=$(git rev-parse --verify --quiet "refs/heads/${target_branch}" || true)
+old_target=$(git rev-parse --verify --quiet "refs/heads/${target_branch}" ||
+  git rev-parse --verify --quiet "refs/remotes/origin/${target_branch}" || true)
 split_commit=$(git subtree split --prefix=src/plutil "$source_branch")
 
-if [[ -n "$old_target" ]]; then
-  git update-ref "refs/heads/${target_branch}" "$split_commit" "$old_target"
+temporary_directory=$(mktemp -d)
+trap 'rm -rf "$temporary_directory"' EXIT
+temporary_index="${temporary_directory}/index"
+
+GIT_INDEX_FILE="$temporary_index" git read-tree "${split_commit}^{tree}"
+gitignore_blob=$(git rev-parse "${source_branch}:.gitignore")
+GIT_INDEX_FILE="$temporary_index" git update-index \
+  --add --cacheinfo "100644,${gitignore_blob},.gitignore"
+target_tree=$(GIT_INDEX_FILE="$temporary_index" git write-tree)
+
+if [[ -n "$old_target" ]] &&
+  [[ "$(git rev-parse "${old_target}^{tree}")" == "$target_tree" ]]; then
+  generated_commit=$old_target
 else
-  git update-ref "refs/heads/${target_branch}" "$split_commit"
+  generated_commit=$(printf 'Preserve .gitignore in %s\n' "$target_branch" |
+    GIT_AUTHOR_NAME="$(git show -s --format=%an "$source_branch")" \
+      GIT_AUTHOR_EMAIL="$(git show -s --format=%ae "$source_branch")" \
+      GIT_AUTHOR_DATE="$(git show -s --format=%aI "$source_branch")" \
+      GIT_COMMITTER_NAME="$(git show -s --format=%cn "$source_branch")" \
+      GIT_COMMITTER_EMAIL="$(git show -s --format=%ce "$source_branch")" \
+      GIT_COMMITTER_DATE="$(git show -s --format=%cI "$source_branch")" \
+      git commit-tree "$target_tree" -p "$split_commit")
 fi
 
-source_tree=$(git rev-parse "${source_branch}:src/plutil")
-target_tree=$(git rev-parse "${target_branch}^{tree}")
-if [[ "$source_tree" != "$target_tree" ]]; then
-  printf 'Refusing to continue: %s does not exactly match %s:src/plutil.\n' \
-    "$target_branch" "$source_branch" >&2
+old_local_target=$(git rev-parse --verify --quiet "refs/heads/${target_branch}" || true)
+if [[ -n "$old_local_target" ]]; then
+  git update-ref "refs/heads/${target_branch}" "$generated_commit" "$old_local_target"
+else
+  git update-ref "refs/heads/${target_branch}" "$generated_commit"
+fi
+
+actual_target_tree=$(git rev-parse "${target_branch}^{tree}")
+if [[ "$target_tree" != "$actual_target_tree" ]]; then
+  printf 'Refusing to continue: generated tree does not match %s.\n' \
+    "$target_branch" >&2
   exit 1
 fi
 
 printf 'Updated %s to %s from %s:src/plutil.\n' \
-  "$target_branch" "$split_commit" "$source_branch"
+  "$target_branch" "$generated_commit" "$source_branch"
 
 if [[ "$push" == true ]]; then
   git push --force-with-lease "origin" "${target_branch}:${target_branch}"
