@@ -66,19 +66,19 @@ def _build_answers_element_data_dict(
     line_dict: dict[str, int] = {}
     answer_elements = etree.XPath("//*[@answers-name]")(fragments[0])
     for answer_element in answer_elements:
-        raw_answer_name: str = answer_element.attrib["answers-name"]
-        answer_name = _snakecase(raw_answer_name)
-        if answer_name in answers:
+        answer_name: str = answer_element.attrib["answers-name"]
+        parsed_answer_name = _snakecase(answer_name)
+        if parsed_answer_name in line_dict:
             raise DuplicateAnswersName(
                 f_name,
                 html_path,
-                answer_name,
-                line_dict[answer_name],
+                parsed_answer_name,
+                line_dict[parsed_answer_name],
                 answer_element.sourceline,
             )
         answer_tag: str = answer_element.tag
         answers[answer_name] = get_data_factory(answer_tag)(answer_element)
-        line_dict[answer_name] = answer_element.sourceline
+        line_dict[parsed_answer_name] = answer_element.sourceline
 
     _html_file_cache[html_path] = answers
     return answers
