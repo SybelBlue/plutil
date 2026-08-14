@@ -1,0 +1,28 @@
+name: Update src-dist
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-src-dist
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch the current src-dist branch
+        run: git fetch origin refs/heads/src-dist:refs/remotes/origin/src-dist || true
+
+      - name: Rebuild and push src-dist
+        run: ./scripts/update-src-dist.sh --push
