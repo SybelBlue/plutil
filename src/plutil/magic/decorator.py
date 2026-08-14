@@ -1,9 +1,9 @@
 import inspect
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from functools import partial
+from functools import partial, wraps
 from pathlib import Path
-from typing import Any, get_type_hints
+from typing import Any, get_type_hints, overload
 
 import chevron
 import prairielearn as pl
@@ -99,7 +99,7 @@ class ValidatedSig:
 
 
 @dataclass(slots=True)
-class plmagic[**P]:
+class _PlMagic[**P]:
     """Validate and adapt a function for use as a PrairieLearn lifecycle hook.
 
     The decorated function's parameters are matched to answer elements in the
@@ -114,6 +114,7 @@ class plmagic[**P]:
     """
 
     f: PlMagicFunction[P]
+    validate_question_data: bool = True
 
     answer_tags: AnswerElementDataDict = field(init=False)
     html_path: Path = field(init=False)
@@ -129,7 +130,8 @@ class plmagic[**P]:
     def __call__(self, data: pl.QuestionData) -> None:
         """Invoke the decorated function and validate its resulting data."""
         self.validated_sig.call(self.f, data)
-        self._validate_question_data_output(data)
+        if self.validate_question_data:
+            self._validate_question_data_output(data)
 
     def _build_paths(self) -> tuple[Path, Path]:
         f_filepath = Path(inspect.getfile(self.f)).resolve()
@@ -193,3 +195,39 @@ class plmagic[**P]:
         for a_name in self.answer_tags:
             if a_name not in data["correct_answers"]:
                 raise MissingCorrectAnswer(self.f_name, data, a_name, self.html_path)
+
+
+@overload
+def plmagic[**P](f: PlMagicFunction[P], /) -> _PlMagic[P]: ...
+
+
+@overload
+def plmagic[**P](
+    f: None = None, /, *, validate_question_data: bool = True
+) -> Callable[[PlMagicFunction[P]], _PlMagic[P]]: ...
+
+
+def plmagic[**P](
+    f: PlMagicFunction[P] | None = None,
+    /,
+    *,
+    validate_question_data: bool = True,
+) -> _PlMagic[P] | Callable[[PlMagicFunction[P]], _PlMagic[P]]:
+    """Adapt a PrairieLearn hook, optionally configuring output validation.
+
+    This supports both ``@plmagic`` and ``@plmagic(...)``. Set
+    ``validate_question_data=False`` to skip validation of the hook's resulting
+    question data.
+    """
+
+    @wraps(_PlMagic)
+    def decorate(function: PlMagicFunction[P]) -> _PlMagic[P]:
+        return _PlMagic(
+            function,
+            validate_question_data=validate_question_data,
+        )
+
+    if f is None:
+        return decorate
+
+    return decorate(f)
