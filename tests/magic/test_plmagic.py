@@ -8,7 +8,7 @@ import pytest
 from pyfakefs.fake_filesystem import FakeFilesystem
 
 from plutil.lenses import Data, Question, SympyQuestion
-from plutil.magic.decorator import plmagic
+from plutil.magic.decorator import _snakecase, plmagic
 from plutil.magic.errors import (
     DuplicateAnswersName,
     HasVariadicArgsError,
@@ -19,6 +19,23 @@ from plutil.magic.errors import (
 from plutil.tests.helpers import question_data
 
 _module_ids = count()
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("", ""),
+        ("answer", "answer"),
+        ("answer_name", "answer_name"),
+        ("AnswerName", "answer_name"),
+        ("answerName", "answer_name"),
+        ("answer name", "answer_name"),
+        ("answer-name", "answer_name"),
+        ("HTMLAnswer", "h_t_m_l_answer"),
+    ],
+)
+def test_snakecase(value: str, expected: str) -> None:
+    assert _snakecase(value) == expected
 
 
 def load_server(

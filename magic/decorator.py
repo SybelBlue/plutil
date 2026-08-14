@@ -1,4 +1,5 @@
 import inspect
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import partial, wraps
@@ -39,6 +40,13 @@ type PlMagicFunction[**P] = Callable[P, None]
 
 
 _html_file_cache: dict[Path, AnswerElementDataDict] = {}
+_SNAKECASE_RE: re.Pattern | None = None
+
+
+def _snakecase(s: str) -> str:
+    global _SNAKECASE_RE
+    _SNAKECASE_RE = _SNAKECASE_RE or re.compile(r"(?<!^)(?=[A-Z])|[ -]")
+    return _SNAKECASE_RE.sub("_", s).lower()
 
 
 def _build_answers_element_data_dict(
@@ -58,7 +66,8 @@ def _build_answers_element_data_dict(
     line_dict: dict[str, int] = {}
     answer_elements = etree.XPath("//*[@answers-name]")(fragments[0])
     for answer_element in answer_elements:
-        answer_name: str = answer_element.attrib["answers-name"]
+        raw_answer_name: str = answer_element.attrib["answers-name"]
+        answer_name = _snakecase(raw_answer_name)
         if answer_name in answers:
             raise DuplicateAnswersName(
                 f_name,
