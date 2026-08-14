@@ -9,6 +9,7 @@ from .common import (
     latex,
     lim_latex,
     setrec,
+    spint,
     to_expr,
 )
 from .functions import (
@@ -47,5 +48,6 @@ __all__: Final[tuple[str, ...]] = (
     "reject_non_sympy_set_input",
     "rule",
     "setrec",
+    "spint",
     "to_expr",
 )

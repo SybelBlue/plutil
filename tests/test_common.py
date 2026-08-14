@@ -16,8 +16,21 @@ from plutil.common import (
     latex,
     lim_latex,
     setrec,
+    spint,
 )
 from plutil.lenses import Question, SympyQuestion
+
+
+def test_spint_constructs_an_exact_sympy_integer():
+    value = spint(3)
+
+    assert isinstance(value, sympy.Integer)
+    assert value / 2 == sympy.Rational(3, 2)  # type: ignore
+
+
+@pytest.mark.parametrize(("value", "expected"), [(3.9, 3), (-3.9, -3)])
+def test_spint_truncates_float_input(value: float, expected: int):
+    assert spint(value) == expected
 
 
 def test_pl_json_to_sympy_round_trips_pl_json():

@@ -6,7 +6,7 @@ import math
 import re
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Literal, cast, overload
+from typing import Any, Final, Literal, cast, overload
 
 import prairielearn.sympy_utils as psu
 import sympy
@@ -16,6 +16,9 @@ type SympyEquiv = SympyValue | int | float
 type SympyParsable = SympyEquiv | str
 type Variable = sympy.Symbol | str
 type OneOrMore[T] = T | Iterable[T]
+
+
+spint: Final[type[sympy.Integer]] = sympy.Integer
 
 
 def dbg[T](value: T) -> T:
