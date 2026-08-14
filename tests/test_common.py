@@ -169,6 +169,14 @@ def test_sympy_eq_rejects_unequal_and_nonfinite_values(left, right):
     assert not eq(left, right)
 
 
+def test_eq_applies_after_before_symbolic_comparison():
+    assert eq("(x + 1)**2", "x**2 + 2*x + 1", after=sympy.sympify)
+
+
+def test_eq_applies_after_before_normal_comparison():
+    assert eq("PrairieLearn", "prairielearn", after=str.casefold)
+
+
 def test_str_to_sympy_respects_requested_variables():
     expr = _str_to_sympy("4 - t/2 + t^2/10", ["t"])
     assert eq(expr, 4 - t / 2 + t**2 / 10)

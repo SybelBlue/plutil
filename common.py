@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any, Final, Literal, cast, overload
 
@@ -180,22 +180,39 @@ def to_expr(expr: SympyParsable | dict, variables: OneOrMore[Variable]) -> Sympy
     raise TypeError(f"Expected a str, int, float, or sympy expression, got {expr!r}")
 
 
-def eq(left: Any, right: Any) -> bool:
-    """Compare symbolic values by simplification and other values normally."""
-    if not isinstance(left, (sympy.Basic, int, float)) or not isinstance(
-        right, (sympy.Basic, int, float)
-    ):
-        return left == right
+def eq[T, R](
+    left: T,
+    right: T,
+    *,
+    after: Callable[[T], R] | None = None,
+) -> bool:
+    """Compare values after optionally transforming them.
 
-    if left == right:
+    Args:
+        left: The first value to compare.
+        right: The second value to compare.
+        after: An optional transformation to apply to both values before comparison.
+
+    Return:
+        Whether the transformed values are equal. Symbolic results are compared by
+        simplification; other results are compared normally.
+    """
+    lhs, rhs = (after(left), after(right)) if after is not None else (left, right)
+
+    if not isinstance(lhs, (sympy.Basic, int, float)) or not isinstance(
+        rhs, (sympy.Basic, int, float)
+    ):
+        return lhs == rhs
+
+    if lhs == rhs:
         return True
 
-    left = sympy.sympify(left)
-    right = sympy.sympify(right)
-    if left.is_finite is False or right.is_finite is False:
-        return left == right
+    lhs = sympy.sympify(lhs)
+    rhs = sympy.sympify(rhs)
+    if lhs.is_finite is False or rhs.is_finite is False:
+        return lhs == rhs
 
-    return sympy.simplify(left - right) == 0
+    return sympy.simplify(lhs - rhs) == 0
 
 
 TRIG_OPERATOR_RE: re.Pattern[str] | None = None
