@@ -89,7 +89,9 @@ def test_generate_plmagic_type_files_recursively(tmp_path: Path) -> None:
         first_question / "__plmagic_types__.py",
         second_question / "__plmagic_types__.py",
     ]
-    assert all(path.read_text().startswith("# AUTOMATICALLY GENERATED") for path in outputs)
+    assert all(
+        path.read_text().startswith("# AUTOMATICALLY GENERATED") for path in outputs
+    )
     assert not (ignored_question / "__plmagic_types__.py").exists()
 
 
@@ -115,9 +117,7 @@ def test_plmagic_types_main_prints_generated_paths(
     )
 
     assert main([str(tmp_path)]) == 0
-    assert capsys.readouterr().out.strip() == str(
-        tmp_path / "__plmagic_types__.py"
-    )
+    assert capsys.readouterr().out.strip() == str(tmp_path / "__plmagic_types__.py")
 
 
 def test_write_plmagic_types_file_skips_all_empty_builders(tmp_path: Path) -> None:

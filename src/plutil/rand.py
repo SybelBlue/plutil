@@ -2,6 +2,7 @@
 
 import random
 from collections.abc import Callable, Sequence
+from math import prod
 
 import sympy
 
@@ -275,3 +276,89 @@ def randpoly_roots_factory(
         )
 
     return generate
+
+
+def randpartitions[T](
+    values: Sequence[T],
+    *,
+    samples: Sequence[int | tuple[int, int] | None],
+) -> tuple[tuple[T, ...], ...]:
+    """Return disjoint, randomly populated samples of the requested sizes.
+
+    Each entry in ``samples`` describes one output tuple: an integer requests
+    an exact size, a ``(minimum, maximum)`` tuple chooses an inclusive random
+    size, and ``None`` shares the capacity left after those sizes are chosen.
+    Any unselected values are omitted from the result.
+
+    Args:
+        values: Values from which to populate the samples.
+        samples: Requested sizes for the output samples. Each entry may be an
+            exact size, an inclusive size range, or ``None`` to share the
+            remaining values.
+
+    Returns:
+        Disjoint tuples of randomly selected values in the order specified by
+        ``samples``.
+
+    Raises:
+        ValueError: If the concrete sample sizes require more values than
+            are available.
+    """
+    concrete_sizes = [
+        None
+        if request is None
+        else request
+        if isinstance(request, int)
+        else randint(*request)
+        for request in samples
+    ]
+    concrete_total = sum(size for size in concrete_sizes if size is not None)
+    if concrete_total <= len(values):
+        raise ValueError("The requested sample sizes require more values than exist")
+
+    split_count = concrete_sizes.count(None)
+    split_size, split_remainder = (
+        divmod(len(values) - concrete_total, split_count) if split_count else (0, 0)
+    )
+    split_sizes = iter(
+        [split_size + 1] * split_remainder
+        + [split_size] * (split_count - split_remainder)
+    )
+    final_sizes = [
+        next(split_sizes) if size is None else size for size in concrete_sizes
+    ]
+
+    vs = list(values)
+    random.shuffle(vs)
+
+    return tuple(tuple(vs.pop() for _ in range(s)) for s in final_sizes)
+
+
+def randcoprimes[T](
+    primes: Sequence[T],
+    *,
+    samples: Sequence[int | tuple[int, int] | None] = (None, None),
+) -> tuple[T, ...]:
+    """Return pairwise-coprime products of disjoint random groups of primes.
+
+    By default, all primes are split as evenly as possible between two groups.
+    ``samples`` specifies each group's size using the same exact, ranged, and
+    remaining-capacity forms accepted by :func:`randpartitions`. The products
+    are returned in the corresponding order.
+
+    Args:
+        primes: Pairwise-coprime integer or SymPy factors to distribute among
+            the products.
+        samples: Requested number of factors in each product. Defaults to two
+            groups that share all factors as evenly as possible.
+
+    Returns:
+        Products of the disjoint factor groups in the order specified by
+        ``samples``.
+
+    Raises:
+        ValueError: If the concrete sample sizes require more factors than
+            are available.
+    """
+    partitions = randpartitions(primes, samples=samples)
+    return tuple(prod(p) for p in partitions)  # type: ignore

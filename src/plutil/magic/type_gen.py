@@ -60,12 +60,8 @@ class DataclassSourceBuilder:
         for name, type_name, default in self.fields:
             field_sources.append(f"    {name}: {type_name}")
             if default is not None:
-                escaped_default = default.replace("\\", "\\\\").replace(
-                    '\"\"\"', '\\\"\"\"'
-                )
-                field_sources.append(
-                    f'    """Default value: `{escaped_default}`"""'
-                )
+                escaped_default = default.replace("\\", "\\\\").replace('"""', '\\"""')
+                field_sources.append(f'    """Default value: `{escaped_default}`"""')
         body = "\n".join(field_sources)
         return f"class {self.name}{bases}:\n{body or '    pass'}"
 
