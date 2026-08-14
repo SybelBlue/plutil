@@ -313,7 +313,7 @@ def randpartitions[T](
         for request in samples
     ]
     concrete_total = sum(size for size in concrete_sizes if size is not None)
-    if concrete_total <= len(values):
+    if concrete_total > len(values):
         raise ValueError("The requested sample sizes require more values than exist")
 
     split_count = concrete_sizes.count(None)
