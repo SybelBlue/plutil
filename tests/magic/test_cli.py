@@ -33,10 +33,7 @@ def test_cli_generates_types_for_all_plmagic_questions(
         fs,
         "/course/questions/algebra/addition",
         server_source=(
-            "from plutil import plmagic\n\n"
-            "@plmagic\n"
-            "def generate(data):\n"
-            "    pass\n"
+            "from plutil import plmagic\n\n@plmagic\ndef generate(data):\n    pass\n"
         ),
         preferences={
             "mode": {"enum": ["practice", "exam"], "default": "practice"},
@@ -47,10 +44,7 @@ def test_cli_generates_types_for_all_plmagic_questions(
         fs,
         "/course/questions/calculus/derivative",
         server_source=(
-            "import plutil\n\n"
-            "@plutil.plmagic\n"
-            "async def grade(data):\n"
-            "    pass\n"
+            "import plutil\n\n@plutil.plmagic\nasync def grade(data):\n    pass\n"
         ),
         preferences={"seed": {"type": "number"}},
     )
@@ -73,15 +67,9 @@ def test_cli_generates_types_for_all_plmagic_questions(
 
     assert main(["/course/questions"]) == 0
 
-    first_output = Path(
-        "/course/questions/algebra/addition/__plmagic_types__.py"
-    )
-    second_output = Path(
-        "/course/questions/calculus/derivative/__plmagic_types__.py"
-    )
-    third_output = Path(
-        "/course/questions/statistics/aliased/__plmagic_types__.py"
-    )
+    first_output = Path("/course/questions/algebra/addition/__plmagic_types__.py")
+    second_output = Path("/course/questions/calculus/derivative/__plmagic_types__.py")
+    third_output = Path("/course/questions/statistics/aliased/__plmagic_types__.py")
     assert capsys.readouterr().out.splitlines() == [
         str(first_output),
         str(second_output),
@@ -101,9 +89,7 @@ def test_cli_generates_types_for_all_plmagic_questions(
     )
     assert second_output.is_file()
     assert third_output.is_file()
-    assert not Path(
-        "/course/questions/not-magic/__plmagic_types__.py"
-    ).exists()
+    assert not Path("/course/questions/not-magic/__plmagic_types__.py").exists()
 
 
 def test_cli_defaults_to_current_directory(

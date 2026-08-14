@@ -1,5 +1,6 @@
 import prairielearn as pl
 import pytest
+import sympy
 from sympy.abc import x
 
 import plutil.lenses as lenses_mod
@@ -11,6 +12,7 @@ from plutil.partial_credit import (
     award_partial_credit,
     rule,
 )
+from plutil.tests.helpers import question_data
 
 
 def test_rule_matches_submitted_value() -> None:
@@ -32,7 +34,7 @@ def test_rule_maps_submitted_answer() -> None:
 
 
 def test_rule_maps_both_answers() -> None:
-    partial_rule = rule(0.75, change_both=abs)
+    partial_rule = rule(0.75, change_both=abs)  # type: ignore
 
     assert isinstance(partial_rule, Transform)
     assert partial_rule.transform_correct is abs
@@ -45,7 +47,7 @@ def test_rule_tries_each_map_both_transformation() -> None:
 
     assert isinstance(partial_rule, CompoundRule)
     assert len(partial_rule.rules) == 2
-    assert partial_rule.check(correct=-2, submitted=2)
+    assert partial_rule.check(correct=sympy.Integer(-2), submitted=sympy.Integer(2))
 
 
 def test_rule_maps_correct_and_submitted_answers() -> None:
@@ -89,11 +91,11 @@ def test_award_partial_credit_maps_correct_answer(monkeypatch) -> None:
         lambda data: calls.append(data),
     )
     feedback = "Your answer is correct up to an additive constant."
-    data = {
-        "submitted_answers": {"answer": pl.to_json(x**2)},
-        "correct_answers": {"answer": "x^2 + C"},
-        "partial_scores": {"answer": {"score": 0.0}},
-    }
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(x**2)},
+        correct_answers={"answer": "x^2 + C"},
+        partial_scores={"answer": {"score": 0.0}},
+    )
 
     awarded = award_partial_credit(
         SympyQuestion(data, "answer", variables=("x", "C")),
@@ -103,7 +105,7 @@ def test_award_partial_credit_maps_correct_answer(monkeypatch) -> None:
 
     assert awarded is True
     assert data["partial_scores"]["answer"]["score"] == 0.65
-    assert data["partial_scores"]["answer"]["feedback"] == feedback
+    assert data["partial_scores"]["answer"].get("feedback") == feedback
     assert calls == [data]
 
 
@@ -117,11 +119,11 @@ def test_award_partial_credit_ignores_rules_when_answer_is_correct(
         "set_weighted_score_data",
         lambda data: calls.append(data),
     )
-    data = {
-        "submitted_answers": {"answer": pl.to_json(x**2)},
-        "correct_answers": {"answer": "x^2"},
-        "partial_scores": {"answer": {"score": 0.0}},
-    }
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(x**2)},
+        correct_answers={"answer": "x^2"},
+        partial_scores={"answer": {"score": 0.0}},
+    )
 
     awarded = award_partial_credit(
         SympyQuestion(data, "answer", variables="x"),
@@ -141,11 +143,11 @@ def test_award_partial_credit_accepts_json_correct_answer(monkeypatch) -> None:
         "set_weighted_score_data",
         lambda data: calls.append(data),
     )
-    data = {
-        "submitted_answers": {"answer": pl.to_json(x**2)},
-        "correct_answers": {"answer": pl.to_json(x**2)},
-        "partial_scores": {"answer": {"score": 0.0}},
-    }
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(x**2)},
+        correct_answers={"answer": pl.to_json(x**2)},
+        partial_scores={"answer": {"score": 0.0}},
+    )
 
     awarded = award_partial_credit(
         SympyQuestion(data, "answer", variables="x"),
@@ -164,11 +166,11 @@ def test_award_partial_credit_can_replace_existing_partial_score(monkeypatch) ->
         "set_weighted_score_data",
         lambda data: calls.append(data),
     )
-    data = {
-        "submitted_answers": {"answer": pl.to_json(x**2)},
-        "correct_answers": {"answer": "x^2 + C"},
-        "partial_scores": {"answer": {"score": 0.5}},
-    }
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(x**2)},
+        correct_answers={"answer": "x^2 + C"},
+        partial_scores={"answer": {"score": 0.5}},
+    )
 
     awarded = award_partial_credit(
         SympyQuestion(data, "answer", variables=("x", "C")),
@@ -188,11 +190,10 @@ def test_award_partial_credit_can_preserve_existing_partial_score(monkeypatch) -
         lambda data: calls.append(data),
     )
     original_score = 0.8
-    data = {
-        "submitted_answers": {"answer": pl.to_json(x**2)},
-        "correct_answers": {"answer": "x^2 + 1"},
-        "partial_scores": {},
-    }
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(x**2)},
+        correct_answers={"answer": "x^2 + 1"},
+    )
     lens = SympyQuestion(data, "answer", variables="x")
     lens.score = original_score
     calls.clear()
@@ -215,11 +216,11 @@ def test_award_partial_credit_does_nothing_when_no_rule_matches(monkeypatch) -> 
         "set_weighted_score_data",
         lambda data: calls.append(data),
     )
-    data = {
-        "submitted_answers": {"answer": pl.to_json(x**2)},
-        "correct_answers": {"answer": "x^2 + C"},
-        "partial_scores": {"answer": {"score": 0.0}},
-    }
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(x**2)},
+        correct_answers={"answer": "x^2 + C"},
+        partial_scores={"answer": {"score": 0.0}},
+    )
 
     awarded = award_partial_credit(
         SympyQuestion(data, "answer", variables=("x", "C")),
@@ -241,11 +242,11 @@ def test_award_partial_credit_uses_additional_correct_answers_for_rules(
         "set_weighted_score_data",
         lambda data: calls.append(data),
     )
-    data = {
-        "submitted_answers": {"answer": pl.to_json(x**2 + 1)},
-        "correct_answers": {"answer": "x^2 + C"},
-        "partial_scores": {"answer": {"score": 0.0}},
-    }
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(x**2 + 1)},
+        correct_answers={"answer": "x^2 + C"},
+        partial_scores={"answer": {"score": 0.0}},
+    )
 
     awarded = award_partial_credit(
         SympyQuestion(data, "answer", variables=("x", "C")),

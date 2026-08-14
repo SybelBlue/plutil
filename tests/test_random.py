@@ -6,8 +6,10 @@ import sympy
 import plutil.rand as random_mod
 from plutil.common import SympyValue
 from plutil.rand import (
+    randcoprimes,
     randint,
     randint_factory,
+    randpartitions,
     randpoly,
     randpoly_factory,
     randpoly_roots,
@@ -261,3 +263,40 @@ def test_randpoly_roots_factory_delays_and_repeats_evaluation(
     assert calls[0][1]["degree"] == 3
     assert calls[0][1]["y_intercept"] == 6
     assert calls[0][1]["expand"] is True
+
+
+def test_randpartitions_samples_ranges_before_splitting_remaining_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(random_mod.random, "shuffle", lambda values: None)
+    monkeypatch.setattr(random_mod.random, "randint", lambda low, high: low)
+
+    partitions = randpartitions(
+        tuple(range(10)),
+        samples=(2, (1, 3), None, None),
+    )
+
+    assert tuple(map(len, partitions)) == (2, 1, 4, 3)
+    assert sorted(value for partition in partitions for value in partition) == list(
+        range(10)
+    )
+
+
+def test_randcoprimes_default_splits_all_primes_between_two_products(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(random_mod.random, "shuffle", lambda values: None)
+
+    assert randcoprimes((2, 3, 5, 7, 11)) == (385, 6)
+
+
+def test_randcoprimes_accepts_sympy_expressions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(random_mod.random, "shuffle", lambda values: None)
+    x = sympy.Symbol("x")
+
+    products = randcoprimes((x, x + 1, x + 2))  # type: ignore
+
+    assert products == ((x + 1) * (x + 2), x)  # type: ignore
+    assert all(isinstance(product, sympy.Expr) for product in products)
