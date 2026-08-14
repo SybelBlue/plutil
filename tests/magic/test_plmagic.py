@@ -113,6 +113,27 @@ def test_plmagic_rejects_missing_correct_answer_after_generation(
     assert error.html_path.name == "question.html"
 
 
+def test_plmagic_can_disable_question_data_validation(fs: FakeFilesystem) -> None:
+    server = load_server(
+        fs,
+        f"""
+        from plutil.lenses import {Question.__name__}
+        from plutil.magic import {plmagic.__name__}
+
+        @{plmagic.__name__}(validate_question_data=False)
+        def generate(*, answer: {Question.__name__}) -> None:
+            answer.data["params"]["generate_was_called"] = True
+        """,
+        '<pl-number-input answers-name="answer"></pl-number-input>',
+    )
+    data = question_data(answers_names={"answer": True})
+
+    server.generate(data)
+
+    assert data["params"]["generate_was_called"] is True
+    assert data["correct_answers"] == {}
+
+
 def test_plmagic_accepts_correct_answer_set_only_in_html(
     fs: FakeFilesystem,
 ) -> None:
