@@ -7,6 +7,8 @@ from types import ModuleType
 import pytest
 from pyfakefs.fake_filesystem import FakeFilesystem
 
+from plutil.lenses import Data, Question, SympyQuestion
+from plutil.magic.decorator import plmagic
 from plutil.magic.errors import (
     DuplicateAnswersName,
     HasVariadicArgsError,
@@ -45,18 +47,18 @@ def load_server(
 def test_plmagic_injects_lenses_from_question_html(fs: FakeFilesystem) -> None:
     server = load_server(
         fs,
-        """
+        f"""
         from __future__ import annotations
 
-        from plutil.lenses import QuestionData, Question, SympyQuestion
-        from plutil.magic import plmagic
+        from plutil.lenses import {Data.__name__}, {Question.__name__}, {SympyQuestion.__name__}
+        from plutil.magic import {plmagic.__name__}
 
-        @plmagic
+        @{plmagic.__name__}
         def generate(
-            data: QuestionData,
+            data: {Data.__name__},
             *,
-            number: Question,
-            expression: SympyQuestion,
+            number: {Question.__name__},
+            expression: {SympyQuestion.__name__},
         ) -> None:
             data.params["called"] = True
             number.correct_answer = 7
@@ -88,12 +90,12 @@ def test_plmagic_rejects_missing_correct_answer_after_generation(
 ) -> None:
     server = load_server(
         fs,
-        """
-        from plutil.lenses import Question
-        from plutil.magic import plmagic
+        f"""
+        from plutil.lenses import {Question.__name__}
+        from plutil.magic import {plmagic.__name__}
 
-        @plmagic
-        def generate(*, answer: Question) -> None:
+        @{plmagic.__name__}
+        def generate(*, answer: {Question.__name__}) -> None:
             answer.data["params"]["generate_was_called"] = True
         """,
         '<pl-number-input answers-name="answer"></pl-number-input>',
@@ -116,12 +118,12 @@ def test_plmagic_accepts_correct_answer_set_only_in_html(
 ) -> None:
     server = load_server(
         fs,
-        """
-        from plutil.lenses import Question
-        from plutil.magic import plmagic
+        f"""
+        from plutil.lenses import {Question.__name__}
+        from plutil.magic import {plmagic.__name__}
 
-        @plmagic
-        def generate(*, answer: Question) -> None:
+        @{plmagic.__name__}
+        def generate(*, answer: {Question.__name__}) -> None:
             pass
         """,
         """
@@ -146,12 +148,12 @@ def test_plmagic_rejects_duplicate_answer_names(fs: FakeFilesystem) -> None:
     with pytest.raises(DuplicateAnswersName):
         load_server(
             fs,
-            """
-            from plutil.lenses import Question
-            from plutil.magic import plmagic
+            f"""
+            from plutil.lenses import {Question.__name__}
+            from plutil.magic import {plmagic.__name__}
 
-            @plmagic
-            def generate(*, answer: Question) -> None:
+            @{plmagic.__name__}
+            def generate(*, answer: {Question.__name__}) -> None:
                 answer.correct_answer = 1
             """,
             """
@@ -167,10 +169,10 @@ def test_plmagic_requires_question_html_next_to_server(fs: FakeFilesystem) -> No
     with pytest.raises(MissingPlFileError):
         load_server(
             fs,
-            """
-            from plutil.magic import plmagic
+            f"""
+            from plutil.magic import {plmagic.__name__}
 
-            @plmagic
+            @{plmagic.__name__}
             def generate() -> None:
                 pass
             """,
@@ -183,12 +185,12 @@ def test_plmagic_rejects_parameter_without_matching_answer_name(
     with pytest.raises(UnknownAnswersNameError):
         load_server(
             fs,
-            """
-            from plutil.lenses import Question
-            from plutil.magic import plmagic
+            f"""
+            from plutil.lenses import {Question.__name__}
+            from plutil.magic import {plmagic.__name__}
 
-            @plmagic
-            def generate(*, unknown: Question) -> None:
+            @{plmagic.__name__}
+            def generate(*, unknown: {Question.__name__}) -> None:
                 unknown.correct_answer = 1
             """,
             '<pl-number-input answers-name="known"></pl-number-input>',
@@ -199,10 +201,10 @@ def test_plmagic_rejects_variadic_parameters(fs: FakeFilesystem) -> None:
     with pytest.raises(HasVariadicArgsError):
         load_server(
             fs,
-            """
-            from plutil.magic import plmagic
+            f"""
+            from plutil.magic import {plmagic.__name__}
 
-            @plmagic
+            @{plmagic.__name__}
             def generate(*args) -> None:
                 pass
             """,

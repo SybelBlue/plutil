@@ -13,9 +13,7 @@ from .common import (
     SympyEquiv,
     SympyParsable,
     _normalize_one_or_more,
-    _var_names,
     eq,
-    to_expr,
 )
 
 
@@ -379,13 +377,11 @@ def award_partial_credit(
         ``True`` if a score was awarded, or ``False`` if grading was skipped or
         no answer or rule matched.
     """
-    vars = tuple(_var_names(lens.variables))
-    addl_correct = tuple(
-        to_expr(e, vars) for e in _normalize_one_or_more(addl_correct_ans)
-    )
     return SympyCreditScheme(rules).grade(
         lens,
-        addl_correct_answers=addl_correct,
+        addl_correct_answers=tuple(
+            lens.to_expr(e) for e in _normalize_one_or_more(addl_correct_ans)
+        ),
         include_display_ans=include_display_ans,
         clobber_existing_score=clobber_existing_score,
         feedback=feedback,

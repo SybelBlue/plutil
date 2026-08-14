@@ -9,7 +9,7 @@ import chevron
 import prairielearn as pl
 from lxml import html
 
-from plutil.lenses import BaseQuestion, Question, BaseData
+from plutil.lenses import BaseData, BaseQuestion, Question
 
 from .element_data import PlElementData, get_data_factory
 from .errors import (

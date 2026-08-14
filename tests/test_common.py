@@ -126,8 +126,34 @@ def test_setrec_default_preserves_existing_value():
     assert data == {"a": {"b": {"c": 4}}}
 
 
-def test_sympy_eq_recognizes_equivalent_expressions():
-    assert eq((x + 1) ** 2, x**2 + 2 * x + 1)
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [
+        ((x + 1) ** 2, x**2 + 2 * x + 1),
+        (sympy.Rational(1, 2), 0.5),
+        (sympy.oo, sympy.oo),
+        (-sympy.oo, -sympy.oo),
+        (float("inf"), sympy.oo),
+    ],
+)
+def test_sympy_eq_recognizes_equivalent_values(left, right):
+    assert eq(left, right)
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [
+        (x + 1, x + 2),
+        (sympy.oo, -sympy.oo),
+        (sympy.oo, sympy.nan),
+        (sympy.nan, sympy.oo),
+        (-sympy.oo, sympy.nan),
+        (sympy.oo, 1),
+        (sympy.oo, x),
+    ],
+)
+def test_sympy_eq_rejects_unequal_and_nonfinite_values(left, right):
+    assert not eq(left, right)
 
 
 def test_str_to_sympy_respects_requested_variables():
