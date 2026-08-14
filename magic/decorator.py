@@ -130,7 +130,7 @@ class _PlMagic[**P]:
     def __call__(self, data: pl.QuestionData) -> None:
         """Invoke the decorated function and validate its resulting data."""
         self.validated_sig.call(self.f, data)
-        if self.validate_question_data:
+        if self.validate_question_data and self.f_name in ("generate", "prepare"):
             self._validate_question_data_output(data)
 
     def _build_paths(self) -> tuple[Path, Path]:
