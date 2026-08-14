@@ -1,7 +1,9 @@
 from typing import Final
 
 from .common import (
-    _pl_json_to_sympy,
+    SympyEquiv,
+    SympyParsable,
+    SympyValue,
     count_in_latex,
     dbg,
     eq,
@@ -18,7 +20,15 @@ from .functions import (
     evalf_at,
     evalf_at_,
 )
+from .lenses import (
+    Data,
+    NoPreferences,
+    Question,
+    SympyQuestion,
+)
 from .magic import (
+    PlMagicError,
+    main,
     plmagic,
 )
 from .partial_credit import (
@@ -31,7 +41,14 @@ from .sets import (
 )
 
 __all__: Final[tuple[str, ...]] = (
-    "_pl_json_to_sympy",
+    "Data",
+    "NoPreferences",
+    "PlMagicError",
+    "Question",
+    "SympyEquiv",
+    "SympyParsable",
+    "SympyQuestion",
+    "SympyValue",
     "award_partial_credit",
     "count_in_latex",
     "dbg",
@@ -44,6 +61,7 @@ __all__: Final[tuple[str, ...]] = (
     "grade_sympy_set",
     "latex",
     "lim_latex",
+    "main",
     "plmagic",
     "reject_non_sympy_set_input",
     "rule",
