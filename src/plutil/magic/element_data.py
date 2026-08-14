@@ -56,7 +56,7 @@ class PlSymbolicInputData(PlElementData):
         """Create symbolic-input metadata from an HTML element."""
         return cls(
             el.tag,
-            tuple(s.strip() for s in str(el.attrib["variables"]).split(",")),
+            tuple(s.strip() for s in str(el.attrib.get("variables", "")).split(",")),
         )
 
 

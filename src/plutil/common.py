@@ -206,6 +206,7 @@ def latex(
     *,
     log_base: SympyParsable | None = None,
     reparse: bool = True,
+    displaystyle: bool = True,
 ) -> str:
     """Render an expression as display-style LaTeX suitable for PrairieLearn."""
     global TRIG_OPERATOR_RE
@@ -216,11 +217,12 @@ def latex(
     if reparse and not isinstance(expr, str):
         parsed = sympy.parse_expr(str(expr))
     unparsed = str(sympy.latex(parsed))
-    rendered = (
-        TRIG_OPERATOR_RE.sub(r"\\operatorname{\1}^{-1}", unparsed)
-        .replace(r"\int\limits", r"\int")
-        .replace(r"\frac", r"\dfrac")
+    disp_prefix = r"\displaystyle " if displaystyle else ""
+    rendered = TRIG_OPERATOR_RE.sub(r"\\operatorname{\1}^{-1}", unparsed).replace(
+        r"\int\limits", disp_prefix + r"\int"
     )
+    if displaystyle:
+        rendered = rendered.replace(r"\frac", r"\dfrac")
     if log_base is None:
         return rendered
     if log_base == sympy.E or log_base == math.e:
@@ -237,13 +239,17 @@ def lim_latex(
     body: SympyParsable,
     log_base: SympyParsable | None = None,
     reparse: bool = False,
+    displaystyle: bool = True,
 ) -> str:
     """Render a display-style limit expression as a LaTeX fragment."""
     direction = rf"^{{{dir}}}" if dir else ""
-    var_tex = latex(var, log_base=log_base, reparse=reparse)
-    val_tex = latex(val, log_base=log_base, reparse=reparse)
-    body_tex = latex(body, log_base=log_base, reparse=reparse)
-    return rf"\displaystyle \lim_{{{var_tex} \to {val_tex}{direction}}} {{{body_tex}}}"
+    var_tex = latex(var, log_base=log_base, reparse=reparse, displaystyle=displaystyle)
+    val_tex = latex(val, log_base=log_base, reparse=reparse, displaystyle=displaystyle)
+    body_tex = latex(
+        body, log_base=log_base, reparse=reparse, displaystyle=displaystyle
+    )
+    disp_prefix = r"\displaystyle " if displaystyle else ""
+    return rf"{disp_prefix}\lim_{{{var_tex} \to {val_tex}{direction}}} {{{body_tex}}}"
 
 
 def count_in_latex(

@@ -106,6 +106,9 @@ def integrate(
         return integral(f, (diff_var, *bounds))
 
     antideriv = integral(f, diff_var)
+    if not evaluate:
+        return antideriv
+
     if known_antideriv_point is None:
         if not C:
             return antideriv
