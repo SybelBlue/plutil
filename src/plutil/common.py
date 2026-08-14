@@ -184,13 +184,15 @@ def eq(left: Any, right: Any) -> bool:
     ):
         return left == right
 
-    r_inf = right == sympy.oo
-    if left == sympy.oo:
-        return r_inf
-    if r_inf:
-        return False
+    if left == right:
+        return True
 
-    return sympy.simplify(left - right) == 0  # type: ignore
+    left = sympy.sympify(left)
+    right = sympy.sympify(right)
+    if left.is_finite is False or right.is_finite is False:
+        return left == right
+
+    return sympy.simplify(left - right) == 0
 
 
 TRIG_OPERATOR_RE: re.Pattern[str] | None = None
@@ -207,7 +209,9 @@ def latex(
     TRIG_OPERATOR_RE = TRIG_OPERATOR_RE or re.compile(
         r"\\operatorname{a(sin|cos|tan|cos|sec|cot)}"
     )
-    parsed = sympy.parse_expr(str(expr)) if reparse else expr
+    parsed = sympy.parse_expr(expr) if isinstance(expr, str) else expr
+    if reparse and not isinstance(expr, str):
+        parsed = sympy.parse_expr(str(expr))
     unparsed = str(sympy.latex(parsed))
     rendered = (
         TRIG_OPERATOR_RE.sub(r"\\operatorname{\1}^{-1}", unparsed)
@@ -229,7 +233,7 @@ def lim_latex(
     dir: Literal["+", "-"] | str | None = None,
     body: SympyParsable,
     log_base: SympyParsable | None = None,
-    reparse: bool = True,
+    reparse: bool = False,
 ) -> str:
     """Render a display-style limit expression as a LaTeX fragment."""
     direction = rf"^{{{dir}}}" if dir else ""

@@ -16,7 +16,7 @@ The directory defaults to the current working directory.
 Import from course `serverFilesCourse` (available in every question in the course):
 
 ```python
-from plutil import eval_at, sympy_eq, award_partial_credit_from_rules
+from plutil import award_partial_credit, eval_at, rule
 from plutil.calculus import integrate, award_missing_constant_credit
 from plutil.functions import set_answer_based_on_another, translate_through_
 ```
@@ -45,14 +45,14 @@ from plutil import str_to_sympy
 f = str_to_sympy("x^2 + 1", ["x"])
 ```
 
-### `sympy_eq(left, right) -> bool`
+### `eq(left, right) -> bool`
 
 Check symbolic equality after simplification (`simplify(left - right) == 0`).
 
 ```python
-from plutil import sympy_eq
+from plutil import eq
 
-sympy_eq("x + 1", "1 + x")  # True
+eq("x + 1", "1 + x")  # True
 ```
 
 ### `getrec(data, *keys, default=None) -> Any`
@@ -69,33 +69,43 @@ from plutil import setrec
 setrec(data, "partial_scores", "f", v={"score": 0.8})
 ```
 
-### `award_partial_credit_from_rules(data, answer_name, variables, *rules, ...) -> bool`
+### `award_partial_credit(lens, *rules, ...) -> bool`
 
-Award partial credit from an ordered list of `(score, rule)` pairs. The first matching rule wins.
+Grade a symbolic answer using a `SympyQuestion` lens and an ordered list of rules.
+Fully correct answers receive a score of `1.0`; otherwise, the first matching
+partial-credit rule wins.
 
-**Rule types:**
+**Rule conditions:**
 
-| Rule                             | Meaning                                     |
-| -------------------------------- | ------------------------------------------- |
-| `str`                            | Compare submitted answer to this expression |
-| `lambda correct: ...`            | Transform the correct answer, then compare  |
-| `lambda correct, submitted: ...` | Custom boolean check                        |
+| Condition          | Meaning                                                             |
+| ------------------ | ------------------------------------------------------------------- |
+| `submitted_is`     | Compare the submission with one or more expected values             |
+| `change_correct`   | Transform the correct answer before comparing it                    |
+| `change_submitted` | Transform the submitted answer before comparing it                  |
+| `change_both`      | Apply the same transformation to both answers before comparing them |
+| `satisfies`        | Check a predicate receiving the correct and submitted answers       |
+| `if_`              | Enable an unconditional rule, or conditionally disable another rule |
 
-Returns `True` if a score was written; `False` if already fully correct, nothing submitted, or no rule matched.
+Except for `change_correct` and `change_submitted`, which may be combined, pass
+one condition to each `rule`. Conditions accept multiple values or functions;
+the rule matches if any candidate matches. When both change conditions contain
+multiple functions, every combination is tried.
+
+Returns `True` if a score was written; `False` if grading was skipped or no
+answer or rule matched.
 
 ```python
-from plutil import award_partial_credit_from_rules, sympy_eq
+from plutil import award_partial_credit, eq, rule
+from plutil.lenses import SympyQuestion
 from plutil.calculus import derivative
 
 
 def grade(data):
-    award_partial_credit_from_rules(
-        data,
-        "f",
-        ["x"],
-        (
+    award_partial_credit(
+        SympyQuestion(data, "f", variables="x"),
+        rule(
             0.8,
-            lambda correct, submitted: sympy_eq(
+            satisfies=lambda correct, submitted: eq(
                 derivative(correct, d="x"),
                 derivative(submitted, d="x"),
             ),
@@ -104,40 +114,44 @@ def grade(data):
     )
 ```
 
-Optional kwargs: `alt_correct_answers`, `feedback`, `check_fully_correct` (default `True`).
+Optional kwargs: `addl_correct_ans`, `feedback`, `include_display_ans` (default
+`True`), and `clobber_existing_score` (default `True`). You can also call the
+same API as `lens.award_partial_credit(*rules, ...)`.
 
 ### `partial_credit.rule(score, *, ...) -> PartialCreditRule`
 
-Create a rule for the newer `award_partial_credit` API. Pass one condition:
+Create a rule for `award_partial_credit`. Pass one condition:
 
-| Kwarg           | Meaning                                                             |
-| --------------- | ------------------------------------------------------------------- |
-| `submitted_is`  | Compare the submission with one or more expected values             |
-| `map_correct`   | Transform the correct answer before comparing it                    |
-| `map_submitted` | Transform the submitted answer before comparing it                  |
-| `map_both`      | Apply the same transformation to both answers before comparing them |
-| `satisfies`     | Check a predicate receiving the correct and submitted answers       |
-| `if_`           | Enable an unconditional rule, or conditionally disable another rule |
+| Kwarg              | Meaning                                                             |
+| ------------------ | ------------------------------------------------------------------- |
+| `submitted_is`     | Compare the submission with one or more expected values             |
+| `change_correct`   | Transform the correct answer before comparing it                    |
+| `change_submitted` | Transform the submitted answer before comparing it                  |
+| `change_both`      | Apply the same transformation to both answers before comparing them |
+| `satisfies`        | Check a predicate receiving the correct and submitted answers       |
+| `if_`              | Enable an unconditional rule, or conditionally disable another rule |
 
-`map_correct` and `map_submitted` are the exception to the one-condition rule:
+`change_correct` and `change_submitted` are the exception to the one-condition rule:
 they may be passed together to transform both sides of the comparison. Each
 also accepts multiple functions; every combination is tried.
 
-Use `map_both` when both answers need the same normalization. It also accepts
+Use `change_both` when both answers need the same normalization. It also accepts
 multiple functions and tries each one as a separate rule.
 
 ```python
-from plutil.partial_credit import award_partial_credit, rule
+from plutil import award_partial_credit, rule
+from plutil.lenses import SympyQuestion
+from sympy import Symbol
+
+x = Symbol("x")
 
 award_partial_credit(
-    data,
-    "f",
+    SympyQuestion(data, "f", variables=x),
     rule(
         0.75,
         change_correct=lambda correct: correct.diff(x),
         change_submitted=lambda submitted: submitted.diff(x),
     ),
-    variables=x,
 )
 ```
 
@@ -249,16 +263,18 @@ s = integrate(v, d="t", known_antideriv_point=(0, 0))
 distance = eval_at(s, t=8) - eval_at(s, t=0)
 ```
 
-### `award_missing_constant_credit(data, answer_name, variables, C="C", partial_score=0.8, feedback=None) -> bool`
+### `award_missing_constant_credit(lens, C="C", partial_score=0.8, feedback=DEFAULT_FEEDBACK) -> bool`
 
-Grant partial credit when the student’s antiderivative is correct up to a missing `+ C`. Wraps `award_partial_credit_from_rules`.
+Grant partial credit when the student’s antiderivative is correct up to a missing
+`+ C`. Uses the lens-based `award_partial_credit` API.
 
 ```python
 from plutil.calculus import award_missing_constant_credit
+from plutil.lenses import SympyQuestion
 
 
 def grade(data):
-    award_missing_constant_credit(data, "answer1", ["x"])
+    award_missing_constant_credit(SympyQuestion(data, "answer1", variables="x"))
 ```
 
 Use `C="K"` if the question expects `+ K` instead of `+ C`.
