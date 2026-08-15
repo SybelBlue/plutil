@@ -65,7 +65,7 @@ class ParamsProxy(dict[str, JSONable]):
     @overload
     def __getitem__(self, key: str) -> JSONable: ...  # type: ignore
     @overload
-    def __getitem__(self, key: Sequence[str]) -> tuple[JSONable]: ...
+    def __getitem__(self, key: Sequence[str]) -> tuple[JSONable, ...]: ...
     def __getitem__(self, key: OneOrMore[str]) -> JSONable | tuple[JSONable, ...]:
         keys = tuple(_normalize_one_or_more(key))
         if len(keys) == 0:
