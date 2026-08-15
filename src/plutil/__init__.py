@@ -1,5 +1,6 @@
 from typing import Final
 
+from . import rand
 from .common import (
     SympyEquiv,
     SympyParsable,
@@ -63,6 +64,7 @@ __all__: Final[tuple[str, ...]] = (
     "lim_latex",
     "main",
     "plmagic",
+    "rand",
     "reject_non_sympy_set_input",
     "rule",
     "setrec",
