@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
 from difflib import get_close_matches
 from types import UnionType
@@ -10,6 +11,7 @@ from typing import (
     get_args,
     get_origin,
     get_type_hints,
+    overload,
 )
 
 import prairielearn as pl
@@ -20,6 +22,7 @@ from .common import (
     SympyParsable,
     SympyValue,
     Variable,
+    _normalize_one_or_more,
     getrec,
     to_expr,
 )
@@ -50,6 +53,66 @@ def _matches_type(value: object, expected: object) -> bool:
     if origin is not None:
         return isinstance(value, origin)
     return isinstance(expected, type) and isinstance(value, expected)
+
+
+type JSONable = dict[str, JSONable] | list[JSONable] | str | int | float
+
+
+@dataclass(frozen=True, slots=True)
+class ParamsProxy(dict[str, JSONable]):
+    params: dict[str, JSONable]
+
+    @overload
+    def __getitem__(self, key: str) -> JSONable: ...  # type: ignore
+    @overload
+    def __getitem__(self, key: Sequence[str]) -> tuple[JSONable]: ...
+    def __getitem__(self, key: OneOrMore[str]) -> JSONable | tuple[JSONable, ...]:
+        keys = tuple(_normalize_one_or_more(key))
+        if len(keys) == 0:
+            raise KeyError("Must pass a key to a params dict")
+        if len(keys) == 1:
+            return self.params.__getitem__(keys[0])
+        return tuple(self.params.__getitem__(k) for k in keys)
+
+    @overload
+    def get(self, key: str) -> JSONable | None: ...  # type: ignore
+    @overload
+    def get[T](self, key: str, *, default: T) -> JSONable | T: ...  # type: ignore
+    @overload
+    def get(self, key: Sequence[str]) -> tuple[JSONable | None, ...]: ...
+    @overload
+    def get[T](self, key: Sequence[str], *, default: T) -> tuple[JSONable | T, ...]: ...
+    def get[T](  # type: ignore
+        self, key: OneOrMore[str], *, default: T = None
+    ) -> JSONable | T | tuple[JSONable | T | None, ...] | None:
+        keys = tuple(_normalize_one_or_more(key))
+        if len(keys) == 0:
+            raise KeyError("Must pass a key to a params dict")
+        if len(keys) == 1:
+            return self.params.get(keys[0], default)
+        return tuple(self.params.get(k, default) for k in keys)
+
+    @overload
+    def __setitem__(self, key: str, value: JSONable) -> None: ...
+    @overload
+    def __setitem__(self, key: Sequence[str], value: Sequence[JSONable]) -> None: ...
+    def __setitem__(
+        self, key: OneOrMore[str], value: JSONable | Sequence[JSONable]
+    ) -> None:
+        keys = tuple(_normalize_one_or_more(key))
+        if len(keys) == 0:
+            raise KeyError("Must pass a key to a params dict")
+        if len(keys) == 1:
+            self.params[keys[0]] = cast(JSONable, value)
+            return
+        values = cast(Sequence[JSONable], value)
+        if len(keys) != len(values):
+            raise ValueError("Number of keys and values must match")
+        for k, v in zip(keys, values):
+            self.params[k] = v
+
+    def __getattr__(self, name):
+        return getattr(self.params, name)
 
 
 class _QuestionDataMeta(type):
@@ -103,9 +166,9 @@ class BaseData[PreferencesT](metaclass=_QuestionDataMeta):
         return cast(PreferencesT, self.data.setdefault("preferences", {}))
 
     @property
-    def params(self) -> dict[str, Any]:
+    def params(self) -> ParamsProxy:
         """Return the question parameters mapping, creating it if needed."""
-        return self.data.setdefault("params", {})
+        return ParamsProxy(self.data.setdefault("params", {}))
 
     @property
     def panel(self):
