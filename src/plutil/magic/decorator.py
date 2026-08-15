@@ -46,7 +46,7 @@ _SNAKECASE_RE: re.Pattern | None = None
 def _snakecase(s: str) -> str:
     global _SNAKECASE_RE
     _SNAKECASE_RE = _SNAKECASE_RE or re.compile(r"(?<!^)(?=[A-Z])|[ -]")
-    return _SNAKECASE_RE.sub("_", s).lower()
+    return re.sub(r"_+", "_", _SNAKECASE_RE.sub("_", s)).lower()
 
 
 def _build_answers_element_data_dict(
@@ -158,6 +158,10 @@ class _PlMagic[**P]:
     def _validate_plfun_sig(self, tag_dict: AnswerElementDataDict) -> ValidatedSig:
         f_sig = inspect.signature(self.f)
         type_hints = get_type_hints(self.f)
+        normalized_tag_dict = {
+            _snakecase(answers_name): (answers_name, element_data)
+            for answers_name, element_data in tag_dict.items()
+        }
         out = ValidatedSig()
         for p_name, param in f_sig.parameters.items():
             if param.kind in (
@@ -190,13 +194,13 @@ class _PlMagic[**P]:
             ):
                 raise ArgumentTypeError(self.f_name, p_name, Question)
 
-            if p_name not in tag_dict:
+            if p_name not in normalized_tag_dict:
                 raise UnknownAnswersNameError(
-                    self.f_name, p_name, tuple(tag_dict.keys())
+                    self.f_name, p_name, tuple(normalized_tag_dict.keys())
                 )
 
-            answers_name = p_name
-            out.kwarg_types[p_name] = tag_dict[answers_name].lens_builder(answers_name)
+            answers_name, element_data = normalized_tag_dict[p_name]
+            out.kwarg_types[p_name] = element_data.lens_builder(answers_name)
 
         return out
 
