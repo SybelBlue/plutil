@@ -43,9 +43,11 @@ def test_params_proxy_get_with_single_key(params: ParamsProxy) -> None:
 
 def test_params_proxy_get_with_multiple_keys(params: ParamsProxy) -> None:
     assert params.get(["alpha", "missing", "beta"]) == (1, None, "two")
-    assert params.get(
-        ["alpha", "missing", "beta"], default="fallback"
-    ) == (1, "fallback", "two")
+    assert params.get(["alpha", "missing", "beta"], default="fallback") == (
+        1,
+        "fallback",
+        "two",
+    )
 
 
 def test_params_proxy_get_rejects_empty_keys(params: ParamsProxy) -> None:
