@@ -16,7 +16,7 @@ The directory defaults to the current working directory.
 Import from course `serverFilesCourse` (available in every question in the course):
 
 ```python
-from plutil import award_partial_credit, eval_at, rule
+from plutil import award_partial_credit, eval_at, rand, rule
 from plutil.calculus import integrate, award_missing_constant_credit
 from plutil.functions import set_answer_based_on_another, translate_through_
 ```
@@ -278,3 +278,81 @@ def grade(data):
 ```
 
 Use `C="K"` if the question expects `+ K` instead of `+ C`.
+
+---
+
+## `rand.py`
+
+Import the random helpers as a module and call them through the `rand`
+namespace:
+
+```python
+from plutil import rand
+```
+
+### `rand.int(low, high, *, exclude=(), exclude_if=None, step=1, randsign=False) -> int`
+
+Choose an integer from an inclusive arithmetic progression. Use `exclude` or
+`exclude_if` to remove candidates, `step` to change the spacing, and
+`randsign=True` to choose the result's sign independently.
+
+```python
+a = rand.int(2, 12, exclude=(4, 8), step=2)
+```
+
+### `rand.poly(...) -> Expr`
+
+Build a random sparse polynomial. Pass `degree` for an exact degree or
+`max_degree` to allow the degree to vary; `coeff_factory` is called once for
+each selected term.
+
+```python
+coefficient = rand.int_(-5, 5, exclude=(0,))
+p = rand.poly(of="x", degree=3, min_terms=2, coeff_factory=coefficient)
+```
+
+### `rand.poly_roots(*known_roots, ...) -> Expr`
+
+Build a polynomial from known roots and, when needed, roots supplied by
+`root_factory`.
+
+```python
+root = rand.int_(-6, 6, exclude=(0,))
+p = rand.poly_roots(1, of="x", degree=3, root_factory=root, expand=True)
+```
+
+### `rand.partitions(values, *, samples) -> tuple[tuple, ...]`
+
+Split shuffled values into disjoint samples. A sample size may be exact, an
+inclusive `(minimum, maximum)` range, or `None` to share the remaining values.
+
+```python
+groups = rand.partitions(range(10), samples=(2, (1, 3), None))
+```
+
+### `rand.coprimes(primes, *, samples=(None, None)) -> tuple`
+
+Partition pairwise-coprime factors and return the product of each group.
+
+```python
+numerator, denominator = rand.coprimes((2, 3, 5, 7, 11))
+```
+
+Every random helper also has a trailing-underscore form that delays evaluation
+until the returned zero-argument callable is invoked. Each invocation makes a
+fresh random selection:
+
+```python
+next_integer = rand.int_(1, 10)
+next_polynomial = rand.poly_(of="x", degree=3)
+next_root_polynomial = rand.poly_roots_(
+    of="x",
+    degree=3,
+    root_factory=rand.int_(-5, 5),
+)
+next_partitions = rand.partitions_(range(10), samples=(None, None))
+next_coprimes = rand.coprimes_((2, 3, 5, 7, 11))
+
+a = next_integer()
+p = next_polynomial()
+```
