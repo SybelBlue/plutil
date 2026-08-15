@@ -6,7 +6,7 @@ import math
 import re
 from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Any, Final, Literal, cast, overload
+from typing import Any, Final, Literal, Protocol, Self, cast, overload
 
 import prairielearn.sympy_utils as psu
 import sympy
@@ -38,6 +38,18 @@ def dbg[T](value: T) -> T:
         loc_str = f"[{filepath}:{caller_frame.f_lineno}]"
 
     print("[dbg]", f"[{loc_str}]", value)
+    return value
+
+
+class Comparable(Protocol):
+    def __lt__(self, other: Self, /) -> bool: ...
+
+
+def clamp[T: Comparable](value: T, *, min: T | None = None, max: T | None = None) -> T:
+    if min is not None and value < min:
+        return min
+    if max is not None and max < value:
+        return max
     return value
 
 

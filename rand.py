@@ -7,7 +7,21 @@ from math import prod
 
 import sympy
 
-from .common import SympyValue, Variable, var_to_symbol
+from .common import SympyValue, Variable, clamp, var_to_symbol
+
+
+def bool(odds: float = 50.0) -> py.bool:
+    """Returns True with ``odds``% chance"""
+    return random.random() * 100.0 < clamp(odds, min=0.0, max=100.0)
+
+
+def bool_(odds: float = 50.0) -> Callable[[], py.bool]:
+    """Return a zero-argument callable that evaluates :func:`bool`."""
+
+    def generate() -> py.bool:
+        return bool(odds)
+
+    return generate
 
 
 def int(
@@ -15,9 +29,9 @@ def int(
     high: py.int,
     *,
     exclude: Sequence[py.int] = (),
-    exclude_if: Callable[[py.int], bool] | None = None,
+    exclude_if: Callable[[py.int], py.bool] | None = None,
     step: py.int = 1,
-    randsign: bool = False,
+    randsign: py.bool = False,
 ) -> py.int:
     """Return a random integer from an inclusive arithmetic progression.
 
@@ -66,11 +80,11 @@ def int_(
     high: py.int,
     *,
     exclude: Sequence[py.int] = (),
-    exclude_if: Callable[[py.int], bool] | None = None,
+    exclude_if: Callable[[py.int], py.bool] | None = None,
     step: py.int = 1,
-    randsign: bool = False,
+    randsign: py.bool = False,
 ) -> Callable[[], py.int]:
-    """Return a zero-argument callable that evaluates :func:`randint`.
+    """Return a zero-argument callable that evaluates :func:`int`.
 
     No random value is selected until the returned callable is invoked. Each
     invocation performs a new, independent selection using the supplied
@@ -169,7 +183,7 @@ def poly_(
     max_terms: py.int | None = None,
     coeff_factory: Callable[[], SympyValue | py.int] | None = None,
 ) -> Callable[[], SympyValue]:
-    """Return a zero-argument callable that evaluates :func:`randpoly`.
+    """Return a zero-argument callable that evaluates :func:`poly`.
 
     Polynomial generation, including coefficient generation, is delayed until
     each invocation of the returned callable.
@@ -195,7 +209,7 @@ def poly_roots(
     degree: py.int | None = None,
     root_factory: Callable[[], py.int] | None = None,
     y_intercept: float | None = None,
-    expand: bool = False,
+    expand: py.bool = False,
 ) -> SympyValue:
     """Build a polynomial from known and randomly generated integer roots.
 
@@ -258,9 +272,9 @@ def poly_roots_(
     degree: py.int | None = None,
     root_factory: Callable[[], py.int] | None = None,
     y_intercept: float | None = None,
-    expand: bool = False,
+    expand: py.bool = False,
 ) -> Callable[[], SympyValue]:
-    """Return a zero-argument callable that evaluates :func:`randpoly_roots`.
+    """Return a zero-argument callable that evaluates :func:`poly_roots`.
 
     Additional roots are not generated until the returned callable is invoked.
     Each invocation builds a new polynomial using the supplied arguments.
@@ -340,7 +354,7 @@ def partitions_[T](
     *,
     samples: Sequence[py.int | tuple[py.int, py.int] | None],
 ) -> Callable[[], tuple[tuple[T, ...], ...]]:
-    """Return a zero-argument callable that evaluates :func:`randpartitions`.
+    """Return a zero-argument callable that evaluates :func:`partitions`.
 
     Partition sizes and contents are not selected until the returned callable
     is invoked. Each invocation creates a new partition using the supplied
@@ -362,7 +376,7 @@ def coprimes[T](
 
     By default, all primes are split as evenly as possible between two groups.
     ``samples`` specifies each group's size using the same exact, ranged, and
-    remaining-capacity forms accepted by :func:`randpartitions`. The products
+    remaining-capacity forms accepted by :func:`partitions`. The products
     are returned in the corresponding order.
 
     Args:
@@ -387,7 +401,7 @@ def coprimes_[T](
     *,
     samples: Sequence[py.int | tuple[py.int, py.int] | None] = (None, None),
 ) -> Callable[[], tuple[T, ...]]:
-    """Return a zero-argument callable that evaluates :func:`randcoprimes`.
+    """Return a zero-argument callable that evaluates :func:`coprimes`.
 
     Factor partitioning and multiplication are delayed until the returned
     callable is invoked. Each invocation creates new products using the
