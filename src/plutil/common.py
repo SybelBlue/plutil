@@ -212,7 +212,7 @@ def eq[T, R](
     if lhs.is_finite is False or rhs.is_finite is False:
         return lhs == rhs
 
-    return sympy.simplify(lhs - rhs) == 0
+    return sympy.simplify(lhs - rhs) == 0  # type: ignore
 
 
 TRIG_OPERATOR_RE: re.Pattern[str] | None = None
