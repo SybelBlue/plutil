@@ -31,6 +31,7 @@ _module_ids = count()
         ("answerName", "answer_name"),
         ("answer name", "answer_name"),
         ("answer-name", "answer_name"),
+        ("Answer-Name", "answer_name"),
         ("HTMLAnswer", "h_t_m_l_answer"),
     ],
 )
@@ -100,6 +101,33 @@ def test_plmagic_injects_lenses_from_question_html(fs: FakeFilesystem) -> None:
     assert data["params"]["expression_variables"] == ("x", "y")
     assert data["correct_answers"]["number"] == 7
     assert data["correct_answers"]["expression"] == "x + y"
+
+
+def test_plmagic_normalizes_answers_name_for_lens_access_and_editing(
+    fs: FakeFilesystem,
+) -> None:
+    server = load_server(
+        fs,
+        f"""
+        from plutil.lenses import {Question.__name__}
+        from plutil.magic import {plmagic.__name__}
+
+        @{plmagic.__name__}
+        def generate(*, answer_name: {Question.__name__}) -> None:
+            answer_name.data["params"]["submitted"] = answer_name.submitted_answer
+            answer_name.correct_answer = 7
+        """,
+        '<pl-number-input answers-name="Answer-Name"></pl-number-input>',
+    )
+    data = question_data(
+        answers_names={"Answer-Name": True},
+        submitted_answers={"Answer-Name": 5},
+    )
+
+    server.generate(data)
+
+    assert data["params"]["submitted"] == 5
+    assert data["correct_answers"] == {"Answer-Name": 7}
 
 
 def test_plmagic_rejects_missing_correct_answer_after_generation(
