@@ -3,15 +3,15 @@
 set -euo pipefail
 
 source_branch="main"
-target_branch="src-dist"
+target_branch="release"
 push=false
 
 usage() {
   cat <<'EOF'
-Usage: scripts/update-src-dist.sh [--push]
+Usage: scripts/update-release.sh [--push]
 
-Rebuild src-dist from the contents and history of main:src/plutil. The files
-under src/plutil become the root of src-dist, alongside main:.gitignore;
+Rebuild release from the contents and history of main:src/plutil. The files
+under src/plutil become the root of release, alongside main:.gitignore;
 nothing else from main is kept.
 
 Options:
