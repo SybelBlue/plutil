@@ -1,5 +1,6 @@
-"""Random-value helpers for building parameterized math questions."""
+"""Random-value helpers for building parameterized math questions. Meant to be imported as a module."""
 
+import builtins as py
 import random
 from collections.abc import Callable, Sequence
 from math import prod
@@ -9,15 +10,15 @@ import sympy
 from .common import SympyValue, Variable, var_to_symbol
 
 
-def randint(
-    low: int,
-    high: int,
+def int(
+    low: py.int,
+    high: py.int,
     *,
-    exclude: Sequence[int] = (),
-    exclude_if: Callable[[int], bool] | None = None,
-    step: int = 1,
+    exclude: Sequence[py.int] = (),
+    exclude_if: Callable[[py.int], bool] | None = None,
+    step: py.int = 1,
     randsign: bool = False,
-) -> int:
+) -> py.int:
     """Return a random integer from an inclusive arithmetic progression.
 
     The candidates are ``low, low + step, ...`` through the largest value not
@@ -35,7 +36,7 @@ def randint(
         IndexError: If exclusions remove every candidate.
     """
     if step < 0:
-        return randint(
+        return int(
             high,
             low,
             step=-step,
@@ -60,15 +61,15 @@ def randint(
     return sign * base
 
 
-def randint_factory(
-    low: int,
-    high: int,
+def int_(
+    low: py.int,
+    high: py.int,
     *,
-    exclude: Sequence[int] = (),
-    exclude_if: Callable[[int], bool] | None = None,
-    step: int = 1,
+    exclude: Sequence[py.int] = (),
+    exclude_if: Callable[[py.int], bool] | None = None,
+    step: py.int = 1,
     randsign: bool = False,
-) -> Callable[[], int]:
+) -> Callable[[], py.int]:
     """Return a zero-argument callable that evaluates :func:`randint`.
 
     No random value is selected until the returned callable is invoked. Each
@@ -76,8 +77,8 @@ def randint_factory(
     arguments.
     """
 
-    def generate() -> int:
-        return randint(
+    def generate() -> py.int:
+        return int(
             low,
             high,
             exclude=exclude,
@@ -89,15 +90,15 @@ def randint_factory(
     return generate
 
 
-def randpoly(
+def poly(
     *,
     of: Variable,
-    degree: int | None = None,
-    max_degree: int | None = None,
-    min_degree: int = 0,
-    min_terms: int = 1,
-    max_terms: int | None = None,
-    coeff_factory: Callable[[], SympyValue | int] | None = None,
+    degree: py.int | None = None,
+    max_degree: py.int | None = None,
+    min_degree: py.int = 0,
+    min_terms: py.int = 1,
+    max_terms: py.int | None = None,
+    coeff_factory: Callable[[], SympyValue | py.int] | None = None,
 ) -> SympyValue:
     """Build a random sparse polynomial in ``of``.
 
@@ -158,15 +159,15 @@ def randpoly(
     return sum(coeff_factory() * x**d for d in term_degs)  # type: ignore
 
 
-def randpoly_factory(
+def poly_(
     *,
     of: Variable,
-    degree: int | None = None,
-    max_degree: int | None = None,
-    min_degree: int = 0,
-    min_terms: int = 1,
-    max_terms: int | None = None,
-    coeff_factory: Callable[[], SympyValue | int] | None = None,
+    degree: py.int | None = None,
+    max_degree: py.int | None = None,
+    min_degree: py.int = 0,
+    min_terms: py.int = 1,
+    max_terms: py.int | None = None,
+    coeff_factory: Callable[[], SympyValue | py.int] | None = None,
 ) -> Callable[[], SympyValue]:
     """Return a zero-argument callable that evaluates :func:`randpoly`.
 
@@ -175,7 +176,7 @@ def randpoly_factory(
     """
 
     def generate() -> SympyValue:
-        return randpoly(
+        return poly(
             of=of,
             degree=degree,
             max_degree=max_degree,
@@ -188,11 +189,11 @@ def randpoly_factory(
     return generate
 
 
-def randpoly_roots(
-    *known_roots: int,
+def poly_roots(
+    *known_roots: py.int,
     of: Variable,
-    degree: int | None = None,
-    root_factory: Callable[[], int] | None = None,
+    degree: py.int | None = None,
+    root_factory: Callable[[], py.int] | None = None,
     y_intercept: float | None = None,
     expand: bool = False,
 ) -> SympyValue:
@@ -251,11 +252,11 @@ def randpoly_roots(
     return out
 
 
-def randpoly_roots_factory(
-    *known_roots: int,
+def poly_roots_(
+    *known_roots: py.int,
     of: Variable,
-    degree: int | None = None,
-    root_factory: Callable[[], int] | None = None,
+    degree: py.int | None = None,
+    root_factory: Callable[[], py.int] | None = None,
     y_intercept: float | None = None,
     expand: bool = False,
 ) -> Callable[[], SympyValue]:
@@ -266,7 +267,7 @@ def randpoly_roots_factory(
     """
 
     def generate() -> SympyValue:
-        return randpoly_roots(
+        return poly_roots(
             *known_roots,
             of=of,
             degree=degree,
@@ -278,10 +279,10 @@ def randpoly_roots_factory(
     return generate
 
 
-def randpartitions[T](
+def partitions[T](
     values: Sequence[T],
     *,
-    samples: Sequence[int | tuple[int, int] | None],
+    samples: Sequence[py.int | tuple[py.int, py.int] | None],
 ) -> tuple[tuple[T, ...], ...]:
     """Return disjoint, randomly populated samples of the requested sizes.
 
@@ -308,8 +309,8 @@ def randpartitions[T](
         None
         if request is None
         else request
-        if isinstance(request, int)
-        else randint(*request)
+        if isinstance(request, py.int)
+        else int(*request)
         for request in samples
     ]
     concrete_total = sum(size for size in concrete_sizes if size is not None)
@@ -334,10 +335,28 @@ def randpartitions[T](
     return tuple(tuple(vs.pop() for _ in range(s)) for s in final_sizes)
 
 
-def randcoprimes[T](
+def partitions_[T](
+    values: Sequence[T],
+    *,
+    samples: Sequence[py.int | tuple[py.int, py.int] | None],
+) -> Callable[[], tuple[tuple[T, ...], ...]]:
+    """Return a zero-argument callable that evaluates :func:`randpartitions`.
+
+    Partition sizes and contents are not selected until the returned callable
+    is invoked. Each invocation creates a new partition using the supplied
+    arguments.
+    """
+
+    def generate() -> tuple[tuple[T, ...], ...]:
+        return partitions(values, samples=samples)
+
+    return generate
+
+
+def coprimes[T](
     primes: Sequence[T],
     *,
-    samples: Sequence[int | tuple[int, int] | None] = (None, None),
+    samples: Sequence[py.int | tuple[py.int, py.int] | None] = (None, None),
 ) -> tuple[T, ...]:
     """Return pairwise-coprime products of disjoint random groups of primes.
 
@@ -360,5 +379,22 @@ def randcoprimes[T](
         ValueError: If the concrete sample sizes require more factors than
             are available.
     """
-    partitions = randpartitions(primes, samples=samples)
-    return tuple(prod(p) for p in partitions)  # type: ignore
+    return tuple(prod(p) for p in partitions(primes, samples=samples))  # type: ignore
+
+
+def coprimes_[T](
+    primes: Sequence[T],
+    *,
+    samples: Sequence[py.int | tuple[py.int, py.int] | None] = (None, None),
+) -> Callable[[], tuple[T, ...]]:
+    """Return a zero-argument callable that evaluates :func:`randcoprimes`.
+
+    Factor partitioning and multiplication are delayed until the returned
+    callable is invoked. Each invocation creates new products using the
+    supplied arguments.
+    """
+
+    def generate() -> tuple[T, ...]:
+        return coprimes(primes, samples=samples)
+
+    return generate
