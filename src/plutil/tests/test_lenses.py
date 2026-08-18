@@ -96,3 +96,10 @@ def test_params_proxy_setitem_validates_lengths(
 def test_params_proxy_setitem_rejects_empty_keys(params: ParamsProxy) -> None:
     with pytest.raises(KeyError, match="Must pass a key"):
         params[[]] = []
+
+
+def test_params_proxy_getattr_delegates_to_backing_params(
+    params: ParamsProxy, backing_params: dict[str, JSONable]
+) -> None:
+    assert params.__getattr__("keys")() == backing_params.keys()
+    assert params.keys() == backing_params.keys()

@@ -177,6 +177,30 @@ def test_eq_applies_after_before_normal_comparison():
     assert eq("PrairieLearn", "prairielearn", after=str.casefold)
 
 
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [
+        (sympy.Interval(0, 1), sympy.Interval(0, 1.0)),
+        (sympy.Range(0, 5), sympy.FiniteSet(0, 1, 2, 3, 4)),
+    ],
+)
+def test_eq_recognizes_equivalent_sets(left, right):
+    assert left != right
+    assert eq(left, right)
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [
+        (sympy.FiniteSet(1, 2), sympy.FiniteSet(2, 3)),
+        (sympy.Interval(0, 1), sympy.Interval(0, 2)),
+        (sympy.FiniteSet(1), 1),
+    ],
+)
+def test_eq_rejects_unequal_sets(left, right):
+    assert not eq(left, right)
+
+
 def test_str_to_sympy_respects_requested_variables():
     expr = _str_to_sympy("4 - t/2 + t^2/10", ["t"])
     assert eq(expr, 4 - t / 2 + t**2 / 10)

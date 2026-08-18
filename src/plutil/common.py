@@ -210,19 +210,22 @@ def eq[T, R](
         simplification; other results are compared normally.
     """
     lhs, rhs = (after(left), after(right)) if after is not None else (left, right)
+    if lhs is rhs or lhs == rhs:
+        return True
+
+    if isinstance(left, sympy.Set):
+        return isinstance(right, sympy.Set) and bool(
+            left.symmetric_difference(right).is_empty
+        )
 
     if not isinstance(lhs, (sympy.Basic, int, float)) or not isinstance(
         rhs, (sympy.Basic, int, float)
     ):
-        return lhs == rhs
+        return False
 
-    if lhs == rhs:
-        return True
-
-    lhs = sympy.sympify(lhs)
-    rhs = sympy.sympify(rhs)
+    lhs, rhs = sympy.sympify(lhs), sympy.sympify(rhs)
     if lhs.is_finite is False or rhs.is_finite is False:
-        return lhs == rhs
+        return False
 
     return sympy.simplify(lhs - rhs) == 0  # type: ignore
 
