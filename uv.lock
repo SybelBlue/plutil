@@ -442,6 +442,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "chevron" },
+    { name = "lxml" },
     { name = "prairielearn" },
 ]
 
@@ -456,7 +457,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "chevron" },
+    { name = "chevron", specifier = "==0.14.0" },
+    { name = "lxml", specifier = "==6.1.1" },
     { name = "prairielearn", git = "https://github.com/PrairieLearn/PrairieLearn.git?subdirectory=apps%2Fprairielearn%2Fpython" },
 ]
 
