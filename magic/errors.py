@@ -49,11 +49,23 @@ class DuplicateAnswersName(PlMagicError):
     second_lineno: int
 
     def __str__(self) -> str:
-        # TODO: add line numbers that point to the two instances in question_html
+        from plutil.common import _trim_path_to_local_course
+
+        trimmed = _trim_path_to_local_course(self.question_html)
+        lines = self.question_html.read_text().splitlines()
+
+        def shown_line(lineno: int) -> str:
+            line = lines[lineno - 1]
+            return (
+                f"\t{lineno:2d} |  {line}\n"
+                f"\t{' ' * (6 + line.index('answers-name'))}^"
+            )
+
         return (
             f"{self.prefix()}: the question.html file contains two elements with answers-name={self.name!r}:\n"
-            f"\tfirst  : {self.question_html}:{self.first_lineno}\n"
-            f"\tsecond : {self.question_html}:{self.second_lineno}"
+            f"Both in {trimmed}\n"
+            f"{shown_line(self.first_lineno)}\n"
+            f"{shown_line(self.second_lineno)}"
         )
 
 
