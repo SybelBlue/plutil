@@ -1,4 +1,12 @@
-from collections.abc import Sequence
+from collections.abc import (
+    ItemsView,
+    Iterable,
+    Iterator,
+    KeysView,
+    Mapping,
+    Sequence,
+    ValuesView,
+)
 from dataclasses import dataclass
 from difflib import get_close_matches
 from types import UnionType
@@ -6,6 +14,7 @@ from typing import (
     Any,
     ClassVar,
     Literal,
+    Self,
     TypedDict,
     cast,
     get_args,
@@ -59,8 +68,8 @@ type JSONable = dict[str, JSONable] | list[JSONable] | str | int | float
 
 
 @dataclass(frozen=True, slots=True)
-class ParamsProxy(dict[str, JSONable]):
-    params: dict[str, JSONable]
+class ParamsProxy(Mapping[str, JSONable]):
+    base: dict[str, JSONable]
 
     @overload
     def __getitem__(self, key: str) -> JSONable: ...  # type: ignore
@@ -71,8 +80,8 @@ class ParamsProxy(dict[str, JSONable]):
         if len(keys) == 0:
             raise KeyError("Must pass a key to a params dict")
         if len(keys) == 1:
-            return self.params.__getitem__(keys[0])
-        return tuple(self.params.__getitem__(k) for k in keys)
+            return self.base.__getitem__(keys[0])
+        return tuple(self.base.__getitem__(k) for k in keys)
 
     @overload
     def get(self, key: str) -> JSONable | None: ...  # type: ignore
@@ -89,8 +98,8 @@ class ParamsProxy(dict[str, JSONable]):
         if len(keys) == 0:
             raise KeyError("Must pass a key to a params dict")
         if len(keys) == 1:
-            return self.params.get(keys[0], default)
-        return tuple(self.params.get(k, default) for k in keys)
+            return self.base.get(keys[0], default)
+        return tuple(self.base.get(k, default) for k in keys)
 
     @overload
     def __setitem__(self, key: str, value: JSONable) -> None: ...
@@ -103,16 +112,45 @@ class ParamsProxy(dict[str, JSONable]):
         if len(keys) == 0:
             raise KeyError("Must pass a key to a params dict")
         if len(keys) == 1:
-            self.params[keys[0]] = cast(JSONable, value)
+            self.base[keys[0]] = cast(JSONable, value)
             return
         values = cast(Sequence[JSONable], value)
         if len(keys) != len(values):
             raise ValueError("Number of keys and values must match")
         for k, v in zip(keys, values):
-            self.params[k] = v
+            self.base[k] = v
 
-    def __getattr__(self, name):
-        return getattr(self.params, name)
+    def __len__(self) -> int:
+        return self.base.__len__()
+
+    def __iter__(self) -> Iterator[str]:
+        return self.base.__iter__()
+
+    def items(self) -> ItemsView[str, JSONable]:
+        return self.base.items()
+
+    def values(self) -> ValuesView[JSONable]:
+        return self.base.values()
+
+    def keys(self) -> KeysView[str]:
+        return self.base.keys()
+
+    def update(
+        self, m: Mapping[str, JSONable] | Iterable[tuple[str, JSONable]]
+    ) -> None:
+        self.base.update(m)
+
+    def popitem(self) -> tuple[str, JSONable]:
+        return self.base.popitem()
+
+    def pop(self, k: str):
+        return self.base.pop(k)
+
+    def setdefault(self, key: str, default: JSONable) -> JSONable:
+        return self.base.setdefault(key, default)
+
+    def copy(self) -> Self:
+        return type(self)(self.base.copy())
 
 
 class _QuestionDataMeta(type):

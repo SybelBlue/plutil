@@ -21,6 +21,15 @@ type OneOrMore[T] = T | Iterable[T]
 spint: Final[type[sympy.Integer]] = sympy.Integer
 
 
+def _trim_path_to_local_course(p: Path | str) -> Path:
+    filepath = Path(p).resolve()
+    for parent in filepath.parents:
+        if (parent / "infoCourse.json").is_file():
+            filepath = filepath.relative_to(parent)
+            break
+    return filepath
+
+
 def dbg[T](value: T) -> T:
     """A debugging helepr. Prints the representation of ``value`` and returns it"""
     import inspect
@@ -30,11 +39,7 @@ def dbg[T](value: T) -> T:
         caller_frame := current_frame.f_back
     ):
         caller_info = inspect.getframeinfo(caller_frame)
-        filepath = Path(caller_info.filename).resolve()
-        for parent in filepath.parents:
-            if (parent / "infoCourse.json").is_file():
-                filepath = filepath.relative_to(parent)
-                break
+        filepath = _trim_path_to_local_course(caller_info.filename)
         loc_str = f"[{filepath}:{caller_frame.f_lineno}]"
 
     print("[dbg]", f"[{loc_str}]", value)
@@ -237,7 +242,7 @@ def latex(
     expr: SympyParsable | sympy.Equality | sympy.Rel | sympy.Ne,
     *,
     log_base: SympyParsable | None = None,
-    reparse: bool = True,
+    reparse: bool = False,
     displaystyle: bool = True,
 ) -> str:
     """Render an expression as display-style LaTeX suitable for PrairieLearn."""
@@ -246,7 +251,7 @@ def latex(
         r"\\operatorname{a(sin|cos|tan|cos|sec|cot)}"
     )
     parsed = sympy.parse_expr(expr) if isinstance(expr, str) else expr
-    if reparse and not isinstance(expr, str):
+    if reparse or isinstance(expr, str):
         parsed = sympy.parse_expr(str(expr))
     unparsed = str(sympy.latex(parsed))
     disp_prefix = r"\displaystyle " if displaystyle else ""
