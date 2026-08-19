@@ -15,4 +15,8 @@ format:
 check-format:
 	uv run --active ruff format --check .
 
-ci-dryrun: test typecheck check-format
+ci-dryrun:
+	@./scripts/ci-dryrun.sh \
+		"$(MAKE) test" \
+		"$(MAKE) typecheck" \
+		"$(MAKE) check-format"
