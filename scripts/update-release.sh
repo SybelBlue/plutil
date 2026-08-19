@@ -11,8 +11,8 @@ usage() {
 Usage: scripts/update-release.sh [--push]
 
 Rebuild release from the contents and history of main:src/plutil. The files
-under src/plutil become the root of release, alongside main:.gitignore;
-nothing else from main is kept.
+under src/plutil become the root of release, alongside main:.gitignore and
+main:README.md; nothing else from main is kept.
 
 Options:
   --push  Force-push the rebuilt branch to origin using --force-with-lease.
@@ -56,6 +56,11 @@ git cat-file -e "${source_branch}:.gitignore" || {
   exit 1
 }
 
+git cat-file -e "${source_branch}:README.md" || {
+  printf '%s does not contain README.md.\n' "$source_branch" >&2
+  exit 1
+}
+
 if git worktree list --porcelain | grep -Fxq "branch refs/heads/${target_branch}"; then
   printf 'Branch %s is checked out in a worktree; switch that worktree to another branch first.\n' \
     "$target_branch" >&2
@@ -74,13 +79,16 @@ GIT_INDEX_FILE="$temporary_index" git read-tree "${split_commit}^{tree}"
 gitignore_blob=$(git rev-parse "${source_branch}:.gitignore")
 GIT_INDEX_FILE="$temporary_index" git update-index \
   --add --cacheinfo "100644,${gitignore_blob},.gitignore"
+readme_blob=$(git rev-parse "${source_branch}:README.md")
+GIT_INDEX_FILE="$temporary_index" git update-index \
+  --add --cacheinfo "100644,${readme_blob},README.md"
 target_tree=$(GIT_INDEX_FILE="$temporary_index" git write-tree)
 
 if [[ -n "$old_target" ]] &&
   [[ "$(git rev-parse "${old_target}^{tree}")" == "$target_tree" ]]; then
   generated_commit=$old_target
 else
-  generated_commit=$(printf 'Preserve .gitignore in %s\n' "$target_branch" |
+  generated_commit=$(printf 'Preserve root files in %s\n' "$target_branch" |
     GIT_AUTHOR_NAME="$(git show -s --format=%an "$source_branch")" \
       GIT_AUTHOR_EMAIL="$(git show -s --format=%ae "$source_branch")" \
       GIT_AUTHOR_DATE="$(git show -s --format=%aI "$source_branch")" \
