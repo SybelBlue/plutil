@@ -271,6 +271,57 @@ def test_duplicate_answers_name_str_shows_the_reported_lines(
     assert '"other"' not in message
 
 
+def test_duplicate_answers_name_str_uses_source_lines_not_parser_lines(
+    fs: FakeFilesystem,
+) -> None:
+    question_html = Path("/course/questions/question/question.html")
+    fs.create_file(
+        question_html,
+        contents=r"""<p>Consider the integral \[{{params.int_latex}}\]</p>
+
+<p>
+  <strong>(a)</strong>
+  <pl-question-panel>First, choose valid \(u, \mathrm dv\) to integrate by parts:</pl-question-panel>
+  <pl-symbolic-input
+    answers-name="u"
+    label="\(u = \)"
+    display="block"
+    variables="x,dx"
+    formula-editor="true"
+  ></pl-symbolic-input>
+  <pl-symbolic-input
+    answers-name="u"
+    label="\(\mathrm dv = \)"
+    display="block"
+    variables="x,dx"
+    formula-editor="true"
+  ></pl-symbolic-input>
+</p>
+
+<p>
+  <br>
+  <strong>(b)</strong>
+  <pl-question-panel>Evaluate:</pl-question-panel>
+  <pl-symbolic-input
+    answers-name="integral"
+    label="\(\displaystyle {{params.int_latex}} =\)"
+    display="inline"
+    variables="x,dx,C"
+    formula-editor="true"
+    weight="8"
+  ></pl-symbolic-input>
+</p>
+""",
+    )
+    error = DuplicateAnswersName("generate", question_html, "u", 12, 19)
+
+    message = str(error)
+
+    assert '\t 7 |     answers-name="u"' in message
+    assert '\t14 |     answers-name="u"' in message
+    assert 'answers-name="integral"' not in message
+
+
 def test_plmagic_requires_question_html_next_to_server(fs: FakeFilesystem) -> None:
     with pytest.raises(MissingPlFileError):
         load_server(
