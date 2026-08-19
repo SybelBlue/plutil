@@ -49,18 +49,34 @@ class DuplicateAnswersName(PlMagicError):
     second_lineno: int
 
     def __str__(self) -> str:
+        import re
+
         from plutil.common import _trim_path_to_local_course
 
         trimmed = _trim_path_to_local_course(self.question_html)
         try:
-            lines = self.question_html.read_text().splitlines()
+            source = self.question_html.read_text()
+            lines = source.splitlines(keepends=True)
         except OSError:
+            source = ""
             lines = []
+
+        answer_element = re.compile(
+            r"(?m)^(?P<indent>[ \t]*)"
+            r"(?P<element><(?P<tag>[\w-]+)\b"
+            r"(?=[^>]*\banswers-name\s*=)[^>]*>"
+            r"(?:\s*</(?P=tag)\s*>)?)"
+        )
 
         def shown_line(lineno: int) -> str:
             if not 1 <= lineno <= len(lines):
                 return f"\t{lineno:2d} | ...answers-name={self.name!r}..."
-            line = lines[lineno - 1]
+            offset = sum(map(len, lines[: lineno - 1]))
+            if match := answer_element.search(source, offset):
+                line = match["indent"] + " ".join(match["element"].split())
+                line = line.replace(" >", ">")
+            else:
+                line = lines[lineno - 1].rstrip("\r\n")
             out = f"\t{lineno:2d} | {line}"
             if (idx := line.find("answers-name")) >= 0:
                 out += f"\n\t{' ' * (5 + idx)}^"

@@ -244,6 +244,36 @@ def test_duplicate_answers_name_str_handles_unavailable_source(
     assert isinstance(str(error), str)
 
 
+def test_duplicate_answers_name_str_shows_the_reported_lines(
+    fs: FakeFilesystem,
+) -> None:
+    question_html = Path("/course/questions/question/question.html")
+    fs.create_file(
+        question_html,
+        contents=(
+            "before\n"
+            '  <pl-number-input \n\tanswers-name="answer"\n></pl-number-input>\n'
+            "between\n"
+            '    <pl-string-input \n\tanswers-name="answer"\n></pl-string-input>\n'
+            "after\n"
+        ),
+    )
+    error = DuplicateAnswersName("generate", question_html, "answer", 2, 4)
+
+    message = str(error)
+
+    assert (
+        '\t 2 |   <pl-number-input answers-name="answer"></pl-number-input>' in message
+    )
+    assert (
+        '\t 4 |     <pl-string-input answers-name="answer"></pl-string-input>'
+        in message
+    )
+    assert "before" not in message
+    assert "between" not in message
+    assert "after" not in message
+
+
 def test_plmagic_requires_question_html_next_to_server(fs: FakeFilesystem) -> None:
     with pytest.raises(MissingPlFileError):
         load_server(
