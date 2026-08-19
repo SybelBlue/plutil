@@ -5,14 +5,14 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from plutil.magic.errors import (
-    ArgumentTypeError,
-    BadPositionalArgError,
+    BadArgumentType,
+    BadPositionalArg,
     DuplicateAnswersName,
-    HasVariadicArgsError,
+    HasVariadicArgs,
     MissingCorrectAnswer,
-    MissingPlFileError,
+    MissingPlFile,
     PlMagicError,
-    UnknownAnswersNameError,
+    UnknownAnswersName,
 )
 
 
@@ -37,15 +37,15 @@ def main() -> None:
     """Print examples of the common magic errors."""
     with TemporaryQuestionDirectory() as question_dir:
         show(
-            MissingPlFileError(
+            MissingPlFile(
                 "generate",
                 question_dir / "server.py",
                 question_dir / "question.html",
             )
         )
-    show(HasVariadicArgsError("generate", "args"))
-    show(BadPositionalArgError("generate", "answer", int))
-    show(ArgumentTypeError("generate", "answer", str))
+    show(HasVariadicArgs("generate", "args"))
+    show(BadPositionalArg("generate", "answer", int))
+    show(BadArgumentType("generate", "answer", str))
 
     with TemporaryQuestionDirectory() as question_dir:
         show(
@@ -71,11 +71,7 @@ def generate(
     pass
 """
         )
-        show(
-            UnknownAnswersNameError(
-                "generate", "integrl", ("integral", "u"), server_py, 7
-            )
-        )
+        show(UnknownAnswersName("generate", "integrl", ("integral", "u"), server_py, 7))
 
     with TemporaryQuestionDirectory() as question_dir:
         question_html = question_dir / "question.html"

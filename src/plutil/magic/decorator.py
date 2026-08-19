@@ -13,15 +13,16 @@ from lxml import html
 
 from plutil.lenses import BaseData, BaseQuestion, Question
 
-from .element_data import PlElementData, get_data_factory
+from .element_data import PlElementData, PlSymbolicInputData, get_data_factory
 from .errors import (
-    ArgumentTypeError,
-    BadPositionalArgError,
+    BadArgumentType,
+    BadPositionalArg,
     DuplicateAnswersName,
-    HasVariadicArgsError,
+    HasVariadicArgs,
     MissingCorrectAnswer,
-    MissingPlFileError,
-    UnknownAnswersNameError,
+    MissingPlFile,
+    UnknownAnswersName,
+    UnparsableSympyCorrectAnswer,
 )
 
 type AnswersName = str
@@ -148,7 +149,7 @@ class _PlMagic[**P]:
         out = f_filepath.parent / "question.html", f_filepath.parent / "info.json"
         for path in out:
             if not path.exists():
-                raise MissingPlFileError(self.f_name, f_filepath, path)
+                raise MissingPlFile(self.f_name, f_filepath, path)
         return out
 
     @property
@@ -169,13 +170,13 @@ class _PlMagic[**P]:
                 inspect._ParameterKind.VAR_KEYWORD,
                 inspect._ParameterKind.VAR_POSITIONAL,
             ):
-                raise HasVariadicArgsError(self.f_name, p_name)
+                raise HasVariadicArgs(self.f_name, p_name)
 
             p_type = type_hints.get(p_name, param.annotation)
 
             if param.kind != inspect._ParameterKind.KEYWORD_ONLY:
                 if p_name not in ("data",):
-                    raise BadPositionalArgError(
+                    raise BadPositionalArg(
                         self.f_name,
                         p_name,
                         None if p_type is inspect.Parameter.empty else p_type,
@@ -186,7 +187,7 @@ class _PlMagic[**P]:
                     and inspect.isclass(p_type)
                     and not issubclass(p_type, BaseData)
                 ):
-                    raise ArgumentTypeError(self.f_name, p_name, BaseData)
+                    raise BadArgumentType(self.f_name, p_name, BaseData)
                 out.include_data = True
                 if inspect.isclass(p_type) and issubclass(p_type, BaseData):
                     out.data_lens_type = p_type
@@ -197,7 +198,7 @@ class _PlMagic[**P]:
                 and inspect.isclass(p_type)
                 and not issubclass(p_type, BaseQuestion)
             ):
-                raise ArgumentTypeError(self.f_name, p_name, Question)
+                raise BadArgumentType(self.f_name, p_name, Question)
 
             if p_name not in normalized_tag_dict:
                 source_path = Path(inspect.getfile(self.f)).resolve()
@@ -227,7 +228,7 @@ class _PlMagic[**P]:
                     parameter_lineno = parameter.lineno
                 except (OSError, SyntaxError, StopIteration):
                     pass
-                raise UnknownAnswersNameError(
+                raise UnknownAnswersName(
                     self.f_name,
                     p_name,
                     tuple(normalized_tag_dict.keys()),
@@ -244,6 +245,14 @@ class _PlMagic[**P]:
         for a_name in self.answer_tags:
             if a_name not in data["correct_answers"]:
                 raise MissingCorrectAnswer(self.f_name, data, a_name, self.html_path)
+
+            metadata = self.answer_tags[a_name]
+            if isinstance(metadata, PlSymbolicInputData):
+                lens = metadata.build_lens(data, a_name)
+                try:
+                    _ = lens.correct_answer
+                except Exception as e:
+                    raise UnparsableSympyCorrectAnswer(self.f_name, data, a_name) from e
 
 
 @overload

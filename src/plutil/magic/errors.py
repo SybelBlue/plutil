@@ -87,7 +87,7 @@ class PlMagicError(Exception, abc.ABC):
 
 
 @dataclass(slots=True)
-class MissingPlFileError(PlMagicError):
+class MissingPlFile(PlMagicError):
     """Report a missing PrairieLearn file adjacent to a server module."""
 
     server_py: Path
@@ -158,7 +158,7 @@ class InvalidMagicFunctionError(PlMagicError, TypeError):
 
 
 @dataclass(slots=True)
-class HasVariadicArgsError(InvalidMagicFunctionError):
+class HasVariadicArgs(InvalidMagicFunctionError):
     """Report a variadic parameter in a magic-function signature."""
 
     args_name: str
@@ -171,7 +171,7 @@ class HasVariadicArgsError(InvalidMagicFunctionError):
 
 
 @dataclass(slots=True)
-class BadPositionalArgError(InvalidMagicFunctionError):
+class BadPositionalArg(InvalidMagicFunctionError):
     """Report an unsupported positional magic-function parameter."""
 
     arg_name: str
@@ -193,7 +193,7 @@ class BadPositionalArgError(InvalidMagicFunctionError):
 
 
 @dataclass(slots=True)
-class ArgumentTypeError(InvalidMagicFunctionError):
+class BadArgumentType(InvalidMagicFunctionError):
     """Report a magic-function parameter with an incompatible type."""
 
     arg_name: str
@@ -210,7 +210,7 @@ class ArgumentTypeError(InvalidMagicFunctionError):
 
 
 @dataclass(slots=True)
-class UnknownAnswersNameError(InvalidMagicFunctionError):
+class UnknownAnswersName(InvalidMagicFunctionError):
     """Report a parameter that does not match an answer element."""
 
     arg_name: str
@@ -263,3 +263,14 @@ class MissingCorrectAnswer(InvalidQuestionDataError):
 
     def hint(self) -> str:
         return f"set the value in {self.function_name} or in {_trim_path_to_local_course(self.html_path)}"
+
+
+@dataclass
+class UnparsableSympyCorrectAnswer(InvalidQuestionDataError):
+    """Report an SympyQuestion correct_answer that is invalid"""
+
+    data: pl.QuestionData
+    answers_name: str
+
+    def cause(self):
+        return f"`{self.answers_name}.correct_answer` could not be parsed"

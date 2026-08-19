@@ -2,21 +2,10 @@
 
 Utilities for PrairieLearn question `server.py` files: SymPy parsing, nested `data` access, partial credit, and calculus helpers.
 
-Generate `__plmagic_types__.py` beside every Python file using `@plmagic`
-under a directory (searched recursively):
-
-```sh
-plmagic-types path/to/questions
-# Equivalent package invocation:
-python -m plutil path/to/questions
-```
-
-The directory defaults to the current working directory.
-
 Import from course `serverFilesCourse` (available in every question in the course):
 
 ```python
-from plutil import award_partial_credit, eval_at, rand, rule
+from plutil import award_partial_credit, eval_at, plmagic, rand, rule
 from plutil.calculus import integrate, award_missing_constant_credit
 from plutil.functions import (
     scale_through,
@@ -25,6 +14,45 @@ from plutil.functions import (
     translate_through_,
 )
 ```
+
+---
+
+## `@plmagic`
+
+Decorate a PrairieLearn lifecycle function such as `generate`, `parse`, or
+`grade` to work with convenient data and answer objects. Keyword-only parameter
+names correspond to `answers-name` values in the neighboring `question.html`;
+type annotations select the kind of answer object to provide.
+
+For a question containing these answer elements:
+
+```html
+<pl-number-input answers-name="number"></pl-number-input>
+<pl-symbolic-input answers-name="expression" variables="x"></pl-symbolic-input>
+```
+
+```python
+from plutil import Data, Question, SympyQuestion, plmagic
+from sympy.abc import x
+
+
+@plmagic
+def generate(data: Data, *, number: Question, expression: SympyQuestion):
+    data.params["prompt"] = "Enter the meaning of life."
+    number.correct_answer = 42
+    expression.correct_answer = x**2 + 1
+```
+
+Generate `__plmagic_types__.py` beside every Python file using `@plmagic`
+under a directory to get question-specific editor type information:
+
+```sh
+plmagic-types path/to/questions
+# Equivalent package invocation:
+python -m plutil path/to/questions
+```
+
+The directory defaults to the current working directory.
 
 ---
 
