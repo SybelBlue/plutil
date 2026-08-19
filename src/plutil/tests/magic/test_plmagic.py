@@ -256,22 +256,19 @@ def test_duplicate_answers_name_str_shows_the_reported_lines(
             "between\n"
             '    <pl-string-input \n\tanswers-name="answer"\n></pl-string-input>\n'
             "after\n"
+            '    <pl-string-input \n\tanswers-name="other"\n></pl-string-input>\n'
         ),
     )
     error = DuplicateAnswersName("generate", question_html, "answer", 2, 4)
 
     message = str(error)
 
-    assert (
-        '\t 2 |   <pl-number-input answers-name="answer"></pl-number-input>' in message
-    )
-    assert (
-        '\t 4 |     <pl-string-input answers-name="answer"></pl-string-input>'
-        in message
-    )
+    assert '\t 3 |   answers-name="answer"' in message
+    assert '\t 7 |   answers-name="answer"' in message
     assert "before" not in message
     assert "between" not in message
     assert "after" not in message
+    assert '"other"' not in message
 
 
 def test_plmagic_requires_question_html_next_to_server(fs: FakeFilesystem) -> None:

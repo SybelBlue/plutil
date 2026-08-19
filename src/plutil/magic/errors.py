@@ -61,22 +61,20 @@ class DuplicateAnswersName(PlMagicError):
             source = ""
             lines = []
 
-        answer_element = re.compile(
-            r"(?m)^(?P<indent>[ \t]*)"
-            r"(?P<element><(?P<tag>[\w-]+)\b"
-            r"(?=[^>]*\banswers-name\s*=)[^>]*>"
-            r"(?:\s*</(?P=tag)\s*>)?)"
+        answer_setter = re.compile(
+            rf"(?m)^(?P<line>[^\r\n]*\banswers-name\s*=\s*"
+            rf"(?P<quote>['\"]){re.escape(self.name)}(?P=quote)[^\r\n]*)$"
         )
 
         def shown_line(lineno: int) -> str:
             if not 1 <= lineno <= len(lines):
                 return f"\t{lineno:2d} | ...answers-name={self.name!r}..."
             offset = sum(map(len, lines[: lineno - 1]))
-            if match := answer_element.search(source, offset):
-                line = match["indent"] + " ".join(match["element"].split())
-                line = line.replace(" >", ">")
+            if match := answer_setter.search(source, offset):
+                lineno = source.count("\n", 0, match.start()) + 1
+                line = match["line"].expandtabs(2)
             else:
-                line = lines[lineno - 1].rstrip("\r\n")
+                line = lines[lineno - 1].rstrip("\r\n").expandtabs(2)
             out = f"\t{lineno:2d} | {line}"
             if (idx := line.find("answers-name")) >= 0:
                 out += f"\n\t{' ' * (5 + idx)}^"
