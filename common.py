@@ -246,6 +246,18 @@ def latex(
     displaystyle: bool = True,
 ) -> str:
     """Render an expression as display-style LaTeX suitable for PrairieLearn."""
+    if isinstance(expr, sympy.Limit):
+        (e, z, z0, dir) = expr.args
+        return lim_latex(
+            body=e,  # type: ignore
+            var=z,  # type: ignore
+            val=z0,  # type: ignore
+            dir=dir,  # type: ignore
+            log_base=log_base,
+            reparse=reparse,
+            displaystyle=displaystyle,
+        )
+
     global TRIG_OPERATOR_RE
     TRIG_OPERATOR_RE = TRIG_OPERATOR_RE or re.compile(
         r"\\operatorname{a(sin|cos|tan|cos|sec|cot)}"
@@ -272,14 +284,14 @@ def lim_latex(
     *,
     var: Variable,
     val: SympyParsable,
-    dir: Literal["+", "-"] | str | None = None,
+    dir: Literal["+", "-", "+-"] | str | None = None,
     body: SympyParsable,
     log_base: SympyParsable | None = None,
     reparse: bool = False,
     displaystyle: bool = True,
 ) -> str:
     """Render a display-style limit expression as a LaTeX fragment."""
-    direction = rf"^{{{dir}}}" if dir else ""
+    direction = rf"^{{{dir}}}" if dir and dir not in ("+-", "-+") else ""
     var_tex = latex(var, log_base=log_base, reparse=reparse, displaystyle=displaystyle)
     val_tex = latex(val, log_base=log_base, reparse=reparse, displaystyle=displaystyle)
     body_tex = latex(

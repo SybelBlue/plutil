@@ -1,11 +1,9 @@
 from collections.abc import (
-    ItemsView,
     Iterable,
     Iterator,
     KeysView,
     Mapping,
     Sequence,
-    ValuesView,
 )
 from dataclasses import dataclass
 from difflib import get_close_matches
@@ -24,6 +22,7 @@ from typing import (
 )
 
 import prairielearn as pl
+import prairielearn.sympy_utils as psu
 import sympy as sp
 
 from .common import (
@@ -33,6 +32,7 @@ from .common import (
     Variable,
     _normalize_one_or_more,
     getrec,
+    latex,
     to_expr,
 )
 from .partial_credit import PartialCreditRule, award_partial_credit
@@ -64,61 +64,98 @@ def _matches_type(value: object, expected: object) -> bool:
     return isinstance(expected, type) and isinstance(value, expected)
 
 
-type JSONable = dict[str, JSONable] | list[JSONable] | str | int | float
+type JsonLiteral = (
+    dict[str, JsonLiteral] | list[JsonLiteral] | tuple[JsonLiteral] | str | int | float
+)
+type Jsonable = SympyValue | JsonLiteral
+type JsonValue = psu.SympyJson | JsonLiteral
 
 
 @dataclass(frozen=True, slots=True)
-class ParamsProxy(Mapping[str, JSONable]):
-    base: dict[str, JSONable]
+class ParamsProxy(Mapping[str, Jsonable]):
+    base: dict[str, JsonValue]
+
+    @staticmethod
+    def parse_jsonable(value: JsonValue) -> Jsonable:
+        if pl.is_sympy_json(value):
+            return psu.json_to_sympy(
+                value,
+                allow_sets=True,
+                allow_complex=True,
+                allow_trig_functions=True,
+                simplify_expression=False,
+            )
+        return value  # type: ignore
+
+    def __getitem_single__(self, key: str) -> Jsonable:
+        return self.parse_jsonable(self.base.__getitem__(key))
 
     @overload
-    def __getitem__(self, key: str) -> JSONable: ...  # type: ignore
+    def __getitem__(self, key: str) -> Jsonable: ...  # type: ignore
     @overload
-    def __getitem__(self, key: Sequence[str]) -> tuple[JSONable, ...]: ...
-    def __getitem__(self, key: OneOrMore[str]) -> JSONable | tuple[JSONable, ...]:
+    def __getitem__(self, key: Sequence[str]) -> tuple[Jsonable, ...]: ...
+    def __getitem__(  # type: ignore
+        self, key: OneOrMore[str]
+    ) -> Jsonable | tuple[Jsonable, ...]:
         keys = tuple(_normalize_one_or_more(key))
         if len(keys) == 0:
             raise KeyError("Must pass a key to a params dict")
         if len(keys) == 1:
-            return self.base.__getitem__(keys[0])
-        return tuple(self.base.__getitem__(k) for k in keys)
+            return self.__getitem_single__(keys[0])
+        return tuple(map(self.__getitem_single__, keys))
+
+    def __get_single__[T](
+        self, key: str, default: T | None = None
+    ) -> Jsonable | T | None:
+        if key in self.base:
+            return self.__getitem_single__(key)
+        return default
 
     @overload
-    def get(self, key: str) -> JSONable | None: ...  # type: ignore
+    def get(self, key: str) -> Jsonable | None: ...  # type: ignore
     @overload
-    def get[T](self, key: str, *, default: T) -> JSONable | T: ...  # type: ignore
+    def get[T](self, key: str, *, default: T) -> Jsonable | T: ...  # type: ignore
     @overload
-    def get(self, key: Sequence[str]) -> tuple[JSONable | None, ...]: ...
+    def get(self, key: Sequence[str]) -> tuple[Jsonable | None, ...]: ...
     @overload
-    def get[T](self, key: Sequence[str], *, default: T) -> tuple[JSONable | T, ...]: ...
+    def get[T](self, key: Sequence[str], *, default: T) -> tuple[Jsonable | T, ...]: ...
     def get[T](  # type: ignore
         self, key: OneOrMore[str], *, default: T = None
-    ) -> JSONable | T | tuple[JSONable | T | None, ...] | None:
+    ) -> Jsonable | T | None | tuple[Jsonable | T | None, ...]:
         keys = tuple(_normalize_one_or_more(key))
         if len(keys) == 0:
             raise KeyError("Must pass a key to a params dict")
         if len(keys) == 1:
-            return self.base.get(keys[0], default)
-        return tuple(self.base.get(k, default) for k in keys)
+            return self.__get_single__(keys[0], default)
+        return tuple(self.__get_single__(k, default) for k in keys)
+
+    def __setitem_single__(self, key: str, value: JsonValue | SympyValue) -> None:
+        if isinstance(value, (sp.Basic, sp.Set)):
+            self.base[key] = psu.sympy_to_json(value)
+        else:
+            self.base[key] = value
 
     @overload
-    def __setitem__(self, key: str, value: JSONable) -> None: ...
+    def __setitem__(self, key: str, value: JsonValue | SympyValue) -> None: ...
     @overload
-    def __setitem__(self, key: Sequence[str], value: Sequence[JSONable]) -> None: ...
     def __setitem__(
-        self, key: OneOrMore[str], value: JSONable | Sequence[JSONable]
+        self, key: Sequence[str], value: Sequence[JsonValue | SympyValue]
+    ) -> None: ...
+    def __setitem__(
+        self,
+        key: OneOrMore[str],
+        value: JsonValue | SympyValue | Sequence[JsonValue | SympyValue],
     ) -> None:
         keys = tuple(_normalize_one_or_more(key))
-        if len(keys) == 0:
-            raise KeyError("Must pass a key to a params dict")
+        values = tuple(_normalize_one_or_more(value))
         if len(keys) == 1:
-            self.base[keys[0]] = cast(JSONable, value)
-            return
-        values = cast(Sequence[JSONable], value)
+            return self.__setitem_single__(keys[0], cast(Jsonable, value))  # type: ignore
         if len(keys) != len(values):
             raise ValueError("Number of keys and values must match")
+        if len(keys) == 0:
+            raise KeyError("Must pass a key to a params dict")
         for k, v in zip(keys, values):
-            self.base[k] = v
+            self.__setitem_single__(k, v)
 
     def __len__(self) -> int:
         return self.base.__len__()
@@ -126,31 +163,51 @@ class ParamsProxy(Mapping[str, JSONable]):
     def __iter__(self) -> Iterator[str]:
         return self.base.__iter__()
 
-    def items(self) -> ItemsView[str, JSONable]:
-        return self.base.items()
+    def items(self) -> Iterator[tuple[str, Jsonable]]:  # type: ignore
+        for k, v in self.base.items():
+            yield k, self.parse_jsonable(v)
 
-    def values(self) -> ValuesView[JSONable]:
-        return self.base.values()
+    def values(self) -> Iterator[Jsonable]:  # type: ignore
+        return map(self.parse_jsonable, self.base.values())
 
     def keys(self) -> KeysView[str]:
         return self.base.keys()
 
     def update(
-        self, m: Mapping[str, JSONable] | Iterable[tuple[str, JSONable]]
+        self, m: Mapping[str, JsonValue] | Iterable[tuple[str, JsonValue]]
     ) -> None:
         self.base.update(m)
 
-    def popitem(self) -> tuple[str, JSONable]:
+    def popitem(self) -> tuple[str, JsonValue]:
         return self.base.popitem()
 
     def pop(self, k: str):
         return self.base.pop(k)
 
-    def setdefault(self, key: str, default: JSONable) -> JSONable:
+    def setdefault(self, key: str, default: JsonValue) -> JsonValue:
         return self.base.setdefault(key, default)
 
     def copy(self) -> Self:
         return type(self)(self.base.copy())
+
+    @property
+    def latex(self):
+        return LatexParamsProxy(self)
+
+
+@dataclass(frozen=True, slots=True)
+class LatexParamsProxy:
+    base: ParamsProxy
+
+    def __setitem__(
+        self, key: OneOrMore[str], value: SympyValue | Sequence[SympyValue]
+    ):
+        keys = tuple(f"{k}_latex" for k in _normalize_one_or_more(key))
+        values = tuple(latex(v) for v in _normalize_one_or_more(value))
+        if len(keys) == len(values) == 1:
+            self.base[keys[0]] = values[0]
+        else:
+            self.base[keys] = values
 
 
 class _QuestionDataMeta(type):
