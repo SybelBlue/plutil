@@ -7,7 +7,8 @@ from math import prod
 
 import sympy
 
-from .common import SympyValue, Variable, clamp, var_to_symbol
+from .common import SympyEquiv, SympyValue, Variable, clamp, var_to_symbol
+from .functions import scale_through, translate_through
 
 
 def bool(odds: float = 50.0) -> py.bool:
@@ -113,6 +114,7 @@ def poly(
     min_terms: py.int = 1,
     max_terms: py.int | None = None,
     coeff_factory: Callable[[], SympyValue | py.int] | None = None,
+    y_intercept: SympyEquiv | None = None,
 ) -> SympyValue:
     """Build a random sparse polynomial in ``of``.
 
@@ -170,7 +172,15 @@ def poly(
         term_degs = random.sample(tuple(range(min_degree, max_degree + 1)), k=term_ct)
 
     term_degs.sort(reverse=True)
-    return sum(coeff_factory() * x**d for d in term_degs)  # type: ignore
+    out = sum(coeff_factory() * x**d for d in term_degs)  # type: ignore
+
+    if isinstance(out, py.int):
+        return y_intercept if y_intercept is not None else out  # type: ignore
+
+    if y_intercept is not None:
+        out = translate_through(out, x=0, y=y_intercept)
+
+    return out
 
 
 def poly_(
@@ -249,16 +259,14 @@ def poly_roots(
                 root_factory() for _ in range(max(0, degree - len(known_roots)))
             )
 
-    out = sympy.Integer(1)
+    out: SympyValue = sympy.Integer(1)
     for r in roots:
         out *= x - r  # type: ignore
 
-    scaling_factor = (
-        1 if y_intercept is None else y_intercept / float(sympy.prod(roots))
-    )
-    if len(roots) % 2 == 1:
-        scaling_factor *= -1
-    out *= scaling_factor
+    if y_intercept is not None:
+        if any(r == 0 for r in roots):
+            raise ZeroDivisionError
+        out = scale_through(out, x=0, y=y_intercept)
 
     if expand:
         out = sympy.expand(out)
