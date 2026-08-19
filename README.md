@@ -18,7 +18,12 @@ Import from course `serverFilesCourse` (available in every question in the cours
 ```python
 from plutil import award_partial_credit, eval_at, rand, rule
 from plutil.calculus import integrate, award_missing_constant_credit
-from plutil.functions import scale_through, scale_through_, translate_through_
+from plutil.functions import (
+    scale_through,
+    scale_through_,
+    translate_through,
+    translate_through_,
+)
 ```
 
 ---
@@ -32,7 +37,7 @@ Check symbolic equality after simplification (`simplify(left - right) == 0`).
 ```python
 from plutil import eq
 
-eq("x + 1", "1 + x")  # True
+eq("x + 1", "1 + x")  # -> True
 ```
 
 ### `getrec(data, *keys, default=None) -> Any`
@@ -46,7 +51,7 @@ Set a nested value, creating intermediate dicts as needed.
 ```python
 from plutil import setrec
 
-setrec(data, "partial_scores", "f", v={"score": 0.8})
+setrec(data, "partial_scores", "f", v={"score": 0.8})  # -> {"score": 0.8}
 ```
 
 ### `award_partial_credit(lens, *rules, ...) -> bool`
@@ -143,47 +148,47 @@ Helpers for evaluating and transforming symbolic functions.
 
 ### `eval_at(f, **bindings) -> Expr`
 
-Substitute values into `f` (string, number, or SymPy) and simplify. Pass `symbol=None` to leave a symbol free in the result.
+Substitute values into `f` (string, number, or SymPy) and simplify.
 
 ```python
 from plutil import eval_at
 
-eval_at("x + y", x=2, y=None)  # 2 + y
-eval_at("4 - t/2 + t^2/10", t=8)
+eval_at("x + y", x=2)  # -> y + 2
+eval_at("4 - t/2 + t^2/10", t=8)  # -> 32/5
 ```
 
-### `translate_through_(*, y0_name="y", **bindings)`
+### `translate_through(f, *, y0_name="y", **bindings)` and `scale_through(f, *, y0_name="y", **bindings)`
 
-Build a vertical-shift transformation so a function passes through a given point. Bind all input coordinates; the output coordinate is the binding named `y0_name` (default `y`).
+Transform a function so it passes through a given point. `translate_through`
+adds a vertical shift, while `scale_through` multiplies the function by a
+constant. Bind all input coordinates; the output coordinate is the binding
+named `y0_name` (default `y`).
 
 ```python
-from plutil.functions import translate_through_
+from sympy import symbols
+from plutil.functions import scale_through, translate_through
 
-shift = translate_through_(x=0, y=2)  # f -> f shifted so f(0) = 2
-g = shift(x**2)  # x**2 + 2
+x, y = symbols("x y")
+translate_through(x**2, x=0, y=2)  # -> x**2 + 2
+scale_through(x**2 + 1, x=0, y=3)  # -> 3*x**2 + 3
+
+# Use another output name when y is an input variable.
+translate_through(x + y, y0_name="z", x=1, y=2, z=5)  # -> x + y + 2
 ```
 
-### `scale_through(f, *, y0_name="y", **bindings)`
+### `translate_through_(*, y0_name="y", **bindings)` and `scale_through_(*, y0_name="y", **bindings)`
 
-Scale a function vertically so it passes through a given point. Bind all input
-coordinates; the output coordinate is the binding named `y0_name` (default
-`y`).
-
-```python
-from sympy import Symbol
-from plutil.functions import scale_through
-
-x = Symbol("x")
-g = scale_through(x**2 + 1, x=0, y=3)  # 3*x**2 + 3
-```
-
-Use `scale_through_` to build a reusable transformation:
+The trailing-underscore forms build reusable transformations with the point
+bindings supplied in advance.
 
 ```python
-from plutil.functions import scale_through_
+from plutil.functions import scale_through_, translate_through_
 
+shift = translate_through_(x=0, y=2)
 scale = scale_through_(x=0, y=3)
-g = scale(x**2 + 1)  # 3*x**2 + 3
+
+shift(x**2)  # -> x**2 + 2
+scale(x**2 + 1)  # -> 3*x**2 + 3
 ```
 
 ---
@@ -197,7 +202,7 @@ Symbolic derivative of `f` with respect to symbol `d`.
 ```python
 from plutil.calculus import derivative
 
-derivative("x^3 + 2*x", d="x")
+derivative("x^3 + 2*x", d="x")  # -> 3*x**2 + 2
 ```
 
 ### `integrate(f, variables=(), *, d, C="C", bounds=None, known_antideriv_point=None) -> Expr`
@@ -214,19 +219,16 @@ Integrate `f` with respect to `d`.
 from plutil.calculus import integrate
 from plutil import eval_at
 
-# Indefinite: x^2/2 + C
-integrate("x", d="x")
+integrate("x", d="x")  # -> C + x**2/2
 
-# Definite from 0 to 1
-integrate("x", d="x", bounds=(0, 1))
+integrate("x", d="x", bounds=(0, 1))  # -> 1/2
 
-# Initial condition: antiderivative with F(0) = 5
-integrate("2*x", d="x", known_antideriv_point=(0, 5))
+integrate("2*x", d="x", known_antideriv_point=(0, 5))  # -> x**2 + 5
 
 # Chain integrals in generate()
 v = integrate("4 - t/2 + t^2/10", d="t", known_antideriv_point=(0, 0))
 s = integrate(v, d="t", known_antideriv_point=(0, 0))
-distance = eval_at(s, t=8) - eval_at(s, t=0)
+distance = eval_at(s, t=8) - eval_at(s, t=0)  # -> 1792/15
 ```
 
 ### `award_missing_constant_credit(lens, C="C", partial_score=0.8, feedback=DEFAULT_FEEDBACK) -> bool`
