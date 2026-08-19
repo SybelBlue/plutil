@@ -65,14 +65,15 @@ class DuplicateAnswersName(PlMagicError):
             rf"(?m)^(?P<line>[^\r\n]*\banswers-name\s*=\s*"
             rf"(?P<quote>['\"]){re.escape(self.name)}(?P=quote)[^\r\n]*)$"
         )
+        answer_setters = tuple(answer_setter.finditer(source))
 
-        def shown_line(lineno: int) -> str:
-            if not 1 <= lineno <= len(lines):
-                return f"\t{lineno:2d} | ...answers-name={self.name!r}..."
-            offset = sum(map(len, lines[: lineno - 1]))
-            if match := answer_setter.search(source, offset):
+        def shown_line(lineno: int, occurrence: int) -> str:
+            if occurrence < len(answer_setters):
+                match = answer_setters[occurrence]
                 lineno = source.count("\n", 0, match.start()) + 1
                 line = match["line"].expandtabs(2)
+            elif not 1 <= lineno <= len(lines):
+                return f"\t{lineno:2d} | ...answers-name={self.name!r}..."
             else:
                 line = lines[lineno - 1].rstrip("\r\n").expandtabs(2)
             out = f"\t{lineno:2d} | {line}"
@@ -83,8 +84,8 @@ class DuplicateAnswersName(PlMagicError):
         return (
             f"{self.prefix()}: the question.html file contains two elements with answers-name={self.name!r}:\n"
             f"Both in {trimmed}\n"
-            f"{shown_line(self.first_lineno)}\n"
-            f"{shown_line(self.second_lineno)}"
+            f"{shown_line(self.first_lineno, 0)}\n"
+            f"{shown_line(self.second_lineno, 1)}"
         )
 
 
