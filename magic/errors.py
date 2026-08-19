@@ -1,9 +1,12 @@
 import abc
 import textwrap
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 import prairielearn as pl
+
+from plutil.common import _trim_path_to_local_course
 
 
 def _format_section(label: str, content: str) -> str:
@@ -14,6 +17,43 @@ def _format_section(label: str, content: str) -> str:
     if separator:
         section += f"\n{textwrap.indent(remainder, indent * 2)}"
     return section
+
+
+def _format_source_line(
+    source: str,
+    lineno: int,
+    highlighted_text: str,
+    fallback: str,
+    *,
+    predecessor_snippet: str | None = None,
+    clean_predecessor: Callable[[str], str] | None = None,
+) -> str:
+    """Format a source line, with an optional cleaned predecessor for context."""
+    lines = source.splitlines()
+    if not 1 <= lineno <= len(lines):
+        line = fallback
+    else:
+        line = lines[lineno - 1].expandtabs(2)
+
+    out = f"{lineno:2d} | {line}"
+    if (idx := line.find(highlighted_text)) >= 0:
+        out += f"\n{' ' * (5 + idx)}^"
+
+    if predecessor_snippet is not None and predecessor_snippet not in line:
+        predecessor = next(
+            (
+                (index, candidate)
+                for index in range(min(lineno - 1, len(lines)) - 1, -1, -1)
+                if predecessor_snippet in (candidate := lines[index])
+            ),
+            None,
+        )
+        if predecessor is not None:
+            index, predecessor_line = predecessor
+            if clean_predecessor is not None:
+                predecessor_line = clean_predecessor(predecessor_line)
+            out = f"{index + 1:2d} | {predecessor_line}\n{out}"
+    return out
 
 
 @dataclass(slots=True)
@@ -54,7 +94,8 @@ class MissingPlFileError(PlMagicError):
     missing: Path
 
     def cause(self) -> str:
-        return f"there is no corresponding {self.missing.name} file in {self.missing.parent}"
+        trimmed = _trim_path_to_local_course(self.missing)
+        return f"there is no corresponding {trimmed.name} file in {trimmed.parent}/"
 
     def hint(self) -> str:
         return f"run this command to make the file:\ntouch {self.missing}"
@@ -72,15 +113,11 @@ class DuplicateAnswersName(PlMagicError):
     def cause(self) -> str:
         import re
 
-        from plutil.common import _trim_path_to_local_course
-
         trimmed_path = _trim_path_to_local_course(self.question_html)
         try:
             source = self.question_html.read_text()
-            lines = source.splitlines(keepends=True)
         except OSError:
             source = ""
-            lines = []
 
         answer_setter = re.compile(
             rf"(?m)^(?P<line>[^\r\n]*\banswers-name\s*=\s*"
@@ -89,26 +126,24 @@ class DuplicateAnswersName(PlMagicError):
         answer_setters = tuple(answer_setter.finditer(source))
 
         def shown_line(lineno: int, occurrence: int) -> str:
+            tag_name: str | None = None
             if occurrence < len(answer_setters):
                 match = answer_setters[occurrence]
                 lineno = source.count("\n", 0, match.start()) + 1
-                line = match["line"].expandtabs(2)
-                tag_context = ""
                 tag_start = source.rfind("<", 0, match.start())
                 if tag_start >= 0 and ">" not in source[tag_start : match.start()]:  # noqa: SIM102
                     if tag_match := re.match(r"<(?P<tag>[\w-]+)\b", source[tag_start:]):
-                        tag_lineno = source.count("\n", 0, tag_start) + 1
-                        if tag_lineno != lineno:
-                            tag_context = f"{tag_lineno:2d} | <{tag_match['tag']} ...\n"
-            elif not 1 <= lineno <= len(lines):
-                return f"{lineno:2d} | ...answers-name={self.name!r}..."
-            else:
-                line = lines[lineno - 1].rstrip("\r\n").expandtabs(2)
-                tag_context = ""
-            out = f"{lineno:2d} | {line}"
-            if (idx := line.find("answers-name")) >= 0:
-                out += f"\n{' ' * (5 + idx)}^"
-            return tag_context + out
+                        tag_name = tag_match["tag"]
+            return _format_source_line(
+                source,
+                lineno,
+                "answers-name",
+                f"...answers-name={self.name!r}...",
+                predecessor_snippet=f"<{tag_name}" if tag_name else None,
+                clean_predecessor=(
+                    (lambda _line: f"<{tag_name} ...") if tag_name else None
+                ),
+            )
 
         return (
             f"the question contains two elements with answers-name={self.name!r}:\n"
@@ -140,15 +175,20 @@ class BadPositionalArgError(InvalidMagicFunctionError):
     """Report an unsupported positional magic-function parameter."""
 
     arg_name: str
+    arg_type: object | None = None
 
     def cause(self) -> str:
         return f"it has a positional argument `{self.arg_name}`"
 
     def hint(self) -> str:
+        annotation = ""
+        if self.arg_type is not None:
+            type_name = getattr(self.arg_type, "__name__", str(self.arg_type))
+            annotation = f": {type_name}"
         return (
             "the only positional arg can be `data`, change the signature to match one of:\n"
-            f"- `{self.function_name}(..., *, {self.arg_name}, ...)`\n"
-            f"- `{self.function_name}(data, *, ...)`"
+            f"- `{self.function_name}(*, {self.arg_name}{annotation}, ...)`\n"
+            f"- `{self.function_name}(data, *, {self.arg_name}{annotation}, ...)`"
         )
 
 
@@ -175,9 +215,28 @@ class UnknownAnswersNameError(InvalidMagicFunctionError):
 
     arg_name: str
     valid_names: tuple[str, ...]
+    source_path: Path | None = None
+    lineno: int | None = None
 
     def cause(self) -> str:
-        return f"`{self.arg_name}` is not a valid answers-name"
+        cause = f"`{self.arg_name}` is not a valid answers-name"
+        if self.source_path is None or self.lineno is None:
+            return cause
+        try:
+            source = self.source_path.read_text()
+        except OSError:
+            source = ""
+        return (
+            f'{cause}:\nIn "{_trim_path_to_local_course(self.source_path)}":\n'
+            + _format_source_line(
+                source,
+                self.lineno,
+                self.arg_name,
+                self.arg_name,
+                predecessor_snippet=f"def {self.function_name}(",
+                clean_predecessor=lambda line: f"{line.rstrip()}...",
+            )
+        )
 
     def hint(self) -> str | None:
         import difflib
@@ -200,7 +259,7 @@ class MissingCorrectAnswer(InvalidQuestionDataError):
     html_path: Path
 
     def cause(self) -> str:
-        return f"`{self.answers_name}`.correct_answer is missing a value "
+        return f"`{self.answers_name}.correct_answer` is missing a value "
 
     def hint(self) -> str:
-        return f"set the value in {self.function_name} or in {self.html_path}"
+        return f"set the value in {self.function_name} or in {_trim_path_to_local_course(self.html_path)}"

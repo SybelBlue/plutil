@@ -11,6 +11,7 @@ from pyfakefs.fake_filesystem import FakeFilesystem
 from plutil.lenses import Data, Question, SympyQuestion
 from plutil.magic.decorator import _snakecase, plmagic
 from plutil.magic.errors import (
+    BadPositionalArgError,
     DuplicateAnswersName,
     HasVariadicArgsError,
     MissingCorrectAnswer,
@@ -343,7 +344,7 @@ def test_plmagic_requires_question_html_next_to_server(fs: FakeFilesystem) -> No
 def test_plmagic_rejects_parameter_without_matching_answer_name(
     fs: FakeFilesystem,
 ) -> None:
-    with pytest.raises(UnknownAnswersNameError):
+    with pytest.raises(UnknownAnswersNameError) as exc_info:
         load_server(
             fs,
             f"""
@@ -351,11 +352,41 @@ def test_plmagic_rejects_parameter_without_matching_answer_name(
             from plutil.magic import {plmagic.__name__}
 
             @{plmagic.__name__}
-            def generate(*, unknown: {Question.__name__}) -> None:
+            def generate(
+                *,
+                unknown: {Question.__name__},
+            ) -> None:
                 unknown.correct_answer = 1
             """,
             '<pl-number-input answers-name="known"></pl-number-input>',
         )
+
+    message = str(exc_info.value)
+    assert "def generate(..." in message
+    assert "unknown: Question," in message
+    assert "^" in message
+
+
+def test_bad_positional_arg_hint_preserves_type_annotation(
+    fs: FakeFilesystem,
+) -> None:
+    with pytest.raises(BadPositionalArgError) as exc_info:
+        load_server(
+            fs,
+            f"""
+            from plutil.lenses import {Question.__name__}
+            from plutil.magic import {plmagic.__name__}
+
+            @{plmagic.__name__}
+            def generate(answer: {Question.__name__}) -> None:
+                pass
+            """,
+            '<pl-number-input answers-name="answer"></pl-number-input>',
+        )
+
+    hint = exc_info.value.hint()
+    assert "generate(*, answer: Question, ...)" in hint
+    assert "generate(data, *, answer: Question, ...)" in hint
 
 
 def test_plmagic_rejects_variadic_parameters(fs: FakeFilesystem) -> None:

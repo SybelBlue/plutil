@@ -1,3 +1,4 @@
+import ast
 import inspect
 import re
 from collections.abc import Callable
@@ -174,7 +175,11 @@ class _PlMagic[**P]:
 
             if param.kind != inspect._ParameterKind.KEYWORD_ONLY:
                 if p_name not in ("data",):
-                    raise BadPositionalArgError(self.f_name, p_name)
+                    raise BadPositionalArgError(
+                        self.f_name,
+                        p_name,
+                        None if p_type is inspect.Parameter.empty else p_type,
+                    )
 
                 if (
                     p_type is not inspect.Parameter.empty
@@ -195,8 +200,39 @@ class _PlMagic[**P]:
                 raise ArgumentTypeError(self.f_name, p_name, Question)
 
             if p_name not in normalized_tag_dict:
+                source_path = Path(inspect.getfile(self.f)).resolve()
+                parameter_lineno = self.f.__code__.co_firstlineno
+                try:
+                    tree = ast.parse(source_path.read_text())
+                    function_node = next(
+                        node
+                        for node in ast.walk(tree)
+                        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                        and node.name == self.f_name
+                        and min(
+                            (decorator.lineno for decorator in node.decorator_list),
+                            default=node.lineno,
+                        )
+                        == self.f.__code__.co_firstlineno
+                    )
+                    parameter = next(
+                        arg
+                        for arg in (
+                            *function_node.args.posonlyargs,
+                            *function_node.args.args,
+                            *function_node.args.kwonlyargs,
+                        )
+                        if arg.arg == p_name
+                    )
+                    parameter_lineno = parameter.lineno
+                except (OSError, SyntaxError, StopIteration):
+                    pass
                 raise UnknownAnswersNameError(
-                    self.f_name, p_name, tuple(normalized_tag_dict.keys())
+                    self.f_name,
+                    p_name,
+                    tuple(normalized_tag_dict.keys()),
+                    source_path,
+                    parameter_lineno,
                 )
 
             answers_name, element_data = normalized_tag_dict[p_name]
