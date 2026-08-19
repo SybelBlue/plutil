@@ -52,14 +52,19 @@ class DuplicateAnswersName(PlMagicError):
         from plutil.common import _trim_path_to_local_course
 
         trimmed = _trim_path_to_local_course(self.question_html)
-        lines = self.question_html.read_text().splitlines()
+        try:
+            lines = self.question_html.read_text().splitlines()
+        except OSError:
+            lines = []
 
         def shown_line(lineno: int) -> str:
+            if not 1 <= lineno <= len(lines):
+                return f"\t{lineno:2d} | ...answers-name={self.name!r}..."
             line = lines[lineno - 1]
-            return (
-                f"\t{lineno:2d} |  {line}\n"
-                f"\t{' ' * (6 + line.index('answers-name'))}^"
-            )
+            out = f"\t{lineno:2d} | {line}"
+            if (idx := line.find("answers-name")) >= 0:
+                out += f"\n\t{' ' * (5 + idx)}^"
+            return out
 
         return (
             f"{self.prefix()}: the question.html file contains two elements with answers-name={self.name!r}:\n"

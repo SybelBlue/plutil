@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from itertools import count
+from pathlib import Path
 from textwrap import dedent
 from types import ModuleType
 
@@ -229,6 +230,18 @@ def test_plmagic_rejects_duplicate_answer_names(fs: FakeFilesystem) -> None:
             </pl-question-panel>
             """,
         )
+
+
+@pytest.mark.parametrize("file_exists", [False, True])
+def test_duplicate_answers_name_str_handles_unavailable_source(
+    fs: FakeFilesystem, file_exists: bool
+) -> None:
+    question_html = Path("/course/questions/question/question.html")
+    if file_exists:
+        fs.create_file(question_html, contents="")
+    error = DuplicateAnswersName("generate", question_html, "answer", 1, 2)
+
+    assert isinstance(str(error), str)
 
 
 def test_plmagic_requires_question_html_next_to_server(fs: FakeFilesystem) -> None:
