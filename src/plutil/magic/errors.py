@@ -1,8 +1,19 @@
 import abc
+import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 
 import prairielearn as pl
+
+
+def _format_section(label: str, content: str) -> str:
+    """Indent a section label once and its continuation lines twice."""
+    indent = "  "
+    first, separator, remainder = content.partition("\n")
+    section = f"{indent}{label}: {first}"
+    if separator:
+        section += f"\n{textwrap.indent(remainder, indent * 2)}"
+    return section
 
 
 @dataclass(slots=True)
@@ -20,13 +31,13 @@ class PlMagicError(Exception, abc.ABC):
         return f"Plmagic cannot parse `{self.function_name}`"
 
     def __str__(self) -> str:
-        message = f"{self.prefix()}\n\tdetails: {self.details()}"
+        message = f"{self.prefix()}\n{_format_section('cause', self.cause())}"
         if hint := self.hint():
-            message += f"\n\thint: {hint}"
+            message += f"\n{_format_section('hint', hint)}"
         return message
 
     @abc.abstractmethod
-    def details(self) -> str:
+    def cause(self) -> str:
         """Return the error-specific portion of the message."""
         raise NotImplementedError
 
@@ -42,11 +53,11 @@ class MissingPlFileError(PlMagicError):
     server_py: Path
     missing: Path
 
-    def details(self) -> str:
+    def cause(self) -> str:
         return f"there is no corresponding {self.missing.name} file in {self.missing.parent}"
 
     def hint(self) -> str:
-        return f"run this command to make the file:\n\t\ttouch {self.missing}"
+        return f"run this command to make the file:\ntouch {self.missing}"
 
 
 @dataclass(slots=True)
@@ -58,7 +69,7 @@ class DuplicateAnswersName(PlMagicError):
     first_lineno: int
     second_lineno: int
 
-    def details(self) -> str:
+    def cause(self) -> str:
         import re
 
         from plutil.common import _trim_path_to_local_course
@@ -88,17 +99,15 @@ class DuplicateAnswersName(PlMagicError):
                     if tag_match := re.match(r"<(?P<tag>[\w-]+)\b", source[tag_start:]):
                         tag_lineno = source.count("\n", 0, tag_start) + 1
                         if tag_lineno != lineno:
-                            tag_context = (
-                                f"\t{tag_lineno:2d} | <{tag_match['tag']} ...\n"
-                            )
+                            tag_context = f"{tag_lineno:2d} | <{tag_match['tag']} ...\n"
             elif not 1 <= lineno <= len(lines):
-                return f"\t{lineno:2d} | ...answers-name={self.name!r}..."
+                return f"{lineno:2d} | ...answers-name={self.name!r}..."
             else:
                 line = lines[lineno - 1].rstrip("\r\n").expandtabs(2)
                 tag_context = ""
-            out = f"\t{lineno:2d} | {line}"
+            out = f"{lineno:2d} | {line}"
             if (idx := line.find("answers-name")) >= 0:
-                out += f"\n\t{' ' * (5 + idx)}^"
+                out += f"\n{' ' * (5 + idx)}^"
             return tag_context + out
 
         return (
@@ -119,7 +128,7 @@ class HasVariadicArgsError(InvalidMagicFunctionError):
 
     args_name: str
 
-    def details(self) -> str:
+    def cause(self) -> str:
         return f"it has a variadic argument `*{self.args_name}`"
 
     def hint(self) -> str:
@@ -132,14 +141,14 @@ class BadPositionalArgError(InvalidMagicFunctionError):
 
     arg_name: str
 
-    def details(self) -> str:
+    def cause(self) -> str:
         return f"it has a positional argument `{self.arg_name}`"
 
     def hint(self) -> str:
         return (
             "the only positional arg can be `data`, change the signature to match one of:\n"
-            f"\t- `{self.function_name}(..., *, {self.arg_name}, ...)`\n"
-            f"\t- `{self.function_name}(data, *, ...)`"
+            f"- `{self.function_name}(..., *, {self.arg_name}, ...)`\n"
+            f"- `{self.function_name}(data, *, ...)`"
         )
 
 
@@ -150,13 +159,13 @@ class ArgumentTypeError(InvalidMagicFunctionError):
     arg_name: str
     required_type: type
 
-    def details(self) -> str:
+    def cause(self) -> str:
         return f"keyword argument `{self.arg_name}` must be a subclass of `{self.required_type.__qualname__}`"
 
     def hint(self) -> str:
         return (
             "change the signature to match:\n"
-            f"\t\t`{self.function_name}(*, ..., {self.arg_name}: {self.required_type.__name__}, ...)`"
+            f"`{self.function_name}(*, ..., {self.arg_name}: {self.required_type.__name__}, ...)`"
         )
 
 
@@ -167,7 +176,7 @@ class UnknownAnswersNameError(InvalidMagicFunctionError):
     arg_name: str
     valid_names: tuple[str, ...]
 
-    def details(self) -> str:
+    def cause(self) -> str:
         return f"`{self.arg_name}` is not a valid answers-name"
 
     def hint(self) -> str | None:
@@ -190,8 +199,8 @@ class MissingCorrectAnswer(InvalidQuestionDataError):
     answers_name: str
     html_path: Path
 
-    def details(self) -> str:
-        return f"data['correct_answers'] is missing an entry for `{self.answers_name}`"
+    def cause(self) -> str:
+        return f"`{self.answers_name}`.correct_answer is missing a value "
 
     def hint(self) -> str:
-        return f"set this in {self.function_name} or in {self.html_path}"
+        return f"set the value in {self.function_name} or in {self.html_path}"

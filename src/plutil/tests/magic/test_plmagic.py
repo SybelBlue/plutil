@@ -263,10 +263,10 @@ def test_duplicate_answers_name_str_shows_the_reported_lines(
 
     message = str(error)
 
-    assert "\t 2 | <pl-number-input ..." in message
-    assert '\t 3 |   answers-name="answer"' in message
-    assert "\t 6 | <pl-string-input ..." in message
-    assert '\t 7 |   answers-name="answer"' in message
+    assert "     2 | <pl-number-input ..." in message
+    assert '     3 |   answers-name="answer"' in message
+    assert "     6 | <pl-string-input ..." in message
+    assert '     7 |   answers-name="answer"' in message
     assert "before" not in message
     assert "between" not in message
     assert "after" not in message
@@ -319,10 +319,10 @@ def test_duplicate_answers_name_str_uses_source_lines_not_parser_lines(
 
     message = str(error)
 
-    assert "\t 6 | <pl-symbolic-input ..." in message
-    assert '\t 7 |     answers-name="u"' in message
-    assert "\t13 | <pl-symbolic-input ..." in message
-    assert '\t14 |     answers-name="u"' in message
+    assert "     6 | <pl-symbolic-input ..." in message
+    assert '     7 |     answers-name="u"' in message
+    assert "    13 | <pl-symbolic-input ..." in message
+    assert '    14 |     answers-name="u"' in message
     assert 'answers-name="integral"' not in message
 
 
