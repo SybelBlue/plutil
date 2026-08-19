@@ -72,14 +72,24 @@ class DuplicateAnswersName(PlMagicError):
                 match = answer_setters[occurrence]
                 lineno = source.count("\n", 0, match.start()) + 1
                 line = match["line"].expandtabs(2)
+                tag_context = ""
+                tag_start = source.rfind("<", 0, match.start())
+                if tag_start >= 0 and ">" not in source[tag_start : match.start()]:
+                    if tag_match := re.match(r"<(?P<tag>[\w-]+)\b", source[tag_start:]):
+                        tag_lineno = source.count("\n", 0, tag_start) + 1
+                        if tag_lineno != lineno:
+                            tag_context = (
+                                f"\t{tag_lineno:2d} | <{tag_match['tag']} ...\n"
+                            )
             elif not 1 <= lineno <= len(lines):
                 return f"\t{lineno:2d} | ...answers-name={self.name!r}..."
             else:
                 line = lines[lineno - 1].rstrip("\r\n").expandtabs(2)
+                tag_context = ""
             out = f"\t{lineno:2d} | {line}"
             if (idx := line.find("answers-name")) >= 0:
                 out += f"\n\t{' ' * (5 + idx)}^"
-            return out
+            return tag_context + out
 
         return (
             f"{self.prefix()}: the question.html file contains two elements with answers-name={self.name!r}:\n"
