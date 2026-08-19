@@ -1,7 +1,7 @@
 """Random-value helpers for building parameterized math questions. Meant to be imported as a module."""
 
 import builtins as py
-import random
+import random as pyrand
 from collections.abc import Callable, Sequence
 from math import prod
 
@@ -13,7 +13,7 @@ from .functions import scale_through, translate_through
 
 def bool(odds: float = 50.0) -> py.bool:
     """Returns True with ``odds``% chance"""
-    return random.random() * 100.0 < clamp(odds, min=0.0, max=100.0)
+    return pyrand.random() * 100.0 < clamp(odds, min=0.0, max=100.0)
 
 
 def bool_(odds: float = 50.0) -> Callable[[], py.bool]:
@@ -62,17 +62,17 @@ def int(
     assert step != 0
     assert low <= high
 
-    sign = random.choice((-1, 1)) if randsign else 1
+    sign = pyrand.choice((-1, 1)) if randsign else 1
     if exclude_if or exclude:
         opts = tuple(
             nr
             for nr in range(low, high + 1, step)
             if nr not in exclude and not (exclude_if and exclude_if(nr))
         )
-        return sign * random.choice(opts)
+        return sign * pyrand.choice(opts)
 
     lim = (high - low) // step
-    base = random.randint(0, lim) * step + low if lim else low
+    base = pyrand.randint(0, lim) * step + low if lim else low
     return sign * base
 
 
@@ -158,18 +158,18 @@ def poly(
     coeff_factory = coeff_factory or (lambda: 1)
 
     x = var_to_symbol(of)
-    term_ct = random.randint(min_terms, max_terms)
+    term_ct = pyrand.randint(min_terms, max_terms)
 
     if max_degree is None:
         mid_term_ct = term_ct - 1
         term_degs = (
-            random.sample(tuple(range(min_degree, degree)), k=mid_term_ct)
+            pyrand.sample(tuple(range(min_degree, degree)), k=mid_term_ct)
             if mid_term_ct
             else []
         )
         term_degs.append(degree)
     else:
-        term_degs = random.sample(tuple(range(min_degree, max_degree + 1)), k=term_ct)
+        term_degs = pyrand.sample(tuple(range(min_degree, max_degree + 1)), k=term_ct)
 
     term_degs.sort(reverse=True)
     out = sum(coeff_factory() * x**d for d in term_degs)  # type: ignore
@@ -352,7 +352,7 @@ def partitions[T](
     ]
 
     vs = list(values)
-    random.shuffle(vs)
+    pyrand.shuffle(vs)
 
     return tuple(tuple(vs.pop() for _ in range(s)) for s in final_sizes)
 

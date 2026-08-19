@@ -236,6 +236,32 @@ def test_latex_can_render_log_with_explicit_base_and_display_fractions():
     assert rendered == r"\log_{2}{\left(\dfrac{x}{2} \right)}"
 
 
+def test_latex_dispatches_limits_to_lim_latex(monkeypatch: pytest.MonkeyPatch):
+    limit = sympy.Limit(sympy.log(x), x, 2, dir="+")
+    calls = []
+
+    def fake_lim_latex(**kwargs):
+        calls.append(kwargs)
+        return "rendered limit"
+
+    monkeypatch.setattr(common_mod, "lim_latex", fake_lim_latex)
+
+    rendered = latex(limit, log_base=2, reparse=True, displaystyle=False)
+
+    assert rendered == "rendered limit"
+    assert calls == [
+        {
+            "body": sympy.log(x),
+            "var": x,
+            "val": sympy.Integer(2),
+            "dir": sympy.Symbol("+"),
+            "log_base": 2,
+            "reparse": True,
+            "displaystyle": False,
+        }
+    ]
+
+
 def test_lim_latex_renders_two_sided_limit():
     rendered = lim_latex(var=x, val=3, body=x**2)
 

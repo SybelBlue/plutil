@@ -16,7 +16,7 @@ def test_randint_includes_bounds_and_respects_step(
         randint_calls.append((low, high))
         return high
 
-    monkeypatch.setattr(rand.random, "randint", choose_upper_bound)
+    monkeypatch.setattr(rand.pyrand, "randint", choose_upper_bound)
 
     assert rand.int(2, 11, step=3) == 11
     assert randint_calls == [(0, 3)]
@@ -29,7 +29,7 @@ def test_randint_filters_excluded_values(monkeypatch: pytest.MonkeyPatch) -> Non
         choices.append(tuple(options))
         return options[-1]
 
-    monkeypatch.setattr(rand.random, "choice", choose_last)
+    monkeypatch.setattr(rand.pyrand, "choice", choose_last)
 
     result = rand.int(1, 9, step=2, exclude=(3,), exclude_if=lambda value: value > 7)
 
@@ -40,8 +40,8 @@ def test_randint_filters_excluded_values(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_randint_applies_random_sign_after_sampling(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(rand.random, "choice", lambda options: options[0])
-    monkeypatch.setattr(rand.random, "randint", lambda low, high: high)
+    monkeypatch.setattr(rand.pyrand, "choice", lambda options: options[0])
+    monkeypatch.setattr(rand.pyrand, "randint", lambda low, high: high)
 
     assert rand.int(2, 4, randsign=True) == -4
 
@@ -49,7 +49,7 @@ def test_randint_applies_random_sign_after_sampling(
 def test_randint_accepts_descending_bounds_with_negative_step(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(rand.random, "randint", lambda low, high: high)
+    monkeypatch.setattr(rand.pyrand, "randint", lambda low, high: high)
 
     assert rand.int(5, 1, step=-2) == 5
 
@@ -101,9 +101,9 @@ def test_randpoly_builds_requested_degree_and_terms(
 ) -> None:
     x = sympy.Symbol("x")
     coefficients = iter((2, 3, 4))
-    monkeypatch.setattr(rand.random, "randint", lambda low, high: 3)
+    monkeypatch.setattr(rand.pyrand, "randint", lambda low, high: 3)
     monkeypatch.setattr(
-        rand.random,
+        rand.pyrand,
         "sample",
         lambda population, *, k: [1, 3],
     )
@@ -124,9 +124,9 @@ def test_randpoly_can_sample_degree_below_maximum(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     x = sympy.Symbol("x")
-    monkeypatch.setattr(rand.random, "randint", lambda low, high: 2)
+    monkeypatch.setattr(rand.pyrand, "randint", lambda low, high: 2)
     monkeypatch.setattr(
-        rand.random,
+        rand.pyrand,
         "sample",
         lambda population, *, k: [0, 2],
     )
@@ -258,8 +258,8 @@ def test_randpoly_roots_factory_delays_and_repeats_evaluation(
 def test_randpartitions_samples_ranges_before_splitting_remaining_values(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(rand.random, "shuffle", lambda values: None)
-    monkeypatch.setattr(rand.random, "randint", lambda low, high: low)
+    monkeypatch.setattr(rand.pyrand, "shuffle", lambda values: None)
+    monkeypatch.setattr(rand.pyrand, "randint", lambda low, high: low)
 
     partitions = rand.partitions(
         tuple(range(10)),
@@ -295,7 +295,7 @@ def test_randpartitions_factory_delays_and_repeats_evaluation(
 def test_randcoprimes_default_splits_all_primes_between_two_products(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(rand.random, "shuffle", lambda values: None)
+    monkeypatch.setattr(rand.pyrand, "shuffle", lambda values: None)
 
     assert rand.coprimes((2, 3, 5, 7, 11)) == (385, 6)
 
@@ -303,7 +303,7 @@ def test_randcoprimes_default_splits_all_primes_between_two_products(
 def test_randcoprimes_accepts_sympy_expressions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(rand.random, "shuffle", lambda values: None)
+    monkeypatch.setattr(rand.pyrand, "shuffle", lambda values: None)
     x = sympy.Symbol("x")
 
     products = rand.coprimes((x, x + 1, x + 2))  # type: ignore
