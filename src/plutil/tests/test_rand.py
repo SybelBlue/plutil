@@ -194,7 +194,7 @@ def test_randpoly_roots_combines_known_and_generated_roots() -> None:
         root_factory=lambda: next(generated_roots),
     )
 
-    assert sympy.expand(polynomial) == sympy.expand(-(x + 1) * (x - 2) * (x - 3))  # type: ignore
+    assert sympy.expand(polynomial) == sympy.expand((x + 1) * (x - 2) * (x - 3))  # type: ignore
 
 
 def test_randpoly_roots_truncates_known_roots_to_degree() -> None:

@@ -1,6 +1,6 @@
 # plutil
 
-Utilities for PrairieLearn question `server.py` files: SymPy parsing, nested `data` access, partial credit, calculus helpers, and derived-answer grading.
+Utilities for PrairieLearn question `server.py` files: SymPy parsing, nested `data` access, partial credit, and calculus helpers.
 
 Generate `__plmagic_types__.py` beside every Python file using `@plmagic`
 under a directory (searched recursively):
@@ -18,32 +18,12 @@ Import from course `serverFilesCourse` (available in every question in the cours
 ```python
 from plutil import award_partial_credit, eval_at, rand, rule
 from plutil.calculus import integrate, award_missing_constant_credit
-from plutil.functions import set_answer_based_on_another, translate_through_
+from plutil.functions import scale_through, scale_through_, translate_through_
 ```
 
 ---
 
 ## `common.py`
-
-### `pl_json_to_sympy(value) -> Expr | None`
-
-Parse a PrairieLearn JSON answer (from `submitted_answers` or `pl.to_json(...)`) into a SymPy expression. Returns `None` if parsing fails.
-
-```python
-from plutil import pl_json_to_sympy
-
-expr = pl_json_to_sympy(data["submitted_answers"]["f"])
-```
-
-### `str_to_sympy(raw_expr, variable_names) -> Expr`
-
-Parse a plain string (e.g. from `correct_answers`) into SymPy. `variable_names` lists symbols students may use.
-
-```python
-from plutil import str_to_sympy
-
-f = str_to_sympy("x^2 + 1", ["x"])
-```
 
 ### `eq(left, right) -> bool`
 
@@ -159,7 +139,7 @@ award_partial_credit(
 
 ## `functions.py`
 
-Helpers for questions where one answer is computed from another (e.g. evaluate a student’s function at a point).
+Helpers for evaluating and transforming symbolic functions.
 
 ### `eval_at(f, **bindings) -> Expr`
 
@@ -170,41 +150,6 @@ from plutil import eval_at
 
 eval_at("x + y", x=2, y=None)  # 2 + y
 eval_at("4 - t/2 + t^2/10", t=8)
-```
-
-### `set_answer_based_on_another(data, *, src_answer_name, dest_answer_name, transformation) -> Expr | None`
-
-Read the submission for `src_answer_name`, apply `transformation`, store the result in `correct_answers[dest_answer_name]`. Returns the derived expression, or `None` if the source is missing or unparsable. Useful in `parse()` to expose the expected answer to the client.
-
-```python
-from plutil.functions import eval_at, set_answer_based_on_another
-from math import floor
-
-
-def parse(data):
-    set_answer_based_on_another(
-        data,
-        src_answer_name="p",
-        dest_answer_name="pop",
-        transformation=lambda f: floor(eval_at(f, t=5)),
-    )
-```
-
-### `grade_answer_based_on_another(data, feedback=None, *, src_answer_name, dest_answer_name, transformation) -> bool`
-
-Like `set_answer_based_on_another`, but also scores `dest_answer_name` (0 or 1) by comparing the submission to the derived correct answer. Calls `pl.set_weighted_score_data(data)` when scoring runs.
-
-```python
-from plutil.functions import grade_answer_based_on_another
-
-
-def grade(data):
-    grade_answer_based_on_another(
-        data,
-        src_answer_name="f",
-        dest_answer_name="value_at_a",
-        transformation=lambda f: f.subs(x, 3),
-    )
 ```
 
 ### `translate_through_(*, y0_name="y", **bindings)`
@@ -218,7 +163,28 @@ shift = translate_through_(x=0, y=2)  # f -> f shifted so f(0) = 2
 g = shift(x**2)  # x**2 + 2
 ```
 
-Use as `transformation` in `set_answer_based_on_another` / `grade_answer_based_on_another`.
+### `scale_through(f, *, y0_name="y", **bindings)`
+
+Scale a function vertically so it passes through a given point. Bind all input
+coordinates; the output coordinate is the binding named `y0_name` (default
+`y`).
+
+```python
+from sympy import Symbol
+from plutil.functions import scale_through
+
+x = Symbol("x")
+g = scale_through(x**2 + 1, x=0, y=3)  # 3*x**2 + 3
+```
+
+Use `scale_through_` to build a reusable transformation:
+
+```python
+from plutil.functions import scale_through_
+
+scale = scale_through_(x=0, y=3)
+g = scale(x**2 + 1)  # 3*x**2 + 3
+```
 
 ---
 
