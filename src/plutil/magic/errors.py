@@ -17,11 +17,22 @@ class PlMagicError(Exception, abc.ABC):
 
     def prefix(self):
         """Return the common prefix used by magic error messages."""
-        return f"Plmagic cannot parse {self.function_name}"
+        return f"Plmagic cannot parse `{self.function_name}`"
+
+    def __str__(self) -> str:
+        message = f"{self.prefix()}\n\tdetails: {self.details()}"
+        if hint := self.hint():
+            message += f"\n\thint: {hint}"
+        return message
 
     @abc.abstractmethod
-    def __str__(self) -> str:
+    def details(self) -> str:
+        """Return the error-specific portion of the message."""
         raise NotImplementedError
+
+    def hint(self) -> str | None:
+        """Return an optional hint to append after the error details."""
+        return None
 
 
 @dataclass(slots=True)
@@ -31,12 +42,11 @@ class MissingPlFileError(PlMagicError):
     server_py: Path
     missing: Path
 
-    def __str__(self) -> str:
-        return (
-            f"{self.prefix()}: there is no corresponding {self.missing.name} file in {self.missing.parent}\n"
-            f"\thint: run this command to make the file:"
-            f"\t\ttouch {self.missing}"
-        )
+    def details(self) -> str:
+        return f"there is no corresponding {self.missing.name} file in {self.missing.parent}"
+
+    def hint(self) -> str:
+        return f"run this command to make the file:\n\t\ttouch {self.missing}"
 
 
 @dataclass(slots=True)
@@ -48,12 +58,12 @@ class DuplicateAnswersName(PlMagicError):
     first_lineno: int
     second_lineno: int
 
-    def __str__(self) -> str:
+    def details(self) -> str:
         import re
 
         from plutil.common import _trim_path_to_local_course
 
-        trimmed = _trim_path_to_local_course(self.question_html)
+        trimmed_path = _trim_path_to_local_course(self.question_html)
         try:
             source = self.question_html.read_text()
             lines = source.splitlines(keepends=True)
@@ -74,7 +84,7 @@ class DuplicateAnswersName(PlMagicError):
                 line = match["line"].expandtabs(2)
                 tag_context = ""
                 tag_start = source.rfind("<", 0, match.start())
-                if tag_start >= 0 and ">" not in source[tag_start : match.start()]:
+                if tag_start >= 0 and ">" not in source[tag_start : match.start()]:  # noqa: SIM102
                     if tag_match := re.match(r"<(?P<tag>[\w-]+)\b", source[tag_start:]):
                         tag_lineno = source.count("\n", 0, tag_start) + 1
                         if tag_lineno != lineno:
@@ -92,8 +102,8 @@ class DuplicateAnswersName(PlMagicError):
             return tag_context + out
 
         return (
-            f"{self.prefix()}: the question.html file contains two elements with answers-name={self.name!r}:\n"
-            f"Both in {trimmed}\n"
+            f"the question contains two elements with answers-name={self.name!r}:\n"
+            f'Both in "{trimmed_path}"\n'
             f"{shown_line(self.first_lineno, 0)}\n"
             f"{shown_line(self.second_lineno, 1)}"
         )
@@ -109,11 +119,11 @@ class HasVariadicArgsError(InvalidMagicFunctionError):
 
     args_name: str
 
-    def __str__(self) -> str:
-        return (
-            f"{self.prefix()}: it has a variadic argument `*{self.args_name}`\n"
-            f"\thint: remove `*{self.args_name}`"
-        )
+    def details(self) -> str:
+        return f"it has a variadic argument `*{self.args_name}`"
+
+    def hint(self) -> str:
+        return f"remove `*{self.args_name}`"
 
 
 @dataclass(slots=True)
@@ -122,11 +132,13 @@ class BadPositionalArgError(InvalidMagicFunctionError):
 
     arg_name: str
 
-    def __str__(self) -> str:
+    def details(self) -> str:
+        return f"it has a positional argument `{self.arg_name}`"
+
+    def hint(self) -> str:
         return (
-            f"{self.prefix()}: it has a positional argument `{self.arg_name}`\n"
-            f"\thint: the only positional arg can be `data`, change the signature to match one of:\n"
-            f"\t- `{self.function_name}(..., *, {self.arg_name}, ...)`"
+            "the only positional arg can be `data`, change the signature to match one of:\n"
+            f"\t- `{self.function_name}(..., *, {self.arg_name}, ...)`\n"
             f"\t- `{self.function_name}(data, *, ...)`"
         )
 
@@ -138,10 +150,12 @@ class ArgumentTypeError(InvalidMagicFunctionError):
     arg_name: str
     required_type: type
 
-    def __str__(self) -> str:
+    def details(self) -> str:
+        return f"keyword argument `{self.arg_name}` must be a subclass of `{self.required_type.__qualname__}`"
+
+    def hint(self) -> str:
         return (
-            f"{self.prefix()}: keyword argument `{self.arg_name}` must be a subclass of `{self.required_type.__qualname__}`\n"
-            f"\thint: change the signature to match:\n"
+            "change the signature to match:\n"
             f"\t\t`{self.function_name}(*, ..., {self.arg_name}: {self.required_type.__name__}, ...)`"
         )
 
@@ -153,15 +167,15 @@ class UnknownAnswersNameError(InvalidMagicFunctionError):
     arg_name: str
     valid_names: tuple[str, ...]
 
-    def __str__(self) -> str:
+    def details(self) -> str:
+        return f"`{self.arg_name}` is not a valid answers-name"
+
+    def hint(self) -> str | None:
         import difflib
 
-        hint = ""
         if option := difflib.get_close_matches(self.arg_name, self.valid_names, n=1):
-            close = option[0]
-            hint = f"\n\thint: did you mean `{close}`?"
-
-        return f"{self.prefix()}: `{self.arg_name}` is not a valid answers-name{hint}"
+            return f"did you mean `{option[0]}`?"
+        return None
 
 
 class InvalidQuestionDataError(PlMagicError, ValueError):
@@ -176,8 +190,8 @@ class MissingCorrectAnswer(InvalidQuestionDataError):
     answers_name: str
     html_path: Path
 
-    def __str__(self) -> str:
-        return (
-            f"{self.prefix()}: data['correct_answers'] is missing an entry for `{self.answers_name}`\n"
-            f"\thint: set this in {self.function_name} or in {self.html_path}"
-        )
+    def details(self) -> str:
+        return f"data['correct_answers'] is missing an entry for `{self.answers_name}`"
+
+    def hint(self) -> str:
+        return f"set this in {self.function_name} or in {self.html_path}"
