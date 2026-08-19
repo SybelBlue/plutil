@@ -11,12 +11,12 @@ from pyfakefs.fake_filesystem import FakeFilesystem
 from plutil.lenses import Data, Question, SympyQuestion
 from plutil.magic.decorator import _snakecase, plmagic
 from plutil.magic.errors import (
-    BadPositionalArgError,
+    BadPositionalArg,
     DuplicateAnswersName,
-    HasVariadicArgsError,
+    HasVariadicArgs,
     MissingCorrectAnswer,
-    MissingPlFileError,
-    UnknownAnswersNameError,
+    MissingPlFile,
+    UnknownAnswersName,
 )
 from plutil.tests.helpers import question_data
 
@@ -328,7 +328,7 @@ def test_duplicate_answers_name_str_uses_source_lines_not_parser_lines(
 
 
 def test_plmagic_requires_question_html_next_to_server(fs: FakeFilesystem) -> None:
-    with pytest.raises(MissingPlFileError):
+    with pytest.raises(MissingPlFile):
         load_server(
             fs,
             f"""
@@ -344,7 +344,7 @@ def test_plmagic_requires_question_html_next_to_server(fs: FakeFilesystem) -> No
 def test_plmagic_rejects_parameter_without_matching_answer_name(
     fs: FakeFilesystem,
 ) -> None:
-    with pytest.raises(UnknownAnswersNameError) as exc_info:
+    with pytest.raises(UnknownAnswersName) as exc_info:
         load_server(
             fs,
             f"""
@@ -370,7 +370,7 @@ def test_plmagic_rejects_parameter_without_matching_answer_name(
 def test_bad_positional_arg_hint_preserves_type_annotation(
     fs: FakeFilesystem,
 ) -> None:
-    with pytest.raises(BadPositionalArgError) as exc_info:
+    with pytest.raises(BadPositionalArg) as exc_info:
         load_server(
             fs,
             f"""
@@ -390,7 +390,7 @@ def test_bad_positional_arg_hint_preserves_type_annotation(
 
 
 def test_plmagic_rejects_variadic_parameters(fs: FakeFilesystem) -> None:
-    with pytest.raises(HasVariadicArgsError):
+    with pytest.raises(HasVariadicArgs):
         load_server(
             fs,
             f"""

@@ -47,7 +47,7 @@ class PlSymbolicInputData(PlElementData):
 
     variable_names: tuple[str, ...]
 
-    def build_lens(self, data: pl.QuestionData, answers_name: str) -> BaseQuestion[Any]:
+    def build_lens(self, data: pl.QuestionData, answers_name: str) -> SympyQuestion:
         """Build a symbolic question lens for this element."""
         return SympyQuestion(data, answers_name, variables=self.variable_names)
 
