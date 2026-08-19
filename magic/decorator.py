@@ -2,6 +2,7 @@ import ast
 import inspect
 import re
 from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from functools import partial, wraps
 from pathlib import Path
@@ -43,6 +44,8 @@ type PlMagicFunction[**P] = Callable[P, None]
 
 _html_file_cache: dict[Path, AnswerElementDataDict] = {}
 _SNAKECASE_RE: re.Pattern | None = None
+clip_plmagic_tracebacks = ContextVar("clip_plmagic_tracebacks", default=True)
+"""Whether exceptions raised by magic functions hide Plmagic invocation frames."""
 
 
 def _snakecase(s: str) -> str:
@@ -140,9 +143,20 @@ class _PlMagic[**P]:
 
     def __call__(self, data: pl.QuestionData) -> None:
         """Invoke the decorated function and validate its resulting data."""
-        self.validated_sig.call(self.f, data)
-        if self.validate_question_data and self.f_name in ("generate", "prepare"):
-            self._validate_question_data_output(data)
+        try:
+            self.validated_sig.call(self.f, data)
+            if self.validate_question_data and self.f_name in ("generate", "prepare"):
+                self._validate_question_data_output(data)
+        except BaseException as error:
+            if clip_plmagic_tracebacks.get():
+                traceback = error.__traceback__
+                while (
+                    traceback is not None
+                    and traceback.tb_frame.f_globals.get("__name__") == __name__
+                ):
+                    traceback = traceback.tb_next
+                error.__traceback__ = traceback
+            raise
 
     def _build_paths(self) -> tuple[Path, Path]:
         f_filepath = Path(inspect.getfile(self.f)).resolve()

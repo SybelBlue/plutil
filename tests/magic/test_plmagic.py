@@ -9,7 +9,11 @@ import pytest
 from pyfakefs.fake_filesystem import FakeFilesystem
 
 from plutil.lenses import Data, Question, SympyQuestion
-from plutil.magic.decorator import _snakecase, plmagic
+from plutil.magic.decorator import (
+    _snakecase,
+    clip_plmagic_tracebacks,
+    plmagic,
+)
 from plutil.magic.errors import (
     BadPositionalArg,
     DuplicateAnswersName,
@@ -103,6 +107,55 @@ def test_plmagic_injects_lenses_from_question_html(fs: FakeFilesystem) -> None:
     assert data["params"]["expression_variables"] == ("x", "y")
     assert data["correct_answers"]["number"] == 7
     assert data["correct_answers"]["expression"] == "x + y"
+
+
+def test_plmagic_clips_internal_frames_from_traceback(fs: FakeFilesystem) -> None:
+    server = load_server(
+        fs,
+        f"""
+        from plutil.magic import {plmagic.__name__}
+
+        @{plmagic.__name__}
+        def parse(data) -> None:
+            raise RuntimeError("failed")
+        """,
+        "",
+    )
+
+    token = clip_plmagic_tracebacks.set(True)
+    try:
+        with pytest.raises(RuntimeError) as exc_info:
+            server.parse(question_data())
+    finally:
+        clip_plmagic_tracebacks.reset(token)
+
+    frame_names = [frame.name for frame in exc_info.traceback]
+    assert "__call__" not in frame_names
+    assert "call" not in frame_names
+    assert frame_names[-1] == "parse"
+
+
+def test_internal_tests_do_not_clip_plmagic_tracebacks(
+    fs: FakeFilesystem,
+) -> None:
+    server = load_server(
+        fs,
+        f"""
+        from plutil.magic import {plmagic.__name__}
+
+        @{plmagic.__name__}
+        def parse(data) -> None:
+            raise RuntimeError("failed")
+        """,
+        "",
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        server.parse(question_data())
+
+    frame_names = [frame.name for frame in exc_info.traceback]
+    assert "__call__" in frame_names
+    assert "call" in frame_names
 
 
 def test_plmagic_normalizes_answers_name_for_lens_access_and_editing(
