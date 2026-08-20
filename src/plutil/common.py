@@ -58,6 +58,15 @@ def clamp[T: Comparable](value: T, *, min: T | None = None, max: T | None = None
     return value
 
 
+def sign(value: float | int | sympy.Expr) -> Literal[-1, 0, 1]:  # noqa: PYI041
+    """Returns the sign of value"""
+    if value == 0:
+        return 0
+    if value > 0:  # type: ignore
+        return 1
+    return -1
+
+
 def _pl_json_to_sympy(value: object | None) -> SympyValue | None:
     """Parses PrairieLearn JSON objects into a sympy Expression"""
     if value is None or not psu.is_sympy_json(value):

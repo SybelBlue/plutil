@@ -16,6 +16,7 @@ from plutil.common import (
     latex,
     lim_latex,
     setrec,
+    sign,
     spint,
 )
 from plutil.lenses import Question, SympyQuestion
@@ -298,3 +299,24 @@ def test_latex_renders_base_e_log_as_ln(base):
     rendered = latex("log(x/2)", log_base=base)
 
     assert rendered == r"\ln{\left(\dfrac{x}{2} \right)}"
+
+
+@pytest.mark.parametrize(
+    ("v", "s"),
+    [
+        (-1, -1),
+        (0, 0),
+        (1, 1),
+        (-10, -1),
+        (10, 1),
+        (-10.5, -1),
+        (10.5, 1),
+        (0.0, 0),
+        (+0, 0),
+        (-0, 0),
+        (sympy.oo, 1),
+        (-sympy.oo, -1),
+    ],
+)
+def test_sign(v, s):
+    assert sign(v) == s
