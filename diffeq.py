@@ -99,6 +99,7 @@ def check_implicit_solution(
 
 
 def check_explicit_solution(
+    *,
     student_solution: SympyParsable,
     reference_ode: SympyParsable,
     independent: Variable,
