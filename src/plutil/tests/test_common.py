@@ -18,6 +18,7 @@ from plutil.common import (
     setrec,
     sign,
     spint,
+    truncate_to_significant_digits,
 )
 from plutil.lenses import Question, SympyQuestion
 
@@ -32,6 +33,24 @@ def test_spint_constructs_an_exact_sympy_integer():
 @pytest.mark.parametrize(("value", "expected"), [(3.9, 3), (-3.9, -3)])
 def test_spint_truncates_float_input(value: float, expected: int):
     assert spint(value) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "digits", "expected"),
+    [
+        (0, 3, 0.0),
+        (sympy.Rational(12399, 100), 3, 123.0),
+        (sympy.Rational(12399, 100000), 3, 0.123),
+        (-12.399, 3, -12.3),
+    ],
+)
+def test_truncate_to_significant_digits(value, digits, expected):
+    assert truncate_to_significant_digits(value, digits) == expected
+
+
+def test_truncate_to_significant_digits_requires_positive_digits():
+    with pytest.raises(ValueError, match="digits must be positive"):
+        truncate_to_significant_digits(12.3, 0)
 
 
 def test_pl_json_to_sympy_round_trips_pl_json():
