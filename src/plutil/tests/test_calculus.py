@@ -29,6 +29,12 @@ def test_integrate_indefinite_accepts_symbol():
     assert eq(indefinite, x**2 / 2 + sympy.Symbol("C"))
 
 
+def test_integrate_reciprocal_uses_log_absolute_value():
+    indefinite = integrate(1 / x, d=x)
+
+    assert eq(indefinite, sympy.log(sympy.Abs(x)) + sympy.Symbol("C"))
+
+
 def test_integrate_indefinite_skips_false_constant():
     indefinite = integrate(x, d="x", C=False)
 

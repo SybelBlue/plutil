@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from collections.abc import Callable
 from itertools import pairwise
-from typing import Any, Final, Literal
+from typing import Any, Final, Literal, cast
 
 import sympy
 
@@ -105,7 +105,13 @@ def integrate(
     if bounds is not None:
         return integral(f, (diff_var, *bounds))
 
-    antideriv = integral(f, diff_var)
+    antideriv = cast(
+        sympy.Expr,
+        integral(f, diff_var).replace(
+            sympy.log, lambda x, *args: sympy.log(sympy.Abs(x), *args)
+        ),
+    )
+
     if not evaluate:
         return antideriv
 
