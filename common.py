@@ -21,6 +21,23 @@ type OneOrMore[T] = T | Iterable[T]
 spint: Final[type[sympy.Integer]] = sympy.Integer
 
 
+def truncate_to_significant_digits(value: SympyEquiv, digits: int) -> float:
+    """Truncate a real number toward zero to ``digits`` significant digits."""
+    if digits < 1:
+        raise ValueError("digits must be positive")
+    if value == 0:
+        return 0.0
+
+    expr = cast(
+        sympy.Expr,
+        sympy.Float(str(value)) if isinstance(value, float) else sympy.sympify(value),
+    )
+    magnitude = math.floor(math.log10(abs(float(expr))))
+    scale = sympy.Integer(10) ** (digits - magnitude - 1)
+    truncated = sympy.sign(expr) * sympy.floor(abs(expr) * scale) / scale  # type: ignore
+    return float(truncated)
+
+
 def _trim_path_to_local_course(p: Path | str) -> Path:
     filepath = Path(p).resolve()
     for parent in filepath.parents:

@@ -16,6 +16,7 @@ from .common import (
     sign,
     spint,
     to_expr,
+    truncate_to_significant_digits,
 )
 from .functions import (
     eval_at,
@@ -74,4 +75,5 @@ __all__: Final[tuple[str, ...]] = (
     "sign",
     "spint",
     "to_expr",
+    "truncate_to_significant_digits",
 )
