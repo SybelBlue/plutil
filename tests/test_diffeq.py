@@ -3,12 +3,13 @@ from __future__ import annotations
 import prairielearn.sympy_utils as psu
 import pytest
 import sympy
+from sympy import Function, diff
+
 from plutil.diffeq import (
     check_explicit_solution,
     check_implicit_solution,
     diffeq_latex,
 )
-from sympy import Function, diff
 
 
 def test_check_implicit_solution_accepts_exact_equation_potential():
@@ -84,8 +85,8 @@ def test_check_explicit_solution_accepts_separable_solution():
     ode = diff(y(x), x) - y(x) ** 2 * (1 + sympy.sin(x))  # type: ignore
 
     result = check_explicit_solution(
-        1 / (C - x + sympy.cos(x)),  # type: ignore
-        ode,
+        student_solution=1 / (C - x + sympy.cos(x)),  # type: ignore
+        reference_ode=ode,
         independent=x,
         dependent="y",
     )
@@ -178,8 +179,8 @@ def test_check_explicit_solution_rejects_wrong_solution_with_constant():
     ode = diff(y(x), x) - y(x) ** 2 * (1 + sympy.sin(x))  # type: ignore
 
     result = check_explicit_solution(
-        x + C,  # type: ignore
-        ode,
+        student_solution=x + C,  # type: ignore
+        reference_ode=ode,
         independent=x,
         dependent="y",
     )
@@ -196,8 +197,8 @@ def test_check_explicit_solution_reports_missing_constant_before_ode_check():
     ode = diff(y(x), x) - y(x) ** 2 * (1 + sympy.sin(x))  # type: ignore
 
     result = check_explicit_solution(
-        1 / (1 - x + sympy.cos(x)),  # type: ignore
-        ode,
+        student_solution=1 / (1 - x + sympy.cos(x)),  # type: ignore
+        reference_ode=ode,
         independent=x,
         dependent="y",
     )
@@ -214,8 +215,8 @@ def test_check_explicit_solution_parses_custom_variables_and_constants():
     ode = diff(z(t), t) - a * z(t)  # type: ignore
 
     result = check_explicit_solution(
-        "K*exp(a*t)",
-        ode,
+        student_solution="K*exp(a*t)",
+        reference_ode=ode,
         independent="t",
         dependent="z",
         consts=("a", "K"),
