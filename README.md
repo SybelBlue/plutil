@@ -292,6 +292,42 @@ def grade(data):
 
 Use `C="K"` if the question expects `+ K` instead of `+ C`.
 
+## Derived answers
+
+Declare a symbolic answer as a pure derivation of parameters and other symbolic
+answers by naming a decorated function `derive_<answers_name>`. Derivations use a
+read-only parameter view and symbolic values rather than question lenses:
+
+```python
+from plutil import ReadOnlyParams, SympyQuestion, SympyValue, plmagic
+from sympy.abc import t
+
+
+@plmagic
+def derive_velocity(
+    params: ReadOnlyParams, *, accel: SympyValue
+) -> SympyValue:
+    return accel * t + params["v0"]
+
+
+@plmagic
+def generate(data, *, accel: SympyQuestion):
+    data.params["v0"] = 2
+    accel.correct_answer = 3
+
+
+@plmagic
+def grade():
+    pass
+```
+
+After `generate`, plmagic evaluates all derivations in dependency order and
+stores their canonical correct answers. Cycles, unknown answers, duplicate
+targets, and non-symbolic signatures are rejected. After `grade`, an incorrect
+derived answer receives full credit when it is symbolically consistent with the
+student's submitted immediate dependencies. Missing or malformed dependencies
+leave the existing score unchanged.
+
 ---
 
 ## `rand.py`

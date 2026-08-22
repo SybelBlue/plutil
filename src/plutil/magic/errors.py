@@ -158,6 +158,38 @@ class InvalidMagicFunctionError(PlMagicError, TypeError):
 
 
 @dataclass(slots=True)
+class InvalidDerivation(InvalidMagicFunctionError):
+    """Report an invalid derived-answer declaration."""
+
+    reason: str
+
+    def cause(self) -> str:
+        return self.reason
+
+
+@dataclass(slots=True)
+class DuplicateDerivation(InvalidMagicFunctionError):
+    """Report two derivations that produce the same answer."""
+
+    answers_name: str
+
+    def cause(self) -> str:
+        return f"more than one derivation produces `{self.answers_name}`"
+
+
+@dataclass(slots=True)
+class DerivationCycle(InvalidMagicFunctionError):
+    """Report a cycle in the derived-answer dependency graph."""
+
+    answers_names: tuple[str, ...]
+
+    def cause(self) -> str:
+        return "the derived-answer graph contains a cycle involving: " + ", ".join(
+            f"`{name}`" for name in self.answers_names
+        )
+
+
+@dataclass(slots=True)
 class HasVariadicArgs(InvalidMagicFunctionError):
     """Report a variadic parameter in a magic-function signature."""
 

@@ -16,8 +16,11 @@ from plutil.magic.decorator import (
 )
 from plutil.magic.errors import (
     BadPositionalArg,
+    DerivationCycle,
     DuplicateAnswersName,
+    DuplicateDerivation,
     HasVariadicArgs,
+    InvalidDerivation,
     MissingCorrectAnswer,
     MissingPlFile,
     UnknownAnswersName,
@@ -455,3 +458,233 @@ def test_plmagic_rejects_variadic_parameters(fs: FakeFilesystem) -> None:
             """,
             '<pl-number-input answers-name="answer"></pl-number-input>',
         )
+
+
+def test_derived_answers_generate_in_dependency_order(fs: FakeFilesystem) -> None:
+    server = load_server(
+        fs,
+        """
+        from plutil import ReadOnlyParams, SympyQuestion, SympyValue, plmagic
+        from sympy.abc import t
+
+        @plmagic
+        def derive_position(params: ReadOnlyParams, *, velocity: SympyValue) -> SympyValue:
+            return velocity * t + params["y0"]
+
+        @plmagic
+        def derive_velocity(*, accel: SympyValue) -> SympyValue:
+            return accel * t
+
+        @plmagic
+        def generate(data, *, accel: SympyQuestion) -> None:
+            data.params["y0"] = 3
+            accel.correct_answer = 2
+        """,
+        """
+        <pl-symbolic-input answers-name="accel" variables="t"></pl-symbolic-input>
+        <pl-symbolic-input answers-name="velocity" variables="t"></pl-symbolic-input>
+        <pl-symbolic-input answers-name="position" variables="t"></pl-symbolic-input>
+        """,
+    )
+    data = question_data(
+        answers_names={"accel": True, "velocity": True, "position": True}
+    )
+
+    server.generate(data)
+
+    assert SympyQuestion(
+        data, "velocity", variables="t"
+    ).correct_answer == 2 * __import__("sympy").Symbol("t")
+    assert (
+        SympyQuestion(data, "position", variables="t").correct_answer
+        == 2 * __import__("sympy").Symbol("t") ** 2 + 3
+    )
+
+
+def test_derived_answers_grade_from_immediate_submission(fs: FakeFilesystem) -> None:
+    server = load_server(
+        fs,
+        """
+        from plutil import SympyValue, plmagic
+        from sympy.abc import t
+
+        @plmagic
+        def derive_velocity(*, accel: SympyValue) -> SympyValue:
+            return accel * t
+
+        @plmagic
+        def derive_position(*, velocity: SympyValue) -> SympyValue:
+            return velocity * t
+
+        @plmagic
+        def grade() -> None:
+            pass
+        """,
+        """
+        <pl-symbolic-input answers-name="accel" variables="t"></pl-symbolic-input>
+        <pl-symbolic-input answers-name="velocity" variables="t"></pl-symbolic-input>
+        <pl-symbolic-input answers-name="position" variables="t"></pl-symbolic-input>
+        """,
+    )
+    import prairielearn as pl
+    import sympy as sp
+
+    t = sp.Symbol("t")
+    data = question_data(
+        answers_names={"accel": True, "velocity": True, "position": True},
+        submitted_answers={
+            "accel": pl.to_json(3),
+            "velocity": pl.to_json(3 * t),  # type: ignore
+            "position": pl.to_json(3 * t**2),  # type: ignore
+        },
+        partial_scores={
+            "velocity": {"score": 0.25, "weight": 2},
+            "position": {"score": 0.0, "weight": 3},
+        },
+    )
+
+    server.grade(data)
+
+    assert data["partial_scores"]["velocity"]["score"] == 1
+    assert data["partial_scores"]["velocity"].get("weight") == 2
+    assert data["partial_scores"]["position"]["score"] == 1
+    assert data["partial_scores"]["position"].get("weight") == 3
+    assert "computed based" in str(data["partial_scores"]["position"].get("feedback"))
+
+
+def test_derived_answers_skip_missing_or_invalid_submission(
+    fs: FakeFilesystem,
+) -> None:
+    server = load_server(
+        fs,
+        """
+        from plutil import SympyValue, plmagic
+
+        @plmagic
+        def derive_result(*, source: SympyValue) -> SympyValue:
+            return source + 1
+
+        @plmagic
+        def grade() -> None:
+            pass
+        """,
+        """
+        <pl-symbolic-input answers-name="source"></pl-symbolic-input>
+        <pl-symbolic-input answers-name="result"></pl-symbolic-input>
+        """,
+    )
+    import prairielearn as pl
+
+    data = question_data(
+        answers_names={"source": True, "result": True},
+        submitted_answers={"result": pl.to_json(2)},
+        partial_scores={"result": {"score": 0.4, "weight": 2}},
+    )
+
+    server.grade(data)
+
+    assert data["partial_scores"]["result"] == {"score": 0.4, "weight": 2}
+
+
+def test_derived_answers_reject_cycles(fs: FakeFilesystem) -> None:
+    server = load_server(
+        fs,
+        """
+        from plutil import SympyValue, plmagic
+
+        @plmagic
+        def derive_first(*, second: SympyValue) -> SympyValue:
+            return second
+
+        @plmagic
+        def derive_second(*, first: SympyValue) -> SympyValue:
+            return first
+
+        @plmagic
+        def generate() -> None:
+            pass
+        """,
+        """
+        <pl-symbolic-input answers-name="first"></pl-symbolic-input>
+        <pl-symbolic-input answers-name="second"></pl-symbolic-input>
+        """,
+    )
+
+    with pytest.raises(DerivationCycle):
+        server.generate(question_data(answers_names={"first": True, "second": True}))
+
+
+def test_derived_answers_reject_duplicate_targets(fs: FakeFilesystem) -> None:
+    with pytest.raises(DuplicateDerivation):
+        load_server(
+            fs,
+            """
+            from plutil import SympyValue, plmagic
+
+            @plmagic
+            def derive_result(*, source: SympyValue) -> SympyValue:
+                return source
+
+            @plmagic
+            def derive_Result(*, source: SympyValue) -> SympyValue:
+                return source + 1
+            """,
+            """
+            <pl-symbolic-input answers-name="source"></pl-symbolic-input>
+            <pl-symbolic-input answers-name="result"></pl-symbolic-input>
+            """,
+        )
+
+
+@pytest.mark.parametrize(
+    "signature",
+    [
+        "def derive_result(params: Params, *, source: SympyValue) -> SympyValue:",
+        "def derive_result(*, source: int) -> SympyValue:",
+        "def derive_result(*, source: SympyValue) -> int:",
+    ],
+)
+def test_derived_answers_reject_invalid_types(
+    fs: FakeFilesystem, signature: str
+) -> None:
+    with pytest.raises(InvalidDerivation):
+        load_server(
+            fs,
+            f"""
+            from plutil import Params, SympyValue, plmagic
+
+            @plmagic
+            {signature}
+                return source
+            """,
+            """
+            <pl-symbolic-input answers-name="source"></pl-symbolic-input>
+            <pl-symbolic-input answers-name="result"></pl-symbolic-input>
+            """,
+        )
+
+
+def test_derived_answers_reject_non_symbolic_runtime_result(
+    fs: FakeFilesystem,
+) -> None:
+    server = load_server(
+        fs,
+        """
+        from plutil import SympyQuestion, SympyValue, plmagic
+
+        @plmagic
+        def derive_result(*, source: SympyValue) -> SympyValue:
+            return "not symbolic"
+
+        @plmagic
+        def generate(*, source: SympyQuestion) -> None:
+            source.correct_answer = 1
+        """,
+        """
+        <pl-symbolic-input answers-name="source"></pl-symbolic-input>
+        <pl-symbolic-input answers-name="result"></pl-symbolic-input>
+        """,
+    )
+
+    with pytest.raises(InvalidDerivation):
+        server.generate(question_data(answers_names={"source": True, "result": True}))

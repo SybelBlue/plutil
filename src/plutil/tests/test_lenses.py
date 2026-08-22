@@ -5,7 +5,7 @@ import pytest
 import sympy as sp
 
 from plutil.common import SympyValue
-from plutil.lenses import JsonValue, Params
+from plutil.lenses import JsonValue, Params, ReadOnlyParams
 
 
 @pytest.fixture
@@ -16,6 +16,19 @@ def backing_params() -> dict[str, JsonValue]:
 @pytest.fixture
 def params(backing_params: dict[str, JsonValue]) -> Params:
     return Params(backing_params)
+
+
+def test_read_only_params_is_a_live_view_without_mutation_methods() -> None:
+    backing: dict[str, JsonValue] = {"value": 1}
+    params = ReadOnlyParams(backing)
+
+    backing["value"] = 2
+
+    assert params["value"] == 2
+    assert not hasattr(params, "__setitem__")
+    assert not hasattr(params, "update")
+    assert not hasattr(params, "pop")
+    assert not hasattr(params, "setdefault")
 
 
 def test_params_proxy_getitem_with_single_key(params: Params) -> None:

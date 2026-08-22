@@ -76,7 +76,9 @@ type JsonValue = psu.SympyJson | JsonLiteral
 
 
 @dataclass(frozen=True, slots=True)
-class MultiDict[Out](Mapping[str, Out]):
+class ReadOnlyMultiDict[Out](Mapping[str, Out]):
+    """A live, read-only mapping view with multi-key convenience access."""
+
     base: dict[str, Out]
 
     def __getitem_single__(self, key: str) -> Out:
@@ -121,26 +123,6 @@ class MultiDict[Out](Mapping[str, Out]):
             return self.__get_single__(keys[0], default)
         return tuple(self.__get_single__(k, default) for k in keys)
 
-    def __setitem_single__(self, key: str, value: Out) -> None:
-        return self.base.__setitem__(key, value)
-
-    @overload
-    def __setitem__(self, key: str, value: Out) -> None: ...
-    @overload
-    def __setitem__(self, key: Sequence[str], value: Sequence[Out]) -> None: ...
-    def __setitem__(self, key: OneOrMore[str], value: OneOrMore[Out]) -> None:
-        keys = tuple(_normalize_one_or_more(key))
-        values = tuple(_normalize_one_or_more(value))
-        if len(keys) == 1:
-            # TODO: would be lovely if we could assert that Out is a sequence
-            return self.__setitem_single__(keys[0], cast(Out, value))  # type: ignore
-        if len(keys) != len(values):
-            raise ValueError("Number of keys and values must match")
-        if len(keys) == 0:
-            raise KeyError("Must pass a key to a params dict")
-        for k, v in zip(keys, values):
-            self.__setitem_single__(k, v)
-
     def __len__(self) -> int:
         return self.base.__len__()
 
@@ -156,6 +138,32 @@ class MultiDict[Out](Mapping[str, Out]):
     def keys(self) -> KeysView[str]:
         return self.base.keys()
 
+    def copy(self) -> Self:
+        return type(self)(self.base.copy())
+
+
+class MultiDict[Out](ReadOnlyMultiDict[Out]):
+    """A mutable multi-key mapping."""
+
+    def __setitem_single__(self, key: str, value: Out) -> None:
+        return self.base.__setitem__(key, value)
+
+    @overload
+    def __setitem__(self, key: str, value: Out) -> None: ...
+    @overload
+    def __setitem__(self, key: Sequence[str], value: Sequence[Out]) -> None: ...
+    def __setitem__(self, key: OneOrMore[str], value: OneOrMore[Out]) -> None:
+        keys = tuple(_normalize_one_or_more(key))
+        values = tuple(_normalize_one_or_more(value))
+        if len(keys) == 1:
+            return self.__setitem_single__(keys[0], cast(Out, value))  # type: ignore
+        if len(keys) != len(values):
+            raise ValueError("Number of keys and values must match")
+        if len(keys) == 0:
+            raise KeyError("Must pass a key to a params dict")
+        for k, v in zip(keys, values):
+            self.__setitem_single__(k, v)
+
     def update(self, m: Mapping[str, Out] | Iterable[tuple[str, Out]]) -> None:
         self.base.update(m)
 
@@ -168,8 +176,9 @@ class MultiDict[Out](Mapping[str, Out]):
     def setdefault(self, key: str, default: Out) -> Out:
         return self.base.setdefault(key, default)
 
-    def copy(self) -> Self:
-        return type(self)(self.base.copy())
+
+class ReadOnlyParams(ReadOnlyMultiDict[JsonValue]):
+    """A live read-only view of PrairieLearn question parameters."""
 
 
 class Params(MultiDict[JsonValue]):

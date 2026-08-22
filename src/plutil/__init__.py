@@ -27,7 +27,9 @@ from .functions import (
 from .lenses import (
     Data,
     NoPreferences,
+    Params,
     Question,
+    ReadOnlyParams,
     SympyQuestion,
 )
 from .magic import (
@@ -47,8 +49,10 @@ from .sets import (
 __all__: Final[tuple[str, ...]] = (
     "Data",
     "NoPreferences",
+    "Params",
     "PlMagicError",
     "Question",
+    "ReadOnlyParams",
     "SympyEquiv",
     "SympyParsable",
     "SympyQuestion",
