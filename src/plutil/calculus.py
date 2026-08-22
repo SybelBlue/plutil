@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from collections.abc import Callable
 from itertools import pairwise
-from typing import Any, Final, Literal, cast
+from typing import Any, Final, Literal, cast, overload
 
 import sympy
 
@@ -20,7 +20,7 @@ from .common import (
     var_name,
     var_to_symbol,
 )
-from .functions import eval_at, eval_at_
+from .functions import eval_at, eval_at_, translate_through
 from .lenses import SympyQuestion
 from .partial_credit import rule
 
@@ -190,7 +190,7 @@ def mean_value_theorem(
     *,
     d: Variable,
     bounds: tuple[int | float | sympy.Number, int | float | sympy.Number],
-) -> tuple[tuple[int | float], SympyEquiv]:
+) -> tuple[tuple[SympyEquiv, ...], SympyEquiv]:
     """Find points where ``f`` equals its average value on ``bounds``.
 
     Returns a tuple containing the solutions within the closed interval and
@@ -205,12 +205,66 @@ def mean_value_theorem(
         raise ZeroDivisionError
     if upper < lower:
         raise ValueError("upper bound is less than lower bound")
-    mean_val: SympyValue = integrate(f, d=d, bounds=bounds) / (upper - lower)  # type: ignore
-    sols = sympy.solve(sympy.Eq(mean_val, f), var_to_symbol(d))
-    sols_in_bounds = tuple(s for s in sols if lower <= s <= upper)
-    return sols_in_bounds, mean_val
+    f_expr = to_expr(f, d)
+    mean_val = integrate(f_expr, d=d, bounds=bounds) / (upper - lower)  # type: ignore
+    sols = sympy.solveset(
+        f_expr - mean_val,
+        var_to_symbol(d),
+        domain=sympy.Interval(lower, upper, left_open=True, right_open=True),
+    )
+    return tuple(sols), mean_val  # type: ignore
 
 
 def d(u: Variable) -> Any:
     """Constructs `Symbol("d<u>")`"""
     return sympy.Symbol(f"d{var_name(u)}")
+
+
+@overload
+def tangent_line_of(
+    *,
+    f: SympyParsable,
+    d: Variable,
+    at: tuple[SympyEquiv, SympyEquiv],
+    y0_name="y",
+) -> SympyValue: ...
+@overload
+def tangent_line_of(
+    *,
+    df: SympyParsable,
+    d: Variable,
+    at: tuple[SympyEquiv, SympyEquiv],
+    y0_name="y",
+) -> SympyValue: ...
+def tangent_line_of(
+    *,
+    f: SympyParsable | None = None,
+    df: SympyParsable | None = None,
+    d: Variable,
+    at: tuple[SympyEquiv, SympyEquiv],
+    y0_name="y",
+) -> SympyValue:
+    """Return the tangent line through a given point.
+
+    Pass the function as ``f`` to compute its derivative, or pass a known
+    derivative as ``df``. The first coordinate of ``at`` determines where the
+    slope is evaluated, and the second determines the value through which the
+    resulting line passes. ``y0_name`` names that dependent-value coordinate.
+
+    Raises:
+        ValueError: If neither ``f`` nor ``df`` is specified.
+    """
+    body: SympyParsable
+    if f is None:
+        if df is None:
+            raise ValueError("At least one of f and df must be specified")
+        body = df
+    else:
+        body = derivative(f, d=d)
+
+    bindings = {var_name(d): at[0], y0_name: at[1]}
+    return translate_through(
+        eval_at(body, simplify=False, **bindings) * var_to_symbol(d),  # type: ignore
+        y0_name=y0_name,
+        **bindings,
+    )

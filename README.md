@@ -233,6 +233,23 @@ from plutil.calculus import derivative
 derivative("x^3 + 2*x", d="x")  # -> 3*x**2 + 2
 ```
 
+### `tangent_line_of(*, f=None, df=None, d, at, y0_name="y") -> Expr`
+
+Return the tangent line through `at=(x0, y0)`. Pass either the function as
+`f` or its derivative as `df`; supplying `df` is useful when only derivative
+data is known. The first coordinate of `at` determines the slope, while the
+second determines the point the resulting line passes through.
+
+```python
+from plutil.calculus import tangent_line_of
+
+tangent_line_of(f="x^2", d="x", at=(2, 4))  # -> 4*x - 4
+tangent_line_of(df="3*x^2", d="x", at=(2, 7))  # -> 12*x - 17
+```
+
+Use `y0_name` when the dependent variable has another name, such as
+`y0_name="v"` for a point expressed with coordinates `(u, v)`.
+
 ### `integrate(f, variables=(), *, d, C="C", bounds=None, known_antideriv_point=None) -> Expr`
 
 Integrate `f` with respect to `d`.
