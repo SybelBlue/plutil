@@ -320,11 +320,11 @@ def grade():
 ```
 
 After `generate`, plmagic evaluates all derivations in dependency order and
-stores their canonical correct answers. Cycles, unknown answers, duplicate
-targets, and non-symbolic signatures are rejected. After `grade`, an incorrect
-derived answer receives full credit when it is symbolically consistent with the
-student's submitted immediate dependencies. Missing or malformed dependencies
-leave the existing score unchanged.
+stores their canonical correct answers. Cycles, unknown answers, and non-
+symbolic signatures are rejected. After `grade`, an incorrect derived answer
+receives full credit when it is symbolically consistent with the student's
+submitted immediate dependencies. Missing or malformed dependencies leave the
+existing score unchanged.
 
 ---
 
