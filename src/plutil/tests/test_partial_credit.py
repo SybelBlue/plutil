@@ -251,7 +251,7 @@ def test_award_partial_credit_uses_additional_correct_answers_for_rules(
     awarded = award_partial_credit(
         SympyQuestion(data, "answer", variables=("x", "C")),
         rule(0.5, change_correct=lambda correct: correct + 1),
-        addl_correct_ans="x^2",
+        addl_correct_ans=x**2,
     )
 
     assert awarded is True

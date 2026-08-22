@@ -13,7 +13,7 @@ import sympy
 
 type SympyValue = sympy.Expr | sympy.Set
 type SympyEquiv = SympyValue | int | float
-type SympyParsable = SympyEquiv | str
+type SympyParsable = SympyEquiv | psu.SympyJson
 type Variable = sympy.Symbol | str
 type OneOrMore[T] = T | Sequence[T]
 
@@ -133,10 +133,9 @@ def _str_to_sympy(raw_expr: str, variables: OneOrMore[Variable]) -> sympy.Expr:
         raise TypeError(
             f"Expected a string, got {raw_expr!r}\n\tHint: use to_expr instead."
         )
-    vars = set(_var_names(variables))
     return psu.convert_string_to_sympy(
         raw_expr,
-        vars,
+        set(_var_names(variables)),
         allow_complex=True,
         allow_hidden=True,
         allow_sets=True,
@@ -205,7 +204,9 @@ def setrec[V](
     return v
 
 
-def to_expr(expr: SympyParsable | dict, variables: OneOrMore[Variable]) -> SympyValue:
+def to_expr(
+    expr: SympyParsable | dict | str, variables: OneOrMore[Variable]
+) -> SympyValue:
     """Convert a supported symbolic value or PrairieLearn JSON object to SymPy."""
     if isinstance(expr, (int, float)):
         return sympy.sympify(expr)
@@ -288,7 +289,7 @@ def latex(
     TRIG_OPERATOR_RE = TRIG_OPERATOR_RE or re.compile(
         r"\\operatorname{a(sin|cos|tan|cos|sec|cot)}"
     )
-    parsed = sympy.parse_expr(expr) if isinstance(expr, str) else expr
+    parsed = expr
     if reparse or isinstance(expr, str):
         parsed = sympy.parse_expr(str(expr))
     unparsed = str(sympy.latex(parsed))
@@ -318,7 +319,12 @@ def lim_latex(
 ) -> str:
     """Render a display-style limit expression as a LaTeX fragment."""
     direction = rf"^{{{dir}}}" if dir and dir not in ("+-", "-+") else ""
-    var_tex = latex(var, log_base=log_base, reparse=reparse, displaystyle=displaystyle)
+    var_tex = latex(
+        var_to_symbol(var),
+        log_base=log_base,
+        reparse=reparse,
+        displaystyle=displaystyle,
+    )
     val_tex = latex(val, log_base=log_base, reparse=reparse, displaystyle=displaystyle)
     body_tex = latex(
         body, log_base=log_base, reparse=reparse, displaystyle=displaystyle

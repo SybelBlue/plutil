@@ -43,12 +43,6 @@ def test_integrate_indefinite_skips_false_constant():
     assert eq(indefinite, x**2 / 2)
 
 
-def test_integrate_accepts_str():
-    indefinite = integrate("x", d=x)
-
-    assert eq(indefinite, x**2 / 2 + sympy.Symbol("C"))
-
-
 def test_integrate_definite_respects_bounds():
     definite = integrate(x, d="x", bounds=(0, 1))
 
@@ -68,15 +62,17 @@ def test_tangent_line_of_differentiates_function_at_point():
 
 
 def test_tangent_line_of_accepts_precomputed_derivative():
-    line = tangent_line_of(df="3*t^2", d="t", at=(2, 7))
+    t = sympy.Symbol("t")
+    line = tangent_line_of(df=3 * t**2, d=t, at=(2, 7))  # type: ignore
 
-    assert eq(line, 12 * sympy.Symbol("t") - 17)  # type: ignore
+    assert eq(line, 12 * t - 17)  # type: ignore
 
 
 def test_tangent_line_of_supports_custom_output_variable_name():
-    line = tangent_line_of(f="u^3", d="u", at=(1, 5), y0_name="v")
+    u = sympy.Symbol("u")
+    line = tangent_line_of(f=u**3, d=u, at=(1, 5), y0_name="v")
 
-    assert eq(line, 3 * sympy.Symbol("u") + 2)  # type: ignore
+    assert eq(line, 3 * u + 2)  # type: ignore
 
 
 def test_tangent_line_of_requires_function_or_derivative():
@@ -89,13 +85,6 @@ def test_mean_value_theorem_returns_solutions_and_average_value():
 
     assert solutions == (2 * sympy.sqrt(3) / 3,)  # type: ignore
     assert eq(average, sympy.Rational(4, 3))
-
-
-def test_mean_value_theorem_accepts_string_function_and_variable():
-    solutions, average = mean_value_theorem("t", d="t", bounds=(0, 2))
-
-    assert solutions == (sympy.Integer(1),)
-    assert eq(average, 1)
 
 
 def test_mean_value_theorem_excludes_solutions_outside_bounds():

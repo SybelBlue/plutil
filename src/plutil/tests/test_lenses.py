@@ -135,6 +135,17 @@ def test_params_latex_proxy_sets_rendered_latex(
     assert backing_params["latex"] == {"expression": r"\dfrac{x}{2}"}
 
 
+def test_params_latex_proxy_writes_string_unchanged(
+    params: Params, backing_params: dict[str, JsonValue]
+) -> None:
+    params.latex[["expression", "other_expression"]] = ["x + 1", "y - 2"]
+
+    assert backing_params["latex"] == {
+        "expression": "x + 1",
+        "other_expression": "y - 2",
+    }
+
+
 def test_params_latex_proxy_sets_multiple_rendered_values(
     params: Params, backing_params: dict[str, JsonValue]
 ) -> None:

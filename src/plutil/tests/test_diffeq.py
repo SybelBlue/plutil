@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import prairielearn.sympy_utils as psu
-import pytest
 import sympy
 from sympy import Function, diff
 
@@ -48,34 +46,20 @@ def test_check_implicit_solution_rejects_incorrect_exact_equation_potential():
     )
 
 
-def test_check_implicit_solution_parses_student_expression_with_constants():
+def test_check_implicit_solution_supports_custom_variables_and_constants():
     t = sympy.Symbol("t")
     a = sympy.Symbol("a")
+    z = sympy.Symbol("z")
     z_t = Function("z")(t)
     ode = diff(z_t, t) - a * z_t  # type: ignore
 
     assert check_implicit_solution(
-        student_sol="log(z) - a*t",
+        student_sol=sympy.log(z) - a * t,  # type: ignore
         reference_ode=ode,
-        independent="t",
-        dependent="z",
-        consts="a",
+        independent=t,
+        dependent=z,
+        consts=a,
     )
-
-
-def test_check_implicit_solution_raises_for_invalid_student_expression():
-    x = sympy.Symbol("x")
-    y_symbol = sympy.Symbol("y")
-    y = Function("y")
-    ode = diff(y(x), x) - y(x)  # type: ignore
-
-    with pytest.raises(psu.HasParseError):
-        check_implicit_solution(
-            student_sol="not a valid expression",
-            reference_ode=ode,
-            independent=x,
-            dependent=y_symbol,
-        )
 
 
 def test_check_explicit_solution_accepts_separable_solution():
@@ -208,18 +192,20 @@ def test_check_explicit_solution_reports_missing_constant_before_ode_check():
     assert result.missing_constant == "C"
 
 
-def test_check_explicit_solution_parses_custom_variables_and_constants():
+def test_check_explicit_solution_supports_custom_variables_and_constants():
     t = sympy.Symbol("t")
     a = sympy.Symbol("a")
+    K = sympy.Symbol("K")
+    z_symbol = sympy.Symbol("z")
     z = Function("z")
     ode = diff(z(t), t) - a * z(t)  # type: ignore
 
     result = check_explicit_solution(
-        student_solution="K*exp(a*t)",
+        student_solution=K * sympy.exp(a * t),  # type: ignore
         reference_ode=ode,
-        independent="t",
-        dependent="z",
-        consts=("a", "K"),
+        independent=t,
+        dependent=z_symbol,
+        consts=(a, K),
         C="K",
     )
 
