@@ -189,10 +189,78 @@ class PlMagicDerivation(PlMagic):
         registry[self.target] = self
 
     @_clip_plmagic_exceptions
-    def __call__(self, data: pl.QuestionData) -> None:
-        raise TypeError(
-            f"`{self.f_name}` is a derived-answer declaration and is called automatically"
-        )
+    def __call__(
+        self,
+        *args: SympyQuestion,
+        **kwargs: SympyValue | SympyQuestion,
+    ) -> SympyValue:
+        """Evaluate the derivation from symbolic lenses or explicit values.
+
+        Positional lenses are matched by their answer names. Keyword arguments
+        use the parameter names from the decorated function and may be either a
+        symbolic value or the corresponding lens.
+        """
+        dependency_by_answer = {
+            answer: parameter for parameter, answer in self.dependencies.items()
+        }
+        provided: dict[str, SympyValue] = {}
+        data: pl.QuestionData | None = None
+
+        def lens_value(
+            lens: SympyQuestion, expected_answer: str | None = None
+        ) -> SympyValue:
+            nonlocal data
+            if not isinstance(lens, SympyQuestion):
+                raise TypeError(
+                    f"positional arguments to `{self.f_name}` must be "
+                    "`SympyQuestion` lenses"
+                )
+            if expected_answer is not None and lens.answers_name != expected_answer:
+                raise TypeError(
+                    f"`{self.f_name}` expected a lens for `{expected_answer}`, "
+                    f"not `{lens.answers_name}`"
+                )
+            if data is not None and lens.data is not data:
+                raise TypeError(
+                    f"all lenses passed to `{self.f_name}` must share question data"
+                )
+            data = lens.data
+            return lens.correct_answer
+
+        for lens in args:
+            if not isinstance(lens, SympyQuestion):
+                raise TypeError(
+                    f"Derivations require {SympyQuestion.__name__} types, got {type(lens)}"
+                )
+            parameter = dependency_by_answer.get(lens.answers_name)
+            if parameter is None or parameter in provided:
+                continue
+
+            provided[parameter] = lens_value(lens)
+
+        for parameter, value in kwargs.items():
+            expected_answer = self.dependencies.get(parameter)
+            if expected_answer is None or parameter in provided:
+                continue
+            provided[parameter] = (
+                lens_value(value, expected_answer)
+                if isinstance(value, SympyQuestion)
+                else value
+            )
+
+        missing = self.dependencies.keys() - provided.keys()
+        if missing:
+            names = ", ".join(f"`{name}`" for name in sorted(missing))
+            raise TypeError(f"`{self.f_name}` is missing dependencies: {names}")
+        if self.include_params and data is None:
+            raise TypeError(
+                f"`{self.f_name}` requires a lens to obtain question parameters"
+            )
+
+        values = {
+            self.dependencies[parameter]: value for parameter, value in provided.items()
+        }
+        return self.evaluate(cast(pl.QuestionData, data or {}), values)
 
     def evaluate(
         self, data: pl.QuestionData, values: dict[str, SympyValue]
@@ -504,12 +572,7 @@ def plmagic[**P](
 
     @wraps(PlMagic)
     def decorate(function: PlMagicFunction[P]) -> PlMagic:
-        magic_type = (
-            PlMagicDerivation
-            if function.__name__.startswith("derive_")
-            else PlMagicLifecycle
-        )
-        if magic_type is PlMagicDerivation:
+        if function.__name__.startswith("derive_"):
             return PlMagicDerivation(function)
         return PlMagicLifecycle(function, validate_question_data=validate_question_data)
 

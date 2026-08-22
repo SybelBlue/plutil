@@ -505,6 +505,64 @@ def test_derived_answers_generate_in_dependency_order(fs: FakeFilesystem) -> Non
     )
 
 
+def test_derived_answer_can_be_called_with_lenses_and_values(
+    fs: FakeFilesystem,
+) -> None:
+    server = load_server(
+        fs,
+        """
+        from plutil import ReadOnlyParams, SympyValue, plmagic
+
+        @plmagic
+        def derive_result(
+            params: ReadOnlyParams,
+            *,
+            left: SympyValue,
+            right: SympyValue,
+        ) -> SympyValue:
+            return left + right + params["offset"]
+        """,
+        """
+        <pl-symbolic-input answers-name="left"></pl-symbolic-input>
+        <pl-symbolic-input answers-name="right"></pl-symbolic-input>
+        <pl-symbolic-input answers-name="result"></pl-symbolic-input>
+        """,
+    )
+    import sympy as sp
+
+    data = question_data(answers_names={"left": True, "right": True, "result": True})
+    data["params"]["offset"] = 4
+    left = SympyQuestion(data, "left")
+    right = SympyQuestion(data, "right")
+    left.correct_answer = 2
+    right.correct_answer = 3
+
+    assert server.derive_result(left, right=right) == sp.Integer(9)
+    assert server.derive_result(left, right=sp.Integer(5)) == sp.Integer(11)
+
+
+def test_derived_answer_can_be_called_with_only_symbolic_values(
+    fs: FakeFilesystem,
+) -> None:
+    server = load_server(
+        fs,
+        """
+        from plutil import SympyValue, plmagic
+
+        @plmagic
+        def derive_result(*, source: SympyValue) -> SympyValue:
+            return source + 1
+        """,
+        """
+        <pl-symbolic-input answers-name="source"></pl-symbolic-input>
+        <pl-symbolic-input answers-name="result"></pl-symbolic-input>
+        """,
+    )
+    import sympy as sp
+
+    assert server.derive_result(source=sp.Integer(2)) == sp.Integer(3)
+
+
 def test_derived_answers_grade_from_immediate_submission(fs: FakeFilesystem) -> None:
     server = load_server(
         fs,
