@@ -55,10 +55,31 @@ type PlMagicFunction[**P] = Callable[P, Any]
 
 
 _html_file_cache: dict[Path, AnswerElementDataDict] = {}
-_derivation_registry: dict[Path, dict[str, "DerivedAnswer"]] = {}
+_derivation_registry: dict[Path, dict[str, "PlMagicDerivation"]] = {}
 _SNAKECASE_RE: re.Pattern | None = None
 clip_plmagic_tracebacks = ContextVar("clip_plmagic_tracebacks", default=True)
 """Whether exceptions raised by magic functions hide Plmagic invocation frames."""
+
+
+def _clip_plmagic_exceptions[**P, R](f: Callable[P, R]) -> Callable[P, R]:
+    """Remove plmagic implementation frames from exceptions raised by ``f``."""
+
+    @wraps(f)
+    def clipped(*args: P.args, **kwargs: P.kwargs) -> R:
+        try:
+            return f(*args, **kwargs)
+        except BaseException as error:
+            if clip_plmagic_tracebacks.get():
+                traceback = error.__traceback__
+                while (
+                    traceback is not None
+                    and traceback.tb_frame.f_globals.get("__name__") == __name__
+                ):
+                    traceback = traceback.tb_next
+                error.__traceback__ = traceback
+            raise
+
+    return clipped
 
 
 def _snakecase(s: str) -> str:
@@ -125,18 +146,55 @@ class ValidatedSig:
         return p_f(**kwargs)
 
 
-@dataclass(slots=True, frozen=True)
-class DerivedAnswer:
-    """A validated symbolic answer derivation."""
+@dataclass(slots=True)
+class PlMagic:
+    """Shared companion-file discovery for decorated question functions."""
 
-    f: Callable[..., SympyValue]
-    function_name: str
-    target: str
-    dependencies: dict[str, str]
-    include_params: bool
-    answer_tags: AnswerElementDataDict
+    f: Callable[..., Any]
+    answer_tags: AnswerElementDataDict = field(init=False)
+    html_path: Path = field(init=False)
+    info_json_path: Path = field(init=False)
 
-    def call(
+    def __post_init__(self) -> None:
+        self.html_path, self.info_json_path = self._build_paths()
+        self.answer_tags = _build_answers_element_data_dict(self.f_name, self.html_path)
+
+    def _build_paths(self) -> tuple[Path, Path]:
+        f_filepath = Path(inspect.getfile(self.f)).resolve()
+        out = f_filepath.parent / "question.html", f_filepath.parent / "info.json"
+        for path in out:
+            if not path.exists():
+                raise MissingPlFile(self.f_name, f_filepath, path)
+        return out
+
+    @property
+    def f_name(self) -> str:
+        return self.f.__name__
+
+
+@dataclass(slots=True)
+class PlMagicDerivation(PlMagic):
+    """Validate, register, and evaluate one symbolic answer derivation."""
+
+    target: str = field(init=False)
+    dependencies: dict[str, str] = field(init=False)
+    include_params: bool = field(init=False)
+
+    def __post_init__(self) -> None:
+        PlMagic.__post_init__(self)
+        self._validate_signature()
+        registry = _derivation_registry.setdefault(self.html_path, {})
+        if self.target in registry:
+            raise DuplicateDerivation(self.f_name, self.target)
+        registry[self.target] = self
+
+    @_clip_plmagic_exceptions
+    def __call__(self, data: pl.QuestionData) -> None:
+        raise TypeError(
+            f"`{self.f_name}` is a derived-answer declaration and is called automatically"
+        )
+
+    def evaluate(
         self, data: pl.QuestionData, values: dict[str, SympyValue]
     ) -> SympyValue:
         args = (
@@ -146,18 +204,88 @@ class DerivedAnswer:
         )
         result = self.f(
             *args,
-            **{parameter: values[answer] for parameter, answer in self.dependencies.items()},
+            **{
+                parameter: values[answer]
+                for parameter, answer in self.dependencies.items()
+            },
         )
         if not isinstance(result, (sympy.Expr, sympy.Set)):
             raise InvalidDerivation(
-                self.function_name,
+                self.f_name,
                 "it returned a non-symbolic value; derivations must return `SympyValue`",
             )
         return result
 
+    def _validate_signature(self) -> None:
+        normalized_tags = {
+            _snakecase(name): (name, metadata)
+            for name, metadata in self.answer_tags.items()
+        }
+        target_key = _snakecase(self.f_name.removeprefix("derive_"))
+        if target_key not in normalized_tags:
+            raise InvalidDerivation(
+                self.f_name,
+                f"`{target_key}` is not a symbolic answers-name for this question",
+            )
+        self.target, target_metadata = normalized_tags[target_key]
+        if not isinstance(target_metadata, PlSymbolicInputData):
+            raise InvalidDerivation(
+                self.f_name, f"derived answer `{self.target}` must be a symbolic input"
+            )
+
+        signature = inspect.signature(self.f)
+        hints = get_type_hints(self.f)
+        self.include_params = False
+        self.dependencies = {}
+        for parameter_name, parameter in signature.parameters.items():
+            if parameter.kind in (
+                inspect.Parameter.VAR_KEYWORD,
+                inspect.Parameter.VAR_POSITIONAL,
+            ):
+                raise HasVariadicArgs(self.f_name, parameter_name)
+            annotation = hints.get(parameter_name, parameter.annotation)
+            if parameter.kind != inspect.Parameter.KEYWORD_ONLY:
+                if parameter_name != "params" or self.include_params:
+                    raise InvalidDerivation(
+                        self.f_name,
+                        "its only positional parameter may be `params: ReadOnlyParams`",
+                    )
+                if annotation is not ReadOnlyParams:
+                    raise InvalidDerivation(
+                        self.f_name,
+                        "positional parameter `params` must have type `ReadOnlyParams`",
+                    )
+                self.include_params = True
+                continue
+            normalized_dependency = _snakecase(parameter_name)
+            if normalized_dependency not in normalized_tags:
+                raise UnknownAnswersName(
+                    self.f_name,
+                    parameter_name,
+                    tuple(normalized_tags),
+                    Path(inspect.getfile(self.f)).resolve(),
+                    self.f.__code__.co_firstlineno,
+                )
+            dependency, metadata = normalized_tags[normalized_dependency]
+            if not isinstance(metadata, PlSymbolicInputData):
+                raise InvalidDerivation(
+                    self.f_name, f"dependency `{dependency}` must be a symbolic input"
+                )
+            if annotation != SympyValue:
+                raise InvalidDerivation(
+                    self.f_name,
+                    f"dependency `{parameter_name}` must have type `SympyValue`",
+                )
+            self.dependencies[parameter_name] = dependency
+
+        if hints.get("return", signature.return_annotation) != SympyValue:
+            raise InvalidDerivation(
+                self.f_name, "its return annotation must be `SympyValue`"
+            )
+
 
 @dataclass(slots=True)
-class _PlMagic[**P]:
+class PlMagicLifecycle(PlMagic):
     """Validate and adapt a function for use as a PrairieLearn lifecycle hook.
 
     The decorated function's parameters are matched to answer elements in the
@@ -171,66 +299,23 @@ class _PlMagic[**P]:
         validated_sig: Validated bindings used to invoke the function.
     """
 
-    f: PlMagicFunction[P]
     validate_question_data: bool = True
-
-    answer_tags: AnswerElementDataDict = field(init=False)
-    html_path: Path = field(init=False)
-    info_json_path: Path = field(init=False)
     validated_sig: "ValidatedSig" = field(init=False)
-    derivation: DerivedAnswer | None = field(init=False, default=None)
 
     def __post_init__(self) -> None:
-        """Locate companion files and validate the decorated function."""
-        self.html_path, self.info_json_path = self._build_paths()
-        self.answer_tags = _build_answers_element_data_dict(self.f_name, self.html_path)
-        if self.f_name.startswith("derive_"):
-            self.validated_sig = ValidatedSig()
-            self.derivation = self._validate_derivation(self.answer_tags)
-            registry = _derivation_registry.setdefault(self.html_path, {})
-            if self.derivation.target in registry:
-                raise DuplicateDerivation(self.f_name, self.derivation.target)
-            registry[self.derivation.target] = self.derivation
-        else:
-            self.validated_sig = self._validate_plfun_sig(self.answer_tags)
+        PlMagic.__post_init__(self)
+        self.validated_sig = self._validate_plfun_sig(self.answer_tags)
 
+    @_clip_plmagic_exceptions
     def __call__(self, data: pl.QuestionData) -> None:
         """Invoke the decorated function and validate its resulting data."""
-        try:
-            if self.derivation is not None:
-                raise TypeError(
-                    f"`{self.f_name}` is a derived-answer declaration and is called automatically"
-                )
-            self.validated_sig.call(self.f, data)
-            if self.f_name in ("generate", "prepare"):
-                self._generate_derived_answers(data)
-            elif self.f_name == "grade":
-                self._grade_derived_answers(data)
-            if self.validate_question_data and self.f_name in ("generate", "prepare"):
-                self._validate_question_data_output(data)
-        except BaseException as error:
-            if clip_plmagic_tracebacks.get():
-                traceback = error.__traceback__
-                while (
-                    traceback is not None
-                    and traceback.tb_frame.f_globals.get("__name__") == __name__
-                ):
-                    traceback = traceback.tb_next
-                error.__traceback__ = traceback
-            raise
-
-    def _build_paths(self) -> tuple[Path, Path]:
-        f_filepath = Path(inspect.getfile(self.f)).resolve()
-        out = f_filepath.parent / "question.html", f_filepath.parent / "info.json"
-        for path in out:
-            if not path.exists():
-                raise MissingPlFile(self.f_name, f_filepath, path)
-        return out
-
-    @property
-    def f_name(self):
-        """Return the decorated function's name."""
-        return self.f.__name__
+        self.validated_sig.call(self.f, data)
+        if self.f_name in ("generate", "prepare"):
+            self._generate_derived_answers(data)
+        elif self.f_name == "grade":
+            self._grade_derived_answers(data)
+        if self.validate_question_data and self.f_name in ("generate", "prepare"):
+            self._validate_question_data_output(data)
 
     def _validate_plfun_sig(self, tag_dict: AnswerElementDataDict) -> ValidatedSig:
         f_sig = inspect.signature(self.f)
@@ -316,87 +401,10 @@ class _PlMagic[**P]:
 
         return out
 
-    def _validate_derivation(
-        self, tag_dict: AnswerElementDataDict
-    ) -> DerivedAnswer:
-        normalized_tag_dict = {
-            _snakecase(answers_name): (answers_name, element_data)
-            for answers_name, element_data in tag_dict.items()
-        }
-        target_key = _snakecase(self.f_name.removeprefix("derive_"))
-        if target_key not in normalized_tag_dict:
-            raise InvalidDerivation(
-                self.f_name,
-                f"`{target_key}` is not a symbolic answers-name for this question",
-            )
-        target, target_metadata = normalized_tag_dict[target_key]
-        if not isinstance(target_metadata, PlSymbolicInputData):
-            raise InvalidDerivation(
-                self.f_name, f"derived answer `{target}` must be a symbolic input"
-            )
-
-        signature = inspect.signature(self.f)
-        hints = get_type_hints(self.f)
-        include_params = False
-        dependencies: dict[str, str] = {}
-        for parameter_name, parameter in signature.parameters.items():
-            if parameter.kind in (
-                inspect.Parameter.VAR_KEYWORD,
-                inspect.Parameter.VAR_POSITIONAL,
-            ):
-                raise HasVariadicArgs(self.f_name, parameter_name)
-            annotation = hints.get(parameter_name, parameter.annotation)
-            if parameter.kind != inspect.Parameter.KEYWORD_ONLY:
-                if parameter_name != "params" or include_params:
-                    raise InvalidDerivation(
-                        self.f_name,
-                        "its only positional parameter may be `params: ReadOnlyParams`",
-                    )
-                if annotation is not ReadOnlyParams:
-                    raise InvalidDerivation(
-                        self.f_name,
-                        "positional parameter `params` must have type `ReadOnlyParams`",
-                    )
-                include_params = True
-                continue
-            normalized_dependency = _snakecase(parameter_name)
-            if normalized_dependency not in normalized_tag_dict:
-                raise UnknownAnswersName(
-                    self.f_name,
-                    parameter_name,
-                    tuple(normalized_tag_dict),
-                    Path(inspect.getfile(self.f)).resolve(),
-                    self.f.__code__.co_firstlineno,
-                )
-            dependency, metadata = normalized_tag_dict[normalized_dependency]
-            if not isinstance(metadata, PlSymbolicInputData):
-                raise InvalidDerivation(
-                    self.f_name, f"dependency `{dependency}` must be a symbolic input"
-                )
-            if annotation != SympyValue:
-                raise InvalidDerivation(
-                    self.f_name,
-                    f"dependency `{parameter_name}` must have type `SympyValue`",
-                )
-            dependencies[parameter_name] = dependency
-
-        if hints.get("return", signature.return_annotation) != SympyValue:
-            raise InvalidDerivation(
-                self.f_name, "its return annotation must be `SympyValue`"
-            )
-        return DerivedAnswer(
-            self.f,
-            self.f_name,
-            target,
-            dependencies,
-            include_params,
-            tag_dict,
-        )
-
-    def _ordered_derivations(self) -> tuple[DerivedAnswer, ...]:
+    def _ordered_derivations(self) -> tuple[PlMagicDerivation, ...]:
         registry = _derivation_registry.get(self.html_path, {})
         remaining = dict(registry)
-        ordered: list[DerivedAnswer] = []
+        ordered: list[PlMagicDerivation] = []
         while remaining:
             available = sorted(
                 target
@@ -420,7 +428,7 @@ class _PlMagic[**P]:
             target = derivation.answer_tags[derivation.target].build_lens(
                 data, derivation.target
             )
-            target.correct_answer = derivation.call(data, values)
+            target.correct_answer = derivation.evaluate(data, values)
 
     def _grade_derived_answers(self, data: pl.QuestionData) -> None:
         for derivation in self._ordered_derivations():
@@ -447,7 +455,7 @@ class _PlMagic[**P]:
                         raise ValueError
                     values[answer] = submitted
                 if submitted_target is None or not eq(
-                    derivation.call(data, values), submitted_target
+                    derivation.evaluate(data, values), submitted_target
                 ):
                     continue
             except (KeyError, TypeError, ValueError):
@@ -472,13 +480,13 @@ class _PlMagic[**P]:
 
 
 @overload
-def plmagic[**P](f: PlMagicFunction[P], /) -> _PlMagic[P]: ...
+def plmagic[**P](f: PlMagicFunction[P], /) -> PlMagic: ...
 
 
 @overload
 def plmagic[**P](
     f: None = None, /, *, validate_question_data: bool = True
-) -> Callable[[PlMagicFunction[P]], _PlMagic[P]]: ...
+) -> Callable[[PlMagicFunction[P]], PlMagic]: ...
 
 
 def plmagic[**P](
@@ -486,7 +494,7 @@ def plmagic[**P](
     /,
     *,
     validate_question_data: bool = True,
-) -> _PlMagic[P] | Callable[[PlMagicFunction[P]], _PlMagic[P]]:
+) -> PlMagic | Callable[[PlMagicFunction[P]], PlMagic]:
     """Adapt a PrairieLearn hook, optionally configuring output validation.
 
     This supports both ``@plmagic`` and ``@plmagic(...)``. Set
@@ -494,12 +502,16 @@ def plmagic[**P](
     question data.
     """
 
-    @wraps(_PlMagic)
-    def decorate(function: PlMagicFunction[P]) -> _PlMagic[P]:
-        return _PlMagic(
-            function,
-            validate_question_data=validate_question_data,
+    @wraps(PlMagic)
+    def decorate(function: PlMagicFunction[P]) -> PlMagic:
+        magic_type = (
+            PlMagicDerivation
+            if function.__name__.startswith("derive_")
+            else PlMagicLifecycle
         )
+        if magic_type is PlMagicDerivation:
+            return PlMagicDerivation(function)
+        return PlMagicLifecycle(function, validate_question_data=validate_question_data)
 
     if f is None:
         return decorate

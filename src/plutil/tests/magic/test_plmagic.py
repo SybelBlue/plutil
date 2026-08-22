@@ -10,6 +10,8 @@ from pyfakefs.fake_filesystem import FakeFilesystem
 
 from plutil.lenses import Data, Question, SympyQuestion
 from plutil.magic.decorator import (
+    PlMagicDerivation,
+    PlMagicLifecycle,
     _snakecase,
     clip_plmagic_tracebacks,
     plmagic,
@@ -492,6 +494,8 @@ def test_derived_answers_generate_in_dependency_order(fs: FakeFilesystem) -> Non
 
     server.generate(data)
 
+    assert isinstance(server.generate, PlMagicLifecycle)
+    assert isinstance(server.derive_velocity, PlMagicDerivation)
     assert SympyQuestion(
         data, "velocity", variables="t"
     ).correct_answer == 2 * __import__("sympy").Symbol("t")
