@@ -251,7 +251,7 @@ def test_str_to_sympy_passes_single_variable_name_as_one_item(monkeypatch):
 
 
 def test_latex_can_render_log_with_explicit_base_and_display_fractions():
-    rendered = latex("log(x/2)", log_base=2)
+    rendered = latex(sympy.log(x / 2), log_base=2)  # type: ignore
 
     assert rendered == r"\log_{2}{\left(\dfrac{x}{2} \right)}"
 
@@ -290,7 +290,7 @@ def test_lim_latex_renders_two_sided_limit():
 
 @pytest.mark.parametrize("direction", ["+", "-"])
 def test_lim_latex_renders_one_sided_limit(direction):
-    rendered = lim_latex(var=x, val="a", dir=direction, body=1 / x)
+    rendered = lim_latex(var=x, val=sympy.Symbol("a"), dir=direction, body=1 / x)
 
     assert (
         rendered
@@ -315,7 +315,7 @@ def test_lim_latex_forwards_latex_options():
 
 @pytest.mark.parametrize("base", [common_mod.sympy.E, math.e])
 def test_latex_renders_base_e_log_as_ln(base):
-    rendered = latex("log(x/2)", log_base=base)
+    rendered = latex(sympy.log(x / 2), log_base=base)  # type: ignore
 
     assert rendered == r"\ln{\left(\dfrac{x}{2} \right)}"
 

@@ -174,8 +174,12 @@ class MultiDict[Out](Mapping[str, Out]):
 
 class Params(MultiDict[JsonValue]):
     @property
-    def latex(self) -> "SetParamsProxy[SympyEquiv | sp.Rel, str]":
-        return SetParamsProxy(self, "latex", encode=latex)
+    def latex(self) -> "SetParamsProxy[SympyEquiv | sp.Rel | str, str]":
+        return SetParamsProxy(
+            self,
+            "latex",
+            encode=lambda v: v if isinstance(v, str) else latex(v),
+        )
 
     @property
     def sympy(self) -> "ParamsProxy[SympyValue | int, psu.SympyJson]":
@@ -522,7 +526,7 @@ class SympyQuestion(BaseQuestion[SympyValue]):
                     raise TypeError("The provided dict is not a SympyJson")
                 out = d
             case v:
-                out = pl.sympy_to_json(self.to_expr(str(v)))
+                out = pl.sympy_to_json(self.to_expr(v))
 
         self.unparsed_correct_answer = out
 

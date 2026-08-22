@@ -26,7 +26,7 @@ def eval_at(
     If `expr` is a `str` and there are unbound names in the output, add them to bindings
     using `unbound_name=None`
     """
-    fn = to_expr(f, bindings.keys())
+    fn = to_expr(f, tuple(bindings.keys()))
     values = (
         (sympy.Symbol(k), to_expr(v, ())) for k, v in bindings.items() if v is not None
     )
@@ -46,7 +46,7 @@ def evalf_at(f: SympyParsable, **bindings: SympyEquiv | None) -> float:
     If `expr` is a `str` and there are unbound names in the output, add them to bindings
     using `unbound_name=None`
     """
-    fn = to_expr(f, bindings.keys())
+    fn = to_expr(f, tuple(bindings.keys()))
     out = fn.evalf(
         subs={
             sympy.Symbol(k): to_expr(v, ())

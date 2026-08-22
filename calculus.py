@@ -177,7 +177,7 @@ def approximate_area[num: int | float](
     f_x: Callable[[float], SympyEquiv]
     if isinstance(f, dict):
         table = {float(x): y for x, y in f.items()}
-        f_x = lambda x: next(v for k, v in table.items() if math.isclose(k, x))
+        f_x = lambda x: next(v for k, v in table.items() if math.isclose(k, x))  # type: ignore
     else:
         f_expr = to_expr(f, d).simplify()
         f_x = lambda x: eval_at(f_expr, **{var_name(d): x})  # type: ignore
