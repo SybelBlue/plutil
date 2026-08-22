@@ -12,9 +12,11 @@ from plutil.lenses import Data, Question, SympyQuestion
 from plutil.magic.decorator import (
     PlMagicDerivation,
     PlMagicLifecycle,
-    _snakecase,
     clip_plmagic_tracebacks,
     plmagic,
+)
+from plutil.magic.decorator._base import (
+    _snakecase,
 )
 from plutil.magic.errors import (
     BadPositionalArg,
