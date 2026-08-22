@@ -11,6 +11,8 @@ from plutil.calculus import (
     approximate_area,
     award_missing_constant_credit,
     integrate,
+    mean_value_theorem,
+    tangent_line_of,
 )
 from plutil.common import eq
 from plutil.lenses import SympyQuestion
@@ -32,7 +34,7 @@ def test_integrate_indefinite_accepts_symbol():
 def test_integrate_reciprocal_uses_log_absolute_value():
     indefinite = integrate(1 / x, d=x)
 
-    assert eq(indefinite, sympy.log(sympy.Abs(x)) + sympy.Symbol("C"))
+    assert eq(indefinite, sympy.log(sympy.Abs(x)) + sympy.Symbol("C"))  # type: ignore
 
 
 def test_integrate_indefinite_skips_false_constant():
@@ -57,6 +59,68 @@ def test_integrate_known_point_shifts_antiderivative():
     shifted = integrate(2 * x, d="x", known_antideriv_point=(0, 5))
 
     assert eq(shifted, x**2 + 5)
+
+
+def test_tangent_line_of_differentiates_function_at_point():
+    line = tangent_line_of(f=x**2, d=x, at=(2, 4))
+
+    assert eq(line, 4 * x - 4)
+
+
+def test_tangent_line_of_accepts_precomputed_derivative():
+    line = tangent_line_of(df="3*t^2", d="t", at=(2, 7))
+
+    assert eq(line, 12 * sympy.Symbol("t") - 17)  # type: ignore
+
+
+def test_tangent_line_of_supports_custom_output_variable_name():
+    line = tangent_line_of(f="u^3", d="u", at=(1, 5), y0_name="v")
+
+    assert eq(line, 3 * sympy.Symbol("u") + 2)  # type: ignore
+
+
+def test_tangent_line_of_requires_function_or_derivative():
+    with pytest.raises(ValueError, match="At least one of f and df must be specified"):
+        tangent_line_of(d=x, at=(2, 4))  # type: ignore[call-overload]
+
+
+def test_mean_value_theorem_returns_solutions_and_average_value():
+    solutions, average = mean_value_theorem(x**2, d=x, bounds=(0, 2))
+
+    assert solutions == (2 * sympy.sqrt(3) / 3,)  # type: ignore
+    assert eq(average, sympy.Rational(4, 3))
+
+
+def test_mean_value_theorem_accepts_string_function_and_variable():
+    solutions, average = mean_value_theorem("t", d="t", bounds=(0, 2))
+
+    assert solutions == (sympy.Integer(1),)
+    assert eq(average, 1)
+
+
+def test_mean_value_theorem_excludes_solutions_outside_bounds():
+    solutions, average = mean_value_theorem(x**2, d=x, bounds=(1, 2))
+
+    assert solutions == (sympy.sqrt(21) / 3,)  # type: ignore
+    assert eq(average, sympy.Rational(7, 3))
+
+
+def test_mean_value_theorem_returns_multiple_solutions():
+    solutions, average = mean_value_theorem(x**2, d=x, bounds=(-2, 2))
+
+    expected = 2 * sympy.sqrt(3) / 3  # type: ignore
+    assert set(solutions) == {-expected, expected}
+    assert eq(average, sympy.Rational(4, 3))
+
+
+def test_mean_value_theorem_rejects_zero_width_interval():
+    with pytest.raises(ZeroDivisionError):
+        mean_value_theorem(x**2, d=x, bounds=(1, 1))
+
+
+def test_mean_value_theorem_rejects_reversed_interval():
+    with pytest.raises(ValueError):
+        mean_value_theorem(x**2, d=x, bounds=(2, 1))
 
 
 @pytest.mark.parametrize(
