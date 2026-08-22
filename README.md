@@ -304,12 +304,10 @@ from sympy.abc import t
 
 
 @plmagic
-def derive_velocity(
-    params: ReadOnlyParams, *, accel: SympyValue
-) -> SympyValue:
+def derive_velocity(params: ReadOnlyParams, *, accel: SympyValue) -> SympyValue:
     return accel * t + params["v0"]
 
-
+ 
 @plmagic
 def generate(data, *, accel: SympyQuestion):
     data.params["v0"] = 2
