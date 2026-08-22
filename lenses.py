@@ -194,14 +194,14 @@ class Params(MultiDict[JsonValue]):
 
 
 @dataclass(frozen=True, slots=True)
-class SetParamsProxy[In, Out: JsonValue]:
+class SetParamsProxy[T, Encoded: JsonValue]:
     params: Params
     subkey: str
     _: KW_ONLY
-    encode: Callable[[In], Out]
+    encode: Callable[[T], Encoded]
 
     @property
-    def inner_dict(self) -> MultiDict[Out]:
+    def inner_dict(self) -> MultiDict[Encoded]:
         d: dict = self.params.setdefault(self.subkey, {})  # type: ignore
         return MultiDict(d)
 
@@ -210,29 +210,31 @@ class SetParamsProxy[In, Out: JsonValue]:
         return isinstance(key, str)
 
     @overload
-    def __setitem__(self, key: str, value: In) -> None: ...
+    def __setitem__(self, key: str, value: T) -> None: ...
     @overload
-    def __setitem__(self, key: Sequence[str], value: Sequence[In]) -> None: ...
-    def __setitem__(self, key: OneOrMore[str], value: OneOrMore[In]):
+    def __setitem__(self, key: Sequence[str], value: Sequence[T]) -> None: ...
+    def __setitem__(self, key: OneOrMore[str], value: OneOrMore[T]):
         values = tuple(map(self.encode, _normalize_one_or_more(value)))
         if isinstance(key, str) and len(values) == 1:
             self.inner_dict.__setitem_single__(key, values[0])
         else:
             self.inner_dict[key] = values
 
+    def get_encoded(self, key: str) -> Encoded:
+        return self.inner_dict.__getitem_single__(key)
+
 
 @dataclass(frozen=True, slots=True)
-class ParamsProxy[In, Out: JsonValue](SetParamsProxy[In, Out]):
-    decode: Callable[[Out], In]
+class ParamsProxy[T, Encoded: JsonValue](SetParamsProxy[T, Encoded]):
+    decode: Callable[[Encoded], T]
 
     @overload
-    def __getitem__(self, key: str) -> In: ...  # type: ignore
+    def __getitem__(self, key: str) -> T: ...  # type: ignore
     @overload
-    def __getitem__(self, key: Sequence[str]) -> Sequence[In]: ...
-    def __getitem__(self, key: OneOrMore[str]) -> OneOrMore[In]:
+    def __getitem__(self, key: Sequence[str]) -> Sequence[T]: ...
+    def __getitem__(self, key: OneOrMore[str]) -> OneOrMore[T]:
         decoded = tuple(
-            self.decode(self.inner_dict.__getitem_single__(k))
-            for k in _normalize_one_or_more(key)
+            self.decode(self.get_encoded(k)) for k in _normalize_one_or_more(key)
         )
         return decoded[0] if self.is_single_key(key) else decoded
 
