@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Any, Final, Literal, Protocol, Self, cast, overload
 
@@ -15,7 +15,7 @@ type SympyValue = sympy.Expr | sympy.Set
 type SympyEquiv = SympyValue | int | float
 type SympyParsable = SympyEquiv | str
 type Variable = sympy.Symbol | str
-type OneOrMore[T] = T | Iterable[T]
+type OneOrMore[T] = T | Sequence[T]
 
 
 spint: Final[type[sympy.Integer]] = sympy.Integer
@@ -265,7 +265,7 @@ TRIG_OPERATOR_RE: re.Pattern[str] | None = None
 
 
 def latex(
-    expr: SympyParsable | sympy.Equality | sympy.Rel | sympy.Ne,
+    expr: SympyParsable | sympy.Rel,
     *,
     log_base: SympyParsable | None = None,
     reparse: bool = False,
