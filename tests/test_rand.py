@@ -4,7 +4,7 @@ import pytest
 import sympy
 
 from plutil import rand
-from plutil.common import SympyValue
+from plutil.common import PlValue
 
 
 def test_randint_includes_bounds_and_respects_step(
@@ -158,7 +158,7 @@ def test_randpoly_factory_delays_and_repeats_evaluation(
     x = sympy.Symbol("x")
     calls: list[dict[str, object]] = []
 
-    def fake_randpoly(**kwargs: object) -> SympyValue:
+    def fake_randpoly(**kwargs: object) -> PlValue:
         calls.append(kwargs)
         return x + len(calls)  # type: ignore[return-value]
 
@@ -229,7 +229,7 @@ def test_randpoly_roots_factory_delays_and_repeats_evaluation(
     x = sympy.Symbol("x")
     calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
 
-    def fake_randpoly_roots(*args: object, **kwargs: object) -> SympyValue:
+    def fake_randpoly_roots(*args: object, **kwargs: object) -> PlValue:
         calls.append((args, kwargs))
         return x - len(calls)  # type: ignore[return-value]
 

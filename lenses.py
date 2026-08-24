@@ -29,10 +29,10 @@ import prairielearn.sympy_utils as psu
 import sympy as sp
 
 from .common import (
+    LatexableValue,
     OneOrMore,
-    SympyEquiv,
-    SympyParsable,
-    SympyValue,
+    PlValue,
+    SympyInput,
     Variable,
     _normalize_one_or_more,
     getrec,
@@ -71,7 +71,7 @@ def _matches_type(value: object, expected: object) -> bool:
 type JsonLiteral = (
     dict[str, JsonLiteral] | list[JsonLiteral] | tuple[JsonLiteral] | str | int | float
 )
-type Jsonable = SympyValue | JsonLiteral
+type Jsonable = PlValue | JsonLiteral
 type JsonValue = psu.SympyJson | JsonLiteral
 
 
@@ -174,7 +174,7 @@ class MultiDict[Out](Mapping[str, Out]):
 
 class Params(MultiDict[JsonValue]):
     @property
-    def latex(self) -> "SetParamsProxy[SympyEquiv | sp.Rel | str, str]":
+    def latex(self) -> "SetParamsProxy[LatexableValue | str, str]":
         return SetParamsProxy(
             self,
             "latex",
@@ -182,7 +182,7 @@ class Params(MultiDict[JsonValue]):
         )
 
     @property
-    def sympy(self) -> "ParamsProxy[SympyValue | int, psu.SympyJson]":
+    def sympy(self) -> "ParamsProxy[PlValue | int, psu.SympyJson]":
         return ParamsProxy(
             self,
             "sympy",
@@ -477,7 +477,7 @@ class Question(BaseQuestion[object]):
 
 
 @dataclass(slots=True)
-class SympyQuestion(BaseQuestion[SympyValue]):
+class SympyQuestion(BaseQuestion[PlValue]):
     """A question lens that converts answer values to SymPy objects.
 
     Attributes:
@@ -486,7 +486,7 @@ class SympyQuestion(BaseQuestion[SympyValue]):
 
     variables: OneOrMore[Variable] = ()
 
-    def to_expr(self, o: SympyParsable | dict):
+    def to_expr(self, o: SympyInput | dict):
         """Convert a supported value to SymPy using this lens's variables."""
         return to_expr(o, self.variables)
 
@@ -501,7 +501,7 @@ class SympyQuestion(BaseQuestion[SympyValue]):
         adict[self.answers_name] = value
 
     @property
-    def correct_answer(self) -> SympyValue:
+    def correct_answer(self) -> PlValue:
         """Return the correct answer as a SymPy expression."""
         return self.to_expr(self.unparsed_correct_answer)
 
@@ -533,7 +533,7 @@ class SympyQuestion(BaseQuestion[SympyValue]):
         self.unparsed_correct_answer = out
 
     @property
-    def submitted_answer(self) -> SympyValue | None:
+    def submitted_answer(self) -> PlValue | None:
         """Return the submitted answer as a SymPy expression."""
         if raw := self.data["submitted_answers"].get(self.answers_name):
             return self.to_expr(raw)  # type: ignore
@@ -547,7 +547,7 @@ class SympyQuestion(BaseQuestion[SympyValue]):
     def award_partial_credit(
         self,
         *rules: PartialCreditRule,
-        addl_correct_ans: OneOrMore[SympyParsable] = (),
+        addl_correct_ans: OneOrMore[SympyInput] = (),
         feedback: str | None = None,
         include_display_ans: bool = True,
         clobber_existing_score: bool = True,

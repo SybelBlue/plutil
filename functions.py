@@ -8,9 +8,8 @@ from typing import Final, cast
 import sympy
 
 from .common import (
-    SympyEquiv,
-    SympyParsable,
-    SympyValue,
+    PlValue,
+    SympyInput,
     to_expr,
 )
 
@@ -20,7 +19,7 @@ DEFAULT_FEEDBACK: Final[str] = (
 
 
 def eval_at(
-    f: SympyParsable, simplify: bool = True, **bindings: SympyEquiv | None
+    f: SympyInput, simplify: bool = True, **bindings: SympyInput | None
 ) -> sympy.Expr:
     """Evaluate `f` after substituting the given bindings and simplify."""
     values = (
@@ -32,12 +31,12 @@ def eval_at(
     return cast(sympy.Expr, res)
 
 
-def eval_at_(**bindings: SympyEquiv | None) -> Callable[[SympyParsable], sympy.Expr]:
+def eval_at_(**bindings: SympyInput | None) -> Callable[[SympyInput], sympy.Expr]:
     """Return a callable that evaluates its argument using the given bindings."""
     return lambda f: eval_at(f, simplify=True, **bindings)
 
 
-def evalf_at(f: SympyParsable, **bindings: SympyEquiv | None) -> float:
+def evalf_at(f: SympyInput, **bindings: SympyInput | None) -> float:
     """Evaluate `f` numerically after substituting the given bindings."""
     fn = to_expr(f)
     out = fn.evalf(
@@ -49,14 +48,14 @@ def evalf_at(f: SympyParsable, **bindings: SympyEquiv | None) -> float:
         raise ValueError(f"Could not evaluate as float {out}") from e
 
 
-def evalf_at_(**bindings: SympyEquiv | None) -> Callable[[SympyParsable], float]:
+def evalf_at_(**bindings: SympyInput | None) -> Callable[[SympyInput], float]:
     """Return a callable that evaluates its argument using the given bindings."""
     return lambda f: evalf_at(f, **bindings)
 
 
 def translate_through(
-    f: SympyValue, *, y0_name: str = "y", **bindings: SympyEquiv
-) -> SympyValue:
+    f: PlValue, *, y0_name: str = "y", **bindings: SympyInput
+) -> PlValue:
     """Makes a transformation that takes a point `(x0..., y0)` and a
     function `f` and returns a translated `f'` s.t. `y_0 = f'(x_0,...)`
     """
@@ -70,8 +69,8 @@ def translate_through(
 
 
 def translate_through_(
-    *, y0_name: str = "y", **bindings: SympyEquiv
-) -> Callable[[SympyValue], SympyValue]:
+    *, y0_name: str = "y", **bindings: SympyInput
+) -> Callable[[PlValue], PlValue]:
     """Makes a transformation that takes a point `(x0..., y0)` and a
     function `f` and returns a translated `f'` s.t. `y_0 = f'(x_0,...)`
     """
@@ -83,9 +82,7 @@ def translate_through_(
     return lambda f: translate_through(f, y0_name=y0_name, **bindings)
 
 
-def scale_through(
-    f: SympyValue, *, y0_name: str = "y", **bindings: SympyEquiv
-) -> SympyValue:
+def scale_through(f: PlValue, *, y0_name: str = "y", **bindings: SympyInput) -> PlValue:
     """Makes a transformation that takes a point `(x0..., y0)` and a
     function `f` and returns a scaled `f'` s.t. `y_0 = f'(x_0,...)`
     """
@@ -99,8 +96,8 @@ def scale_through(
 
 
 def scale_through_(
-    *, y0_name: str = "y", **bindings: SympyEquiv
-) -> Callable[[SympyValue], SympyValue]:
+    *, y0_name: str = "y", **bindings: SympyInput
+) -> Callable[[PlValue], PlValue]:
     """Makes a transformation that takes a point `(x0..., y0)` and a
     function `f` and returns a scaled `f'` s.t. `y_0 = f'(x_0,...)`
     """

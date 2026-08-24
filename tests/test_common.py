@@ -9,8 +9,8 @@ from sympy.abc import t, x
 
 import plutil.common as common_mod
 from plutil.common import (
-    _pl_json_to_sympy,
-    _str_to_sympy,
+    json_to_sympy,
+    str_to_sympy,
     eq,
     getrec,
     latex,
@@ -54,14 +54,14 @@ def test_truncate_to_significant_digits_requires_positive_digits():
 
 
 def test_pl_json_to_sympy_round_trips_pl_json():
-    expr = _pl_json_to_sympy(pl.to_json(2 * x + 3))
+    expr = json_to_sympy(pl.to_json(2 * x + 3))
 
     assert expr is not None
     assert eq(expr, 2 * x + 3)
 
 
 def test_pl_json_to_sympy_returns_none_for_none():
-    assert _pl_json_to_sympy(None) is None
+    assert json_to_sympy(None) is None
 
 
 def test_sympy_lens_correct_answer_stores_pl_json():
@@ -222,7 +222,7 @@ def test_eq_rejects_unequal_sets(left, right):
 
 
 def test_str_to_sympy_respects_requested_variables():
-    expr = _str_to_sympy("4 - t/2 + t^2/10", ["t"])
+    expr = str_to_sympy("4 - t/2 + t^2/10", ["t"])
     assert eq(expr, 4 - t / 2 + t**2 / 10)
 
 
@@ -243,7 +243,7 @@ def test_str_to_sympy_passes_single_variable_name_as_one_item(monkeypatch):
         fake_convert_string_to_sympy,
     )
 
-    expr = _str_to_sympy("x", list("xyz"))
+    expr = str_to_sympy("x", list("xyz"))
 
     assert expr == x
     assert len(seen_variable_names) == 1

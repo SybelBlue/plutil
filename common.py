@@ -11,17 +11,28 @@ from typing import Any, Final, Literal, Protocol, Self, cast, overload
 import prairielearn.sympy_utils as psu
 import sympy
 
-type SympyValue = sympy.Expr | sympy.Set
-type SympyEquiv = SympyValue | int | float
-type SympyParsable = SympyEquiv | psu.SympyJson
+type PlValue = sympy.Expr | sympy.Set
+"""The type of valid output from a parsed `pl-symbolic-input`"""
+type NumberLike = sympy.Expr | int | float
+"""Things like :class:`plutil.PlValue`"""
+type Value = PlValue | NumberLike
+"""Common values that are used in symbolic problems, ie. :class:`plutil.PlValue` or :class:`plutil.NumberLike`"""
+type SympyInput = Value | psu.SympyJson
+"""
+Parsed and unparsed prairielearn symbolic dicts, ie. :class:`plutil.Value` or :class:`prairielearn.sympy_utils.SympyJson`.
+Use :func:`plutil.to_expr` to parse.
+"""
 type Variable = sympy.Symbol | str
+"""Convenience type to shortcut writing :class:`sympy.Symbol` objects"""
 type OneOrMore[T] = T | Sequence[T]
+"""Ergonomics type. e.g. Allows for `numbers: OneOrMore[int] = 1` and `numbers: OneOrMore[int] = (1, 2, 3)`"""
 
 
 spint: Final[type[sympy.Integer]] = sympy.Integer
+"""Ergonomics type. Alias for :class:`sympy.Integer`"""
 
 
-def truncate_to_significant_digits(value: SympyEquiv, digits: int) -> float:
+def truncate_to_significant_digits(value: NumberLike, digits: int) -> float:
     """Truncate a real number toward zero to ``digits`` significant digits."""
     if digits < 1:
         raise ValueError("digits must be positive")
@@ -84,7 +95,7 @@ def sign(value: float | int | sympy.Expr) -> Literal[-1, 0, 1]:  # noqa: PYI041
     return -1
 
 
-def _pl_json_to_sympy(value: object | None) -> SympyValue | None:
+def json_to_sympy(value: object | None) -> PlValue | None:
     """Parses PrairieLearn JSON objects into a sympy Expression"""
     if value is None or not psu.is_sympy_json(value):
         return None
@@ -125,22 +136,6 @@ def _normalize_one_or_more[T](iter_or_single: OneOrMore[T]) -> Iterable[T]:
     if isinstance(iter_or_single, Iterable):
         return iter_or_single
     return (iter_or_single,)
-
-
-def _str_to_sympy(raw_expr: str, variables: OneOrMore[Variable]) -> sympy.Expr:
-    """Parse a string as a SymPy expression using the allowed variables."""
-    if not isinstance(raw_expr, str):
-        raise TypeError(
-            f"Expected a string, got {raw_expr!r}\n\tHint: use to_expr instead."
-        )
-    return psu.convert_string_to_sympy(
-        raw_expr,
-        set(_var_names(variables)),
-        allow_complex=True,
-        allow_hidden=True,
-        allow_sets=True,
-        allow_trig_functions=True,
-    )
 
 
 def getrec(data: Any | None, *keys: Any, default: Any | None = None) -> Any:
@@ -204,16 +199,60 @@ def setrec[V](
     return v
 
 
-def to_expr(
-    expr: SympyParsable | dict | str, variables: OneOrMore[Variable] = ()
-) -> SympyValue:
-    """Convert a supported symbolic value or PrairieLearn JSON object to SymPy."""
+def str_to_sympy(raw_expr: str, variables: OneOrMore[Variable]) -> sympy.Expr:
+    """Parse a string as a SymPy expression using the allowed variables."""
+    if not isinstance(raw_expr, str):
+        raise TypeError(
+            f"Expected a string, got {raw_expr!r}\n\tHint: use to_expr instead."
+        )
+    return psu.convert_string_to_sympy(
+        raw_expr,
+        set(_var_names(variables)),
+        allow_complex=True,
+        allow_hidden=True,
+        allow_sets=True,
+        allow_trig_functions=True,
+    )
+
+
+type ParsableValue = SympyInput | dict | str
+
+
+def to_expr(expr: ParsableValue, variables: OneOrMore[Variable] = ()) -> PlValue:
+    """Convert a supported value to a SymPy expression or set.
+
+    Numeric values are sympified, while existing SymPy expressions and sets are
+    returned unchanged. Strings are parsed using PrairieLearn's symbolic parser,
+    with ``variables`` specifying the variable names that may appear in the
+    string. PrairieLearn symbolic JSON objects are deserialized to their
+    corresponding SymPy values.
+
+    For example::
+
+        >>> to_expr("2*x + 1", variables="x")
+        2*x + 1
+        >>> type(to_expr(0.5))
+        <class sympy.Float>
+
+    Args:
+        expr: A string, number, SymPy expression or set, or PrairieLearn
+            symbolic JSON object to convert.
+        variables: A variable, or sequence of variables, allowed when parsing a
+            string. Each variable may be a name or a ``sympy.Symbol``.
+
+    Returns:
+        The converted SymPy expression or set.
+
+    Raises:
+        TypeError: If ``expr`` has an unsupported type or is not a valid
+            PrairieLearn symbolic JSON object.
+    """
     if isinstance(expr, (int, float)):
         return sympy.sympify(expr)
     if isinstance(expr, str):
-        return _str_to_sympy(expr, variables)
+        return str_to_sympy(expr, variables)
     if isinstance(expr, dict):
-        out = _pl_json_to_sympy(expr)
+        out = json_to_sympy(expr)
         if out is not None:
             return out
         raise TypeError(
@@ -263,12 +302,13 @@ def eq[T, R](
 
 
 TRIG_OPERATOR_RE: re.Pattern[str] | None = None
+type LatexableValue = SympyInput | sympy.Rel
 
 
 def latex(
-    expr: SympyParsable | sympy.Rel,
+    expr: LatexableValue,
     *,
-    log_base: SympyParsable | None = None,
+    log_base: SympyInput | None = None,
     reparse: bool = False,
     displaystyle: bool = True,
 ) -> str:
@@ -289,9 +329,7 @@ def latex(
     TRIG_OPERATOR_RE = TRIG_OPERATOR_RE or re.compile(
         r"\\operatorname{a(sin|cos|tan|cos|sec|cot)}"
     )
-    parsed = expr
-    if reparse or isinstance(expr, str):
-        parsed = sympy.parse_expr(str(expr))
+    parsed = sympy.sympify(expr) if reparse else expr
     unparsed = str(sympy.latex(parsed))
     disp_prefix = r"\displaystyle " if displaystyle else ""
     rendered = TRIG_OPERATOR_RE.sub(r"\\operatorname{\1}^{-1}", unparsed).replace(
@@ -310,10 +348,10 @@ def latex(
 def lim_latex(
     *,
     var: Variable,
-    val: SympyParsable,
+    val: SympyInput,
     dir: Literal["+", "-", "+-"] | str | None = None,
-    body: SympyParsable,
-    log_base: SympyParsable | None = None,
+    body: SympyInput,
+    log_base: SympyInput | None = None,
     reparse: bool = False,
     displaystyle: bool = True,
 ) -> str:
@@ -334,7 +372,7 @@ def lim_latex(
 
 
 def count_in_latex(
-    value: SympyValue | None,
+    value: LatexableValue | None,
     *substrings: str,
 ) -> int:
     """Count occurrences of LaTeX fragments in a submitted symbolic answer."""

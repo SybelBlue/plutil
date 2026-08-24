@@ -11,8 +11,8 @@ from sympy import Eq, Function, checkodesol
 from .calculus import derivative
 from .common import (
     OneOrMore,
-    SympyParsable,
-    SympyValue,
+    PlValue,
+    SympyInput,
     Variable,
     _normalize_one_or_more,
     _var_names,
@@ -58,8 +58,8 @@ class OdeCheckResult:
 
 def check_implicit_solution(
     *,
-    student_sol: SympyParsable,
-    reference_ode: SympyParsable,
+    student_sol: SympyInput,
+    reference_ode: SympyInput,
     independent: Variable,
     dependent: Variable,
     C: Variable = "C",
@@ -95,8 +95,8 @@ def check_implicit_solution(
 
 def check_explicit_solution(
     *,
-    student_solution: SympyParsable,
-    reference_ode: SympyParsable,
+    student_solution: SympyInput,
+    reference_ode: SympyInput,
     independent: Variable,
     dependent: Variable,
     C: Variable = "C",
@@ -133,11 +133,11 @@ def check_explicit_solution(
 
 
 def implicit_diff(
-    f: SympyParsable,
+    f: SympyInput,
     variables: OneOrMore[Variable],
     *,
     d: Variable,
-) -> SympyValue:
+) -> PlValue:
     r"""The call `implicit_diff(f, (x0,x1,...), d=t)` constructs:
 
     .. math:
@@ -147,7 +147,7 @@ def implicit_diff(
     """
     from .calculus import d as d_
 
-    out: SympyValue | None = None
+    out: PlValue | None = None
     indeps = tuple(_normalize_one_or_more(variables))
     if not indeps:
         return to_expr(f)
@@ -164,7 +164,7 @@ def implicit_diff(
 
 
 def diffeq_latex(
-    expr: SympyValue,
+    expr: PlValue,
     *,
     dependent_vars: OneOrMore[Variable],
     independent_vars: OneOrMore[Variable],

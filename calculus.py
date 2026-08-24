@@ -10,9 +10,10 @@ from typing import Any, Final, Literal, cast, overload
 import sympy
 
 from .common import (
-    SympyEquiv,
-    SympyParsable,
-    SympyValue,
+    NumberLike,
+    PlValue,
+    SympyInput,
+    Value,
     Variable,
     _normalize_one_or_more,
     to_expr,
@@ -48,11 +49,11 @@ def award_missing_constant_credit(
 
 
 def derivative(
-    f: SympyParsable,
+    f: SympyInput,
     *,
     d: Variable,
     evaluate: bool = True,
-) -> SympyValue:
+) -> PlValue:
     """Differentiate ``f`` with respect to ``d``.
 
     Set ``evaluate=False`` to return an unevaluated SymPy derivative.
@@ -66,20 +67,20 @@ def derivative(
 
 def derivative_(
     *, d: Variable, evaluate: bool = True
-) -> Callable[[SympyParsable], SympyValue]:
+) -> Callable[[SympyInput], PlValue]:
     """Return a callable that differentiates its argument with respect to ``d``."""
     return lambda f: derivative(f, d=d, evaluate=evaluate)
 
 
 def integrate(
-    f: SympyParsable,
+    f: SympyInput,
     *,
     d: Variable,
     C: Variable | Literal[False] | None = "C",
-    bounds: tuple[SympyEquiv, SympyEquiv] | None = None,
-    known_antideriv_point: tuple[SympyEquiv, SympyEquiv] | None = None,
+    bounds: tuple[Value, Value] | None = None,
+    known_antideriv_point: tuple[Value, Value] | None = None,
     evaluate: bool = True,
-) -> SympyValue:
+) -> PlValue:
     """Integrate ``f`` with optional integration-constant handling.
 
     If ``bounds`` is provided, returns the definite integral
@@ -95,7 +96,7 @@ def integrate(
     """
     diff_var = var_to_symbol(d)
 
-    integral: Callable[[Any, Any], SympyValue] = (
+    integral: Callable[[Any, Any], PlValue] = (
         sympy.integrate if evaluate else sympy.Integral
     )  # type: ignore
 
@@ -125,10 +126,10 @@ def integrate_(
     *,
     d: Variable,
     C: Variable | Literal[False] | None = "C",
-    bounds: tuple[SympyEquiv, SympyEquiv] | None = None,
-    known_antideriv_point: tuple[SympyEquiv, SympyEquiv] | None = None,
+    bounds: tuple[Value, Value] | None = None,
+    known_antideriv_point: tuple[Value, Value] | None = None,
     evaluate: bool = True,
-) -> Callable[[SympyParsable], SympyValue]:
+) -> Callable[[SympyInput], PlValue]:
     """Return a callable that integrates its argument using the given options."""
     return lambda f: integrate(
         f,
@@ -141,13 +142,13 @@ def integrate_(
 
 
 def approximate_area[num: int | float](
-    f: SympyParsable | dict[num, num],
+    f: SympyInput | dict[num, num],
     *,
     d: Variable,
-    bounds: tuple[int, int],
+    bounds: tuple[Value, Value],
     n: int,
     method: Literal["left", "right", "midpoint"],
-) -> SympyEquiv:
+) -> Value:
     """Approximate a definite integral with a rectangular Riemann sum.
 
     ``f`` may be an expression or a table mapping sample points to values.
@@ -160,8 +161,8 @@ def approximate_area[num: int | float](
         raise ValueError("`n` must be positive")
 
     lo, hi = bounds
-    width = (hi - lo) / n
-    rect_xs = [lo + i * width for i in range(n + 1)]
+    width = (hi - lo) / n  # type: ignore
+    rect_xs = [lo + i * width for i in range(n + 1)]  # type: ignore
 
     match method:
         case "left":
@@ -169,25 +170,25 @@ def approximate_area[num: int | float](
         case "right":
             rect_xs.pop(0)
         case "midpoint":
-            rect_xs = [(a + b) / 2 for a, b in pairwise(rect_xs)]
+            rect_xs = [(a + b) / 2 for a, b in pairwise(rect_xs)]  # type: ignore
 
-    f_x: Callable[[float], SympyEquiv]
+    f_x: Callable[[float], Value]
     if isinstance(f, dict):
         table = {float(x): y for x, y in f.items()}
         f_x = lambda x: next(v for k, v in table.items() if math.isclose(k, x))  # type: ignore
     else:
         f_expr = to_expr(f).simplify()
-        f_x = lambda x: eval_at(f_expr, **{var_name(d): x})  # type: ignore
+        f_x = lambda x: eval_at(f_expr, **{var_name(d): x}, simplify=True)
 
     return width * sum(map(f_x, rect_xs))  # type: ignore
 
 
 def mean_value_theorem(
-    f: SympyParsable,
+    f: SympyInput,
     *,
     d: Variable,
     bounds: tuple[int | float | sympy.Number, int | float | sympy.Number],
-) -> tuple[Sequence[SympyEquiv], SympyEquiv]:
+) -> tuple[Sequence[NumberLike], Value]:
     """Find points where ``f`` equals its average value on ``bounds``.
 
     Returns a tuple containing the solutions within the closed interval and
@@ -220,27 +221,27 @@ def d(u: Variable) -> Any:
 @overload
 def tangent_line_of(
     *,
-    f: SympyParsable,
+    f: SympyInput,
     d: Variable,
-    at: tuple[SympyEquiv, SympyEquiv],
+    at: tuple[Value, Value],
     y0_name="y",
-) -> SympyValue: ...
+) -> PlValue: ...
 @overload
 def tangent_line_of(
     *,
-    df: SympyParsable,
+    df: SympyInput,
     d: Variable,
-    at: tuple[SympyEquiv, SympyEquiv],
+    at: tuple[Value, Value],
     y0_name="y",
-) -> SympyValue: ...
+) -> PlValue: ...
 def tangent_line_of(
     *,
-    f: SympyParsable | None = None,
-    df: SympyParsable | None = None,
+    f: SympyInput | None = None,
+    df: SympyInput | None = None,
     d: Variable,
-    at: tuple[SympyEquiv, SympyEquiv],
+    at: tuple[Value, Value],
     y0_name="y",
-) -> SympyValue:
+) -> PlValue:
     """Return the tangent line through a given point.
 
     Pass the function as ``f`` to compute its derivative, or pass a known
@@ -251,7 +252,7 @@ def tangent_line_of(
     Raises:
         ValueError: If neither ``f`` nor ``df`` is specified.
     """
-    body: SympyParsable
+    body: SympyInput
     if f is None:
         if df is None:
             raise ValueError("At least one of f and df must be specified")

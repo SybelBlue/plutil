@@ -10,8 +10,8 @@ if TYPE_CHECKING:
 
 from .common import (
     OneOrMore,
-    SympyEquiv,
-    SympyParsable,
+    SympyInput,
+    Value,
     _normalize_one_or_more,
     eq,
 )
@@ -83,13 +83,13 @@ class CompoundRule[T](PartialCreditRule[T]):
 
 
 @overload
-def rule(score: float, *, if_: bool) -> PartialCreditRule[SympyEquiv]: ...
+def rule(score: float, *, if_: bool) -> PartialCreditRule[Value]: ...
 @overload
-def rule[T: SympyEquiv](
+def rule[T: Value](
     score: float, *, submitted_is: OneOrMore[T | bool], if_: bool | None = None
 ) -> PartialCreditRule[T]: ...
 @overload
-def rule[T: SympyEquiv](
+def rule[T: Value](
     score: float,
     *,
     change_correct: OneOrMore[Callable[[T], T] | bool],
@@ -97,7 +97,7 @@ def rule[T: SympyEquiv](
     if_: bool | None = None,
 ) -> PartialCreditRule[T]: ...
 @overload
-def rule[T: SympyEquiv](
+def rule[T: Value](
     score: float,
     *,
     change_correct: OneOrMore[Callable[[T], T] | bool] = (),
@@ -105,20 +105,20 @@ def rule[T: SympyEquiv](
     if_: bool | None = None,
 ) -> PartialCreditRule[T]: ...
 @overload
-def rule[T: SympyEquiv](
+def rule[T: Value](
     score: float,
     *,
     change_both: OneOrMore[Callable[[T], T] | bool],
     if_: bool | None = None,
 ) -> PartialCreditRule[T]: ...
 @overload
-def rule[T: SympyEquiv](
+def rule[T: Value](
     score: float,
     *,
     satisfies: OneOrMore[Callable[[T, T], bool] | bool],
     if_: bool | None = None,
 ) -> PartialCreditRule[T]: ...
-def rule[T: SympyEquiv](
+def rule[T: Value](
     score: float,
     *,
     submitted_is: OneOrMore[T | bool] = (),
@@ -269,11 +269,11 @@ class CreditScheme[T](_CreditSchemeBase[T]):
         return True
 
 
-class SympyCreditScheme(_CreditSchemeBase[SympyEquiv]):
+class SympyCreditScheme(_CreditSchemeBase[Value]):
     def grade(
         self,
         lens: SympyQuestion,
-        addl_correct_answers: OneOrMore[SympyEquiv] = (),
+        addl_correct_answers: OneOrMore[Value] = (),
         include_display_ans: bool = True,
         clobber_existing_score: bool = False,
         feedback: str | None = None,
@@ -288,7 +288,7 @@ class SympyCreditScheme(_CreditSchemeBase[SympyEquiv]):
             return False
 
         # find submitted answer
-        submitted: SympyEquiv | None = lens.submitted_answer  # type: ignore
+        submitted: Value | None = lens.submitted_answer  # type: ignore
         if submitted is None:
             return False
 
@@ -319,7 +319,7 @@ class SympyCreditScheme(_CreditSchemeBase[SympyEquiv]):
 def award_partial_credit(
     lens: SympyQuestion,
     *rules: PartialCreditRule,
-    addl_correct_ans: OneOrMore[SympyParsable] = (),
+    addl_correct_ans: OneOrMore[SympyInput] = (),
     feedback: str | None = None,
     include_display_ans: bool = True,
     clobber_existing_score: bool = True,
