@@ -4,7 +4,7 @@ import prairielearn.sympy_utils as psu
 import pytest
 import sympy as sp
 
-from plutil.common import SympyValue
+from plutil.common import PlValue
 from plutil.lenses import JsonValue, Params
 
 
@@ -128,7 +128,7 @@ def test_params_latex_proxy_sets_rendered_latex(
     x = sp.Symbol("x")
 
     params.latex["expression"] = cast(
-        SympyValue,
+        PlValue,
         x / 2,  # type: ignore
     )
 
