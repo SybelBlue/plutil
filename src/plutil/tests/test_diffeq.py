@@ -58,7 +58,6 @@ def test_check_implicit_solution_supports_custom_variables_and_constants():
         reference_ode=ode,
         independent=t,
         dependent=z,
-        consts=a,
     )
 
 
@@ -205,7 +204,6 @@ def test_check_explicit_solution_supports_custom_variables_and_constants():
         reference_ode=ode,
         independent=t,
         dependent=z_symbol,
-        consts=(a, K),
         C="K",
     )
 

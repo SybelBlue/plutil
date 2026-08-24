@@ -205,7 +205,7 @@ def setrec[V](
 
 
 def to_expr(
-    expr: SympyParsable | dict | str, variables: OneOrMore[Variable]
+    expr: SympyParsable | dict | str, variables: OneOrMore[Variable] = ()
 ) -> SympyValue:
     """Convert a supported symbolic value or PrairieLearn JSON object to SymPy."""
     if isinstance(expr, (int, float)):

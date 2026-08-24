@@ -10,7 +10,6 @@ from typing import Any, Final, Literal, cast, overload
 import sympy
 
 from .common import (
-    OneOrMore,
     SympyEquiv,
     SympyParsable,
     SympyValue,
@@ -50,28 +49,26 @@ def award_missing_constant_credit(
 
 def derivative(
     f: SympyParsable,
-    variables: OneOrMore[Variable] = (),
     *,
     d: Variable,
     evaluate: bool = True,
 ) -> SympyValue:
     """Differentiate ``f`` with respect to ``d``.
 
-    Additional ``variables`` are allowed when parsing a string expression.
     Set ``evaluate=False`` to return an unevaluated SymPy derivative.
     """
     return sympy.Derivative(
-        to_expr(f, (d, *_normalize_one_or_more(variables))),
+        to_expr(f),
         var_to_symbol(d),
         evaluate=evaluate,
     )
 
 
 def derivative_(
-    variables: OneOrMore[Variable] = (), *, d: Variable, evaluate: bool = True
+    *, d: Variable, evaluate: bool = True
 ) -> Callable[[SympyParsable], SympyValue]:
     """Return a callable that differentiates its argument with respect to ``d``."""
-    return lambda f: derivative(f, variables, d=d, evaluate=evaluate)
+    return lambda f: derivative(f, d=d, evaluate=evaluate)
 
 
 def integrate(
@@ -179,7 +176,7 @@ def approximate_area[num: int | float](
         table = {float(x): y for x, y in f.items()}
         f_x = lambda x: next(v for k, v in table.items() if math.isclose(k, x))  # type: ignore
     else:
-        f_expr = to_expr(f, d).simplify()
+        f_expr = to_expr(f).simplify()
         f_x = lambda x: eval_at(f_expr, **{var_name(d): x})  # type: ignore
 
     return width * sum(map(f_x, rect_xs))  # type: ignore
@@ -205,7 +202,7 @@ def mean_value_theorem(
         raise ZeroDivisionError
     if upper < lower:
         raise ValueError("upper bound is less than lower bound")
-    f_expr = to_expr(f, d)
+    f_expr = to_expr(f)
     mean_val = integrate(f_expr, d=d, bounds=bounds) / (upper - lower)  # type: ignore
     sols = sympy.solveset(
         f_expr - mean_val,

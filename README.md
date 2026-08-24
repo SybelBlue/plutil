@@ -223,14 +223,15 @@ scale(x**2 + 1)  # -> 3*x**2 + 3
 
 ## `calculus.py`
 
-### `derivative(f, variables=(), *, d) -> Expr`
+### `derivative(f, *, d) -> Expr`
 
 Symbolic derivative of `f` with respect to symbol `d`.
 
 ```python
 from plutil.calculus import derivative
+from sympy.abc import x
 
-derivative("x^3 + 2*x", d="x")  # -> 3*x**2 + 2
+derivative(x**3 + 2*x, d=x)  # -> 3*x**2 + 2
 ```
 
 ### `tangent_line_of(*, f=None, df=None, d, at, y0_name="y") -> Expr`
