@@ -22,15 +22,11 @@ DEFAULT_FEEDBACK: Final[str] = (
 def eval_at(
     f: SympyParsable, simplify: bool = True, **bindings: SympyEquiv | None
 ) -> sympy.Expr:
-    """Evaluate `expr` after substituting the given bindings and simplify.
-    If `expr` is a `str` and there are unbound names in the output, add them to bindings
-    using `unbound_name=None`
-    """
-    fn = to_expr(f, tuple(bindings.keys()))
+    """Evaluate `f` after substituting the given bindings and simplify."""
     values = (
-        (sympy.Symbol(k), to_expr(v, ())) for k, v in bindings.items() if v is not None
+        (sympy.Symbol(k), to_expr(v)) for k, v in bindings.items() if v is not None
     )
-    res = fn.subs(values)
+    res = to_expr(f).subs(values)
     if simplify:
         res = sympy.simplify(res)
     return cast(sympy.Expr, res)
@@ -42,17 +38,10 @@ def eval_at_(**bindings: SympyEquiv | None) -> Callable[[SympyParsable], sympy.E
 
 
 def evalf_at(f: SympyParsable, **bindings: SympyEquiv | None) -> float:
-    """Evaluate `expr` after substituting the given bindings and simplify.
-    If `expr` is a `str` and there are unbound names in the output, add them to bindings
-    using `unbound_name=None`
-    """
-    fn = to_expr(f, tuple(bindings.keys()))
+    """Evaluate `f` numerically after substituting the given bindings."""
+    fn = to_expr(f)
     out = fn.evalf(
-        subs={
-            sympy.Symbol(k): to_expr(v, ())
-            for k, v in bindings.items()
-            if v is not None
-        }
+        subs={sympy.Symbol(k): to_expr(v) for k, v in bindings.items() if v is not None}
     )
     try:
         return float(out)  # type: ignore

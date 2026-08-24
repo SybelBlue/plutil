@@ -62,7 +62,6 @@ def check_implicit_solution(
     reference_ode: SympyParsable,
     independent: Variable,
     dependent: Variable,
-    consts: OneOrMore[Variable] = (),
     C: Variable = "C",
     timeout_seconds: float = 2.5,
 ):
@@ -73,19 +72,15 @@ def check_implicit_solution(
     function form, such as `y(x)`, then asks `sympy.checkodesol` whether
     `F(x, y(x)) = C` solves `reference_ode`.
 
-    String inputs are parsed using `independent`, `dependent`, and any names in
-    `consts`. Parse errors are allowed to propagate so PrairieLearn can report
-    invalid symbolic input normally. A SymPy timeout returns
-    `OdeCheckResult(timeout=True)`.
+    A SymPy timeout returns `OdeCheckResult(timeout=True)`.
     """
     x_s = var_to_symbol(independent)
     y_s = var_to_symbol(dependent)
     C_s = var_to_symbol(C)
     y_x = Function(var_name(dependent))(x_s)
 
-    vs = (x_s, y_s, *_normalize_one_or_more(consts))
-    ref_ode = to_expr(reference_ode, vs)
-    stu_sol = Eq(to_expr(student_sol, vs).subs(y_s, y_x), C_s)
+    ref_ode = to_expr(reference_ode)
+    stu_sol = Eq(to_expr(student_sol).subs(y_s, y_x), C_s)
 
     check, correct = None, False
     try:
@@ -104,7 +99,6 @@ def check_explicit_solution(
     reference_ode: SympyParsable,
     independent: Variable,
     dependent: Variable,
-    consts: OneOrMore[Variable] = (),
     C: Variable = "C",
     timeout_seconds: float = 2.5,
 ):
@@ -114,22 +108,17 @@ def check_explicit_solution(
     that the expression contain the arbitrary constant named by `C`; if it does
     not, the returned result has `missing_constant` set and no ODE check is run.
 
-    String inputs are parsed using `independent`, `dependent`, and any names in
-    `consts`. Include custom constants in `consts` when submitting a string
-    solution, for example `consts=("a", "K")` with `C="K"`.
     A SymPy timeout returns `OdeCheckResult(timeout=True)`.
     """
     x_s = var_to_symbol(independent)
-    y_s = var_to_symbol(dependent)
     C_s = var_to_symbol(C)
     y_x = Function(var_name(dependent))(x_s)
 
-    vs = (x_s, y_s, *_normalize_one_or_more(consts))
-    student_expr = to_expr(student_solution, vs)
+    student_expr = to_expr(student_solution)
     if C_s not in student_expr.free_symbols:
         return OdeCheckResult(missing_constant=var_name(C))
 
-    ref_ode = to_expr(reference_ode, vs)
+    ref_ode = to_expr(reference_ode)
     stu_sol = Eq(y_x, student_expr)
 
     correct, check = False, None
@@ -147,7 +136,6 @@ def implicit_diff(
     f: SympyParsable,
     variables: OneOrMore[Variable],
     *,
-    consts: OneOrMore[Variable] = (),
     d: Variable,
 ) -> SympyValue:
     r"""The call `implicit_diff(f, (x0,x1,...), d=t)` constructs:
@@ -161,11 +149,10 @@ def implicit_diff(
 
     out: SympyValue | None = None
     indeps = tuple(_normalize_one_or_more(variables))
-    vs = (*indeps, *_normalize_one_or_more(consts))
     if not indeps:
-        return to_expr(f, vs)
+        return to_expr(f)
     for v in indeps:
-        dd = derivative(f, vs, d=v)
+        dd = derivative(f, d=v)
         with sp.evaluate(False):
             dd *= d_(v) / d_(d)
             if out is None:
