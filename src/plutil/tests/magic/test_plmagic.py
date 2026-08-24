@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from itertools import count
+from itertools import count, permutations
 from pathlib import Path
 from textwrap import dedent
 from types import ModuleType
@@ -464,26 +464,39 @@ def test_plmagic_rejects_variadic_parameters(fs: FakeFilesystem) -> None:
         )
 
 
-def test_derived_answers_generate_in_dependency_order(fs: FakeFilesystem) -> None:
-    server = load_server(
-        fs,
-        """
+@pytest.mark.parametrize(
+    "definition_order",
+    tuple(permutations(("position", "velocity", "generate"))),
+)
+def test_derived_answers_generate_independent_of_definition_order(
+    fs: FakeFilesystem, definition_order: tuple[str, ...]
+) -> None:
+    definitions = {
+        "position": """
+            @plmagic
+            def derive_position(params: ReadOnlyParams, *, velocity: SympyValue) -> SympyValue:
+                return velocity * t + params["y0"]
+        """,
+        "velocity": """
+            @plmagic
+            def derive_velocity(*, accel: SympyValue) -> SympyValue:
+                return accel * t
+        """,
+        "generate": """
+            @plmagic
+            def generate(data, *, accel: SympyQuestion) -> None:
+                data.params["y0"] = 3
+                accel.correct_answer = 2
+        """,
+    }
+    server_source = dedent("""
         from plutil import ReadOnlyParams, SympyQuestion, SympyValue, plmagic
         from sympy.abc import t
+        """) + "".join(dedent(definitions[name]) for name in definition_order)
 
-        @plmagic
-        def derive_position(params: ReadOnlyParams, *, velocity: SympyValue) -> SympyValue:
-            return velocity * t + params["y0"]
-
-        @plmagic
-        def derive_velocity(*, accel: SympyValue) -> SympyValue:
-            return accel * t
-
-        @plmagic
-        def generate(data, *, accel: SympyQuestion) -> None:
-            data.params["y0"] = 3
-            accel.correct_answer = 2
-        """,
+    server = load_server(
+        fs,
+        server_source,
         """
         <pl-symbolic-input answers-name="accel" variables="t"></pl-symbolic-input>
         <pl-symbolic-input answers-name="velocity" variables="t"></pl-symbolic-input>
@@ -565,25 +578,38 @@ def test_derived_answer_can_be_called_with_only_symbolic_values(
     assert server.derive_result(source=sp.Integer(2)) == sp.Integer(3)
 
 
-def test_derived_answers_grade_from_immediate_submission(fs: FakeFilesystem) -> None:
-    server = load_server(
-        fs,
-        """
+@pytest.mark.parametrize(
+    "definition_order",
+    tuple(permutations(("velocity", "position", "grade"))),
+)
+def test_derived_answers_grade_independent_of_definition_order(
+    fs: FakeFilesystem, definition_order: tuple[str, ...]
+) -> None:
+    definitions = {
+        "velocity": """
+            @plmagic
+            def derive_velocity(*, accel: SympyValue) -> SympyValue:
+                return accel * t
+        """,
+        "position": """
+            @plmagic
+            def derive_position(*, velocity: SympyValue) -> SympyValue:
+                return velocity * t
+        """,
+        "grade": """
+            @plmagic
+            def grade() -> None:
+                pass
+        """,
+    }
+    server_source = dedent("""
         from plutil import SympyValue, plmagic
         from sympy.abc import t
+        """) + "".join(dedent(definitions[name]) for name in definition_order)
 
-        @plmagic
-        def derive_velocity(*, accel: SympyValue) -> SympyValue:
-            return accel * t
-
-        @plmagic
-        def derive_position(*, velocity: SympyValue) -> SympyValue:
-            return velocity * t
-
-        @plmagic
-        def grade() -> None:
-            pass
-        """,
+    server = load_server(
+        fs,
+        server_source,
         """
         <pl-symbolic-input answers-name="accel" variables="t"></pl-symbolic-input>
         <pl-symbolic-input answers-name="velocity" variables="t"></pl-symbolic-input>
