@@ -5,4 +5,3 @@
   - new `rule` type syntax for /adding/ partial credit
 - score_set_answer
   - recursive comparison of intervals
-- remove `**variables`
