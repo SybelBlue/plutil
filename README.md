@@ -64,8 +64,9 @@ Check symbolic equality after simplification (`simplify(left - right) == 0`).
 
 ```python
 from plutil import eq
+from sympy.abc import x
 
-eq("x + 1", "1 + x")  # -> True
+eq(x + 1, 1 + x)  # -> True
 ```
 
 ### `getrec(data, *keys, default=None) -> Any`
@@ -176,13 +177,14 @@ Helpers for evaluating and transforming symbolic functions.
 
 ### `eval_at(f, **bindings) -> Expr`
 
-Substitute values into `f` (string, number, or SymPy) and simplify.
+Substitute values into a SymPy expression and simplify.
 
 ```python
 from plutil import eval_at
+from sympy.abc import t, x, y
 
-eval_at("x + y", x=2)  # -> y + 2
-eval_at("4 - t/2 + t^2/10", t=8)  # -> 32/5
+eval_at(x + y, x=2)  # -> y + 2
+eval_at(4 - t / 2 + t**2 / 10, t=8)  # -> 32/5
 ```
 
 ### `translate_through(f, *, y0_name="y", **bindings)` and `scale_through(f, *, y0_name="y", **bindings)`
@@ -243,15 +245,16 @@ second determines the point the resulting line passes through.
 
 ```python
 from plutil.calculus import tangent_line_of
+from sympy.abc import x
 
-tangent_line_of(f="x^2", d="x", at=(2, 4))  # -> 4*x - 4
-tangent_line_of(df="3*x^2", d="x", at=(2, 7))  # -> 12*x - 17
+tangent_line_of(f=x**2, d=x, at=(2, 4))  # -> 4*x - 4
+tangent_line_of(df=3 * x**2, d=x, at=(2, 7))  # -> 12*x - 17
 ```
 
 Use `y0_name` when the dependent variable has another name, such as
 `y0_name="v"` for a point expressed with coordinates `(u, v)`.
 
-### `integrate(f, variables=(), *, d, C="C", bounds=None, known_antideriv_point=None) -> Expr`
+### `integrate(f, *, d, C="C", bounds=None, known_antideriv_point=None) -> Expr`
 
 Integrate `f` with respect to `d`.
 
@@ -262,18 +265,19 @@ Integrate `f` with respect to `d`.
 | `known_antideriv_point=(x0, y0)` | Antiderivative shifted to pass through `(x0, y0)`  |
 
 ```python
-from plutil.calculus import integrate
 from plutil import eval_at
+from plutil.calculus import integrate
+from sympy.abc import t, x
 
-integrate("x", d="x")  # -> C + x**2/2
+integrate(x, d=x)  # -> C + x**2/2
 
-integrate("x", d="x", bounds=(0, 1))  # -> 1/2
+integrate(x, d=x, bounds=(0, 1))  # -> 1/2
 
-integrate("2*x", d="x", known_antideriv_point=(0, 5))  # -> x**2 + 5
+integrate(2 * x, d=x, known_antideriv_point=(0, 5))  # -> x**2 + 5
 
 # Chain integrals in generate()
-v = integrate("4 - t/2 + t^2/10", d="t", known_antideriv_point=(0, 0))
-s = integrate(v, d="t", known_antideriv_point=(0, 0))
+v = integrate(4 - t / 2 + t**2 / 10, d=t, known_antideriv_point=(0, 0))
+s = integrate(v, d=t, known_antideriv_point=(0, 0))
 distance = eval_at(s, t=8) - eval_at(s, t=0)  # -> 1792/15
 ```
 
