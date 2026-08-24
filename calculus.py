@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from itertools import pairwise
 from typing import Any, Final, Literal, cast, overload
 
@@ -190,7 +190,7 @@ def mean_value_theorem(
     *,
     d: Variable,
     bounds: tuple[int | float | sympy.Number, int | float | sympy.Number],
-) -> tuple[tuple[SympyEquiv, ...], SympyEquiv]:
+) -> tuple[Sequence[SympyEquiv], SympyEquiv]:
     """Find points where ``f`` equals its average value on ``bounds``.
 
     Returns a tuple containing the solutions within the closed interval and
