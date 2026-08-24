@@ -9,15 +9,15 @@ from sympy.abc import t, x
 
 import plutil.common as common_mod
 from plutil.common import (
-    json_to_sympy,
-    str_to_sympy,
     eq,
     getrec,
+    json_to_sympy,
     latex,
     lim_latex,
     setrec,
     sign,
     spint,
+    str_to_sympy,
     truncate_to_significant_digits,
 )
 from plutil.lenses import Question, SympyQuestion
@@ -114,6 +114,35 @@ def test_lens_format_error_can_be_cleared():
 
     assert lens.format_error is None
     assert data["format_errors"] == {}
+
+
+def test_lens_feedback_sets_question_feedback():
+    data: pl.QuestionData = {"feedback": {}}  # type: ignore
+    question = Question(data, "answer")
+
+    question.feedback = "Try factoring first."
+
+    assert data["partial_scores"]["answer"].get("feedback") == "Try factoring first."
+
+
+def test_lens_feedback_sets_data_feedback():
+    data: pl.QuestionData = {"feedback": {}}  # type: ignore
+    question = Question(data, "answer")
+
+    question.feedback = "Try factoring first."
+
+    assert data["feedback"][question.answers_name] == "Try factoring first."
+
+
+@pytest.mark.parametrize(
+    "feedback",
+    ["Try factoring first.", {"suggestion": "Try factoring first."}],
+)
+def test_lens_feedback_reads_data_feedback(feedback: str | dict[str, str]):
+    data: pl.QuestionData = {"feedback": {"answer": feedback}}  # type: ignore
+    question = Question(data, "answer")
+
+    assert question.feedback == feedback
 
 
 def test_getrec_walks_nested_indexables_and_uses_default():
