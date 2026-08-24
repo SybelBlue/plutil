@@ -326,7 +326,7 @@ class Data(BaseData[NoPreferences]):
 
 
 @dataclass(slots=True)
-class BaseQuestion[AnswerT]:
+class PartialScoreProxy:
     """Read and update data associated with one PrairieLearn answer.
 
     Attributes:
@@ -346,18 +346,7 @@ class BaseQuestion[AnswerT]:
     @already_scored.setter
     def already_scored(self, value: bool):
         self._already_scored = value
-        self._update_weighted_score()
-
-    @property
-    def correct_answer(self) -> AnswerT:
-        """Return the answer's stored correct value."""
-        adict = self.data.setdefault("correct_answers", {})
-        return cast(AnswerT, adict[self.answers_name])
-
-    @correct_answer.setter
-    def correct_answer(self, value: AnswerT) -> None:
-        adict = self.data.setdefault("correct_answers", {})
-        adict[self.answers_name] = value
+        pl.set_weighted_score_data(self.data)
 
     @property
     def score_dict(self) -> pl.PartialScore | None:
@@ -369,6 +358,7 @@ class BaseQuestion[AnswerT]:
     def score_dict(self, score: pl.PartialScore) -> None:
         adict = self.data.setdefault("partial_scores", {})
         adict[self.answers_name] = score
+        self._write_data_feedback(score.get("feedback"))
         self.already_scored = True
 
     def set_rich_score(
@@ -417,8 +407,11 @@ class BaseQuestion[AnswerT]:
     @property
     def feedback(self) -> str | dict[str, str] | None:
         """Return the answer's feedback, if present."""
-        if sd := self.score_dict:
-            return sd.get("feedback")
+        if (sd := self.score_dict) and (f := sd.get("feedback")) is not None:
+            self._write_data_feedback(f)
+            return f
+        if self._read_data_feedback():
+            return self.feedback
         return None
 
     @feedback.setter
@@ -426,6 +419,41 @@ class BaseQuestion[AnswerT]:
         adict = self.data.setdefault("partial_scores", {})
         sdict = adict.setdefault(self.answers_name, {"score": 0.0})  # type: ignore
         sdict["feedback"] = feedback
+        self._write_data_feedback(feedback)
+
+    def _read_data_feedback(self):
+        if (f := self.data.get("feedback", {}).get(self.answers_name)) is not None:
+            self.feedback = f
+            return True
+        return False
+
+    def _write_data_feedback(self, f: str | dict[str, str] | None):
+        fdict = self.data.setdefault("feedback", {})
+        if f is not None:
+            fdict[self.answers_name] = f
+        elif f in fdict:
+            del fdict[self.answers_name]
+
+
+@dataclass(slots=True)
+class BaseQuestion[AnswerT](PartialScoreProxy):
+    """Read and update data associated with one PrairieLearn answer.
+
+    Attributes:
+        data: The underlying PrairieLearn question data.
+        answers_name: The ``answers-name`` identifying the answer.
+    """
+
+    @property
+    def correct_answer(self) -> AnswerT:
+        """Return the answer's stored correct value."""
+        adict = self.data.setdefault("correct_answers", {})
+        return cast(AnswerT, adict[self.answers_name])
+
+    @correct_answer.setter
+    def correct_answer(self, value: AnswerT) -> None:
+        adict = self.data.setdefault("correct_answers", {})
+        adict[self.answers_name] = value
 
     @property
     def raw_submitted_answer(self) -> str | None:
@@ -466,9 +494,6 @@ class BaseQuestion[AnswerT]:
     ) -> Any | None:
         """Returns the value or None if it does not exist"""
         return getrec(self.data, f"{ver}_answers", self.answers_name, default=None)
-
-    def _update_weighted_score(self):
-        pl.set_weighted_score_data(self.data)
 
 
 @dataclass(slots=True)
