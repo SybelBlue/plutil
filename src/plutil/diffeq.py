@@ -2,11 +2,13 @@
 
 import re
 from dataclasses import KW_ONLY, dataclass
-from typing import Literal
+from typing import Literal, cast
 
 import sympy as sp
 from prairielearn import timeout_utils
 from sympy import Eq, Function, checkodesol
+
+from plutil.functions import eval_at
 
 from .calculus import derivative
 from .common import (
@@ -29,6 +31,18 @@ def _check_result_is_solution(result):
         return bool(result) and all(item[0] for item in result)
 
     return bool(result[0])
+
+
+def d_f(dependent: Variable, independent: Variable) -> PlValue:
+    """Construct an unevaluated ODE derivative from variable names or symbols.
+
+    For example, ``d_f(y, x)`` returns SymPy's canonical representation of
+    ``Derivative(y(x), x)`` while allowing callers to use bare symbols for the
+    rest of the equation.
+    """
+    x_s = var_to_symbol(independent)
+    y_x = cast(sp.Expr, Function(var_name(dependent))(x_s))
+    return derivative(y_x, d=x_s, evaluate=False)
 
 
 @dataclass(slots=True, frozen=True)
@@ -79,7 +93,7 @@ def check_implicit_solution(
     C_s = var_to_symbol(C)
     y_x = Function(var_name(dependent))(x_s)
 
-    ref_ode = to_expr(reference_ode)
+    ref_ode = to_expr(reference_ode).subs(y_s, y_x)
     stu_sol = Eq(to_expr(student_sol).subs(y_s, y_x), C_s)
 
     check, correct = None, False
@@ -112,13 +126,14 @@ def check_explicit_solution(
     """
     x_s = var_to_symbol(independent)
     C_s = var_to_symbol(C)
+    y_s = var_to_symbol(dependent)
     y_x = Function(var_name(dependent))(x_s)
 
     student_expr = to_expr(student_solution)
     if C_s not in student_expr.free_symbols:
         return OdeCheckResult(missing_constant=var_name(C))
 
-    ref_ode = to_expr(reference_ode)
+    ref_ode = to_expr(reference_ode).subs(y_s, y_x)
     stu_sol = Eq(y_x, student_expr)
 
     correct, check = False, None
@@ -187,11 +202,23 @@ def diffeq_latex(
         `pfrac`: `\\frac{\\partial f}{\\partial x}`
         `prime`: `f'` (intended for use only with an ode)
     """
-    out = latex(expr, reparse=False)
+    dependent_names = _var_names(dependent_vars)
+    independent_names = _var_names(independent_vars)
+    normalized_expr = to_expr(expr)
+    if independent_names:
+        independent = var_to_symbol(independent_names[0])
+        for fn in dependent_names:
+            normalized_expr = eval_at(
+                normalized_expr,
+                **{var_name(fn): cast(sp.Expr, Function(fn)(independent))},
+                simplify=False,
+            )
 
-    for fn in _var_names(dependent_vars):
+    out = latex(normalized_expr, reparse=False)
+
+    for fn in dependent_names:
         f = Function(fn)
-        for var in _var_names(independent_vars):
+        for var in independent_names:
             t = var_to_symbol(var)
 
             match display_mode:
