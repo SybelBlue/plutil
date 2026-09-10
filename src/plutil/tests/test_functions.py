@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import pytest
 import sympy
+from sympy.abc import s, t, x, y
+
 from plutil import rearrange_eqn
 from plutil.common import eq
 from plutil.functions import eval_at, translate_through_
-from sympy.abc import s, t, x, y
 
 
 def test_rearrange_eqn_solves_for_requested_linear_variable():
@@ -39,6 +40,32 @@ def test_rearrange_eqn_falls_back_for_unique_nonlinear_solution():
 
 def test_rearrange_eqn_rejects_multiple_solutions():
     with pytest.raises(ValueError, match="Expected exactly one solution"):
+        rearrange_eqn(sympy.Eq(t**2, 4), isolate=t)
+
+
+@pytest.mark.parametrize(
+    ("equation", "solution_count"),
+    [
+        (sympy.Eq(t, t + 1), "0"),
+        (sympy.Eq(t, t), "infinitely many"),
+    ],
+)
+def test_rearrange_eqn_rejects_evaluated_boolean_equations(
+    equation: sympy.Basic, solution_count: str
+):
+    with pytest.raises(ValueError, match=f"got {solution_count}"):
+        rearrange_eqn(equation, isolate=t)
+
+
+def test_rearrange_eqn_wraps_unsupported_solver_error(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    def unsupported_solver(*_args: object, **_kwargs: object) -> None:
+        raise NotImplementedError
+
+    monkeypatch.setattr(sympy, "solve", unsupported_solver)
+
+    with pytest.raises(ValueError, match="SymPy could not solve the equation"):
         rearrange_eqn(sympy.Eq(t**2, 4), isolate=t)
 
 

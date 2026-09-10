@@ -230,10 +230,10 @@ Pass `isolate` when the right-hand side has multiple variables, when selecting a
 ```python
 from plutil import rearrange_eqn
 from sympy import Eq, Symbol
-from sympy.abc import t
+from sympy.abc import s, t
 
 rearrange_eqn(x=t + 1)  # -> x - 1
-rearrange_eqn(x=t + y, isolate=t)  # -> x - y
+rearrange_eqn(x=s + t, isolate=t)  # -> x - s
 rearrange_eqn(Eq(Symbol("x"), t - 3), isolate=t)  # -> x + 3
 ```
 
