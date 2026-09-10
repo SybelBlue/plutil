@@ -5,7 +5,7 @@ import math
 import prairielearn as pl  # type: ignore
 import pytest
 import sympy
-from sympy.abc import t, x
+from sympy.abc import n, t, x
 
 import plutil.common as common_mod
 from plutil.common import (
@@ -283,6 +283,63 @@ def test_latex_can_render_log_with_explicit_base_and_display_fractions():
     rendered = latex(sympy.log(x / 2), log_base=2)  # type: ignore
 
     assert rendered == r"\log_{2}{\left(\dfrac{x}{2} \right)}"
+
+
+@pytest.mark.parametrize(
+    "operator",
+    [sympy.sin, sympy.cos, sympy.tan, sympy.csc, sympy.sec, sympy.cot],
+)
+def test_latex_leaves_standard_trig_operators_unchanged(operator):
+    expr = operator(x)
+
+    assert latex(expr) == sympy.latex(expr)
+
+
+@pytest.mark.parametrize(
+    ("operator", "name"),
+    [
+        (sympy.asin, "sin"),
+        (sympy.acos, "cos"),
+        (sympy.atan, "tan"),
+        (sympy.acsc, "csc"),
+        (sympy.asec, "sec"),
+        (sympy.acot, "cot"),
+    ],
+)
+def test_latex_renders_inverse_trig_operators_as_negative_powers(operator, name):
+    assert latex(operator(x)) == rf"\operatorname{{{name}}}^{{-1}}{{\left(x \right)}}"
+
+
+@pytest.mark.parametrize(
+    ("expr", "display_latex", "inline_latex"),
+    [
+        (
+            sympy.Sum(1 / x, (x, 1, n)),  # type: ignore
+            r"\displaystyle \sum_{x=1}^{n} \dfrac{1}{x}",
+            r"\sum_{x=1}^{n} \frac{1}{x}",
+        ),
+        (
+            2 * sympy.Sum(1 / x, (x, 1, n)),  # type: ignore
+            r"2 \displaystyle \sum_{x=1}^{n} \dfrac{1}{x}",
+            r"2 \sum_{x=1}^{n} \frac{1}{x}",
+        ),
+        (
+            sympy.Integral(x**2, (x, 0, 1)),
+            r"\displaystyle \int_{0}^{1} x^{2}\, dx",
+            r"\int_{0}^{1} x^{2}\, dx",
+        ),
+        (
+            sympy.Product(x, (x, 1, n)),
+            r"\displaystyle \prod_{x=1}^{n} x",
+            r"\prod_{x=1}^{n} x",
+        ),
+    ],
+)
+def test_latex_renders_large_operators_in_requested_style(
+    expr, display_latex, inline_latex
+):
+    assert latex(expr) == display_latex
+    assert latex(expr, displaystyle=False) == inline_latex
 
 
 def test_latex_dispatches_limits_to_lim_latex(monkeypatch: pytest.MonkeyPatch):
