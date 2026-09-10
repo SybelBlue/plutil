@@ -301,7 +301,8 @@ def eq[T, R](
     return sympy.simplify(lhs - rhs) == 0  # type: ignore
 
 
-TRIG_OPERATOR_RE: re.Pattern[str] | None = None
+INV_TRIG_OPERATOR_RE: re.Pattern[str] | None = None
+DISPLAY_OPERATOR_RE: re.Pattern[str] | None = None
 type LatexableValue = SympyInput | sympy.Rel
 
 
@@ -325,17 +326,18 @@ def latex(
             displaystyle=displaystyle,
         )
 
-    global TRIG_OPERATOR_RE
-    TRIG_OPERATOR_RE = TRIG_OPERATOR_RE or re.compile(
-        r"\\operatorname{a(sin|cos|tan|cos|sec|cot)}"
+    global DISPLAY_OPERATOR_RE, INV_TRIG_OPERATOR_RE
+    INV_TRIG_OPERATOR_RE = INV_TRIG_OPERATOR_RE or re.compile(
+        r"\\operatorname{a(sin|cos|tan|csc|sec|cot)}"
     )
     parsed = sympy.sympify(expr) if reparse else expr
     unparsed = str(sympy.latex(parsed))
-    disp_prefix = r"\displaystyle " if displaystyle else ""
-    rendered = TRIG_OPERATOR_RE.sub(r"\\operatorname{\1}^{-1}", unparsed).replace(
-        r"\int\limits", disp_prefix + r"\int"
+    rendered = INV_TRIG_OPERATOR_RE.sub(r"\\operatorname{\1}^{-1}", unparsed).replace(
+        r"\int\limits", r"\int"
     )
     if displaystyle:
+        DISPLAY_OPERATOR_RE = DISPLAY_OPERATOR_RE or re.compile(r"\\(sum|int|prod)")
+        rendered = DISPLAY_OPERATOR_RE.sub(r"\\displaystyle \g<0>", rendered)
         rendered = rendered.replace(r"\frac", r"\dfrac")
     if log_base is None:
         return rendered
