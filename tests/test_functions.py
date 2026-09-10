@@ -1,10 +1,60 @@
 from __future__ import annotations
 
 import pytest
-from sympy.abc import x, y
-
+import sympy
+from plutil import rearrange_eqn
 from plutil.common import eq
 from plutil.functions import eval_at, translate_through_
+from sympy.abc import s, t, x, y
+
+
+def test_rearrange_eqn_solves_for_requested_linear_variable():
+    assert eq(rearrange_eqn(sympy.Eq(x, t - 3), isolate=t), x + 3)
+
+
+def test_rearrange_eqn_infers_variable_from_keyword():
+    assert eq(rearrange_eqn(x=t + 1), x - 1)
+
+
+def test_rearrange_eqn_infers_keyword_variable_when_rhs_is_constant():
+    assert eq(rearrange_eqn(x=3), 3)
+
+
+def test_rearrange_eqn_inferred_keyword_eqn_still_needs_isolate():
+    with pytest.raises(TypeError, match="`isolate` is required"):
+        rearrange_eqn(x=t + s)
+
+
+def test_rearrange_eqn_inferred_keyword_eqn_can_handle_multiple_vars():
+    assert eq(rearrange_eqn(x=t + s, isolate=t), x - s)
+
+
+def test_rearrange_eqn_keyword_allows_explicit_isolation_variable():
+    assert eq(rearrange_eqn(x=t + 1, isolate=t), x - 1)
+
+
+def test_rearrange_eqn_falls_back_for_unique_nonlinear_solution():
+    assert eq(rearrange_eqn(sympy.Eq(t**2, 0), isolate=t), 0)
+
+
+def test_rearrange_eqn_rejects_multiple_solutions():
+    with pytest.raises(ValueError, match="Expected exactly one solution"):
+        rearrange_eqn(sympy.Eq(t**2, 4), isolate=t)
+
+
+def test_rearrange_eqn_requires_isolate_for_positional_equation():
+    with pytest.raises(TypeError, match="`isolate` is required"):
+        rearrange_eqn(sympy.Eq(x, t - 3))
+
+
+def test_rearrange_eqn_rejects_multiple_keyword_equations():
+    with pytest.raises(TypeError, match="exactly one equation"):
+        rearrange_eqn(x=t + 1, y=t - 1)
+
+
+def test_rearrange_eqn_requires_an_equation():
+    with pytest.raises(TypeError, match="must be a SymPy Eq"):
+        rearrange_eqn(t - 1, isolate=t)
 
 
 def test_eval_at_substitutes_values_and_leaves_unbound_symbols():

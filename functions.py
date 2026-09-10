@@ -3,19 +3,80 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Final, cast
+from typing import Any, Final, cast
 
 import sympy
 
 from .common import (
     PlValue,
     SympyInput,
+    Variable,
     to_expr,
+    var_to_symbol,
 )
 
 DEFAULT_FEEDBACK: Final[str] = (
     "The correct answer was computed based on the other answers in this question."
 )
+
+
+def rearrange_eqn(
+    equation: sympy.Basic | None = None,
+    *,
+    isolate: Variable | None = None,
+    **equation_kwarg: SympyInput,
+) -> sympy.Expr:
+    """Return the unique expression equal to a variable in an equation.
+
+    Pass a SymPy equality with an explicit ``isolate`` variable, or use one
+    keyword argument to define the equation. The keyword form infers the sole
+    variable on the right-hand side. For example, ``rearrange_eqn(x=t + 1)``
+    returns ``x - 1``.
+
+    Linear equations use :func:`sympy.solve_linear`. Other equations fall back
+    to :func:`sympy.solve` and must have exactly one explicit solution.
+
+    Raises:
+        TypeError: If the equation or isolation variable is missing or ambiguous.
+        ValueError: If SymPy does not find exactly one solution for the variable.
+    """
+    if equation is not None and equation_kwarg:
+        raise TypeError("Pass an equation either positionally or by keyword, not both")
+
+    if equation_kwarg:
+        if len(equation_kwarg) != 1:
+            raise TypeError("Keyword syntax requires exactly one equation")
+        variable_name, rhs = next(iter(equation_kwarg.items()))
+        lhs = var_to_symbol(variable_name)
+        rhs = to_expr(rhs)
+        equation = sympy.Eq(lhs, rhs, evaluate=False)
+        if isolate is None:
+            candidate_variables = cast(set[sympy.Symbol], rhs.free_symbols - {lhs})
+            if len(candidate_variables) > 1:
+                raise TypeError(
+                    "`isolate` is required when the right-hand side has multiple variables"
+                )
+            isolate = next(iter(candidate_variables), lhs)
+    elif isolate is None:
+        raise TypeError("`isolate` is required for a positional equation")
+
+    if not isinstance(equation, sympy.Equality):
+        raise TypeError("`equation` must be a SymPy Eq")
+
+    assert isolate is not None
+    symbol = var_to_symbol(isolate)
+    lhs = cast(sympy.Expr, equation.lhs)
+    rhs = cast(Any, equation.rhs)
+    linear_symbol, linear_solution = sympy.solve_linear(lhs, rhs, symbols=[symbol])
+    if linear_symbol == symbol:
+        return cast(sympy.Expr, linear_solution)
+
+    solutions = sympy.solve(equation, symbol, dict=True)
+    if len(solutions) != 1 or symbol not in solutions[0]:
+        raise ValueError(
+            f"Expected exactly one solution for {symbol}, got {len(solutions)}"
+        )
+    return cast(sympy.Expr, solutions[0][symbol])
 
 
 def eval_at(
