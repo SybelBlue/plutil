@@ -221,6 +221,26 @@ shift(x**2)  # -> x**2 + 2
 scale(x**2 + 1)  # -> 3*x**2 + 3
 ```
 
+### `rearrange_eqn(equation, *, isolate=variable, [lhs_var]=...) -> Expr`
+
+Solve an equation for one variable.
+A single keyword argument defines an equation and infers the sole variable on its right-hand side.
+Pass `isolate` when the right-hand side has multiple variables, when selecting a different variable, or when using a positional equation.
+
+```python
+from plutil import rearrange_eqn
+from sympy import Eq, Symbol
+from sympy.abc import t
+
+rearrange_eqn(x=t + 1)  # -> x - 1
+rearrange_eqn(x=t + y, isolate=t)  # -> x - y
+rearrange_eqn(Eq(Symbol("x"), t - 3), isolate=t)  # -> x + 3
+```
+
+Linear equations use SymPy's dedicated linear solver.
+Other equations fall back to the general solver.
+The function raises `ValueError` rather than choosing a branch when an equation has zero or multiple solutions.
+
 ---
 
 ## `calculus.py`

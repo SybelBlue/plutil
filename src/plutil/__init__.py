@@ -24,6 +24,7 @@ from .functions import (
     eval_at_,
     evalf_at,
     evalf_at_,
+    rearrange_eqn,
 )
 from .lenses import (
     Data,
@@ -71,6 +72,7 @@ __all__: Final[tuple[str, ...]] = (
     "main",
     "plmagic",
     "rand",
+    "rearrange_eqn",
     "reject_non_sympy_set_input",
     "rule",
     "setrec",
