@@ -60,18 +60,30 @@ def rearrange_eqn(
     elif isolate is None:
         raise TypeError("`isolate` is required for a positional equation")
 
+    assert isolate is not None
+    symbol = var_to_symbol(isolate)
+
+    # SymPy eagerly reduces identities and contradictions to boolean atoms.
+    if equation is sympy.true:
+        raise ValueError(
+            f"Expected exactly one solution for {symbol}, got infinitely many"
+        )
+    if equation is sympy.false:
+        raise ValueError(f"Expected exactly one solution for {symbol}, got 0")
+
     if not isinstance(equation, sympy.Equality):
         raise TypeError("`equation` must be a SymPy Eq")
 
-    assert isolate is not None
-    symbol = var_to_symbol(isolate)
     lhs = cast(sympy.Expr, equation.lhs)
     rhs = cast(Any, equation.rhs)
     linear_symbol, linear_solution = sympy.solve_linear(lhs, rhs, symbols=[symbol])
     if linear_symbol == symbol:
         return cast(sympy.Expr, linear_solution)
 
-    solutions = sympy.solve(equation, symbol, dict=True)
+    try:
+        solutions = sympy.solve(equation, symbol, dict=True)
+    except NotImplementedError as exc:
+        raise ValueError(f"SymPy could not solve the equation for {symbol}") from exc
     if len(solutions) != 1 or symbol not in solutions[0]:
         raise ValueError(
             f"Expected exactly one solution for {symbol}, got {len(solutions)}"
