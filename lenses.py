@@ -31,6 +31,7 @@ import sympy as sp
 from .common import (
     LatexableValue,
     OneOrMore,
+    ParsableValue,
     PlValue,
     SympyInput,
     Variable,
@@ -182,12 +183,12 @@ class Params(MultiDict[JsonValue]):
         )
 
     @property
-    def sympy(self) -> "ParamsProxy[PlValue | int, psu.SympyJson]":
+    def sympy(self) -> "ParamsProxy[PlValue, psu.SympyJson]":
         return ParamsProxy(
             self,
             "sympy",
             encode=lambda v: pl.sympy_to_json(
-                sp.Integer(v) if isinstance(v, int) else v
+                sp.sympify(v) if isinstance(v, (int, float)) else v
             ),
             decode=pl.json_to_sympy,
         )
@@ -511,7 +512,7 @@ class SympyQuestion(BaseQuestion[PlValue]):
 
     variables: OneOrMore[Variable] = ()
 
-    def to_expr(self, o: SympyInput | dict):
+    def to_expr(self, o: ParsableValue) -> PlValue:
         """Convert a supported value to SymPy using this lens's variables."""
         return to_expr(o, self.variables)
 
@@ -531,7 +532,7 @@ class SympyQuestion(BaseQuestion[PlValue]):
         return self.to_expr(self.unparsed_correct_answer)
 
     @correct_answer.setter
-    def correct_answer(self, value):
+    def correct_answer(self, value: ParsableValue):
         match value:
             case int(v):
                 out = pl.sympy_to_json(sp.Integer(v))
@@ -553,7 +554,7 @@ class SympyQuestion(BaseQuestion[PlValue]):
                     raise TypeError("The provided dict is not a SympyJson")
                 out = d
             case v:
-                out = pl.sympy_to_json(self.to_expr(v))
+                out = pl.sympy_to_json(cast(sp.Expr | sp.Set, self.to_expr(v)))
 
         self.unparsed_correct_answer = out
 

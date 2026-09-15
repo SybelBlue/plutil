@@ -11,15 +11,19 @@ from typing import Any, Final, Literal, Protocol, Self, cast, overload
 import prairielearn.sympy_utils as psu
 import sympy
 
-type PlValue = sympy.Expr | sympy.Set
-"""The type of valid output from a parsed `pl-symbolic-input`"""
-type NumberLike = sympy.Expr | int | float
-"""Things like :class:`plutil.PlValue`"""
-type Value = PlValue | NumberLike
-"""Common values that are used in symbolic problems, ie. :class:`plutil.PlValue` or :class:`plutil.NumberLike`"""
-type SympyInput = Value | psu.SympyJson
+type ExprLike = sympy.Expr | int | float
+"""A SymPy expression or a native number that can be converted to one."""
+type SetLike = sympy.Set
+"""A SymPy set."""
+type PlValue = SetLike | ExprLike
+"""A value supported by PrairieLearn symbolic inputs."""
+type ExprInput = ExprLike | psu.SympyJson
+"""An expression value or serialized PrairieLearn symbolic input."""
+type SetInput = SetLike | psu.SympyJson
+"""A set value or serialized PrairieLearn symbolic input."""
+type SympyInput = ExprInput | SetInput
 """
-Parsed and unparsed prairielearn symbolic dicts, ie. :class:`plutil.Value` or :class:`prairielearn.sympy_utils.SympyJson`.
+Parsed and unparsed PrairieLearn symbolic values, ie. :class:`plutil.PlValue` or :class:`prairielearn.sympy_utils.SympyJson`.
 Use :func:`plutil.to_expr` to parse.
 """
 type Variable = sympy.Symbol | str
@@ -32,7 +36,7 @@ spint: Final[type[sympy.Integer]] = sympy.Integer
 """Ergonomics type. Alias for :class:`sympy.Integer`"""
 
 
-def truncate_to_significant_digits(value: NumberLike, digits: int) -> float:
+def truncate_to_significant_digits(value: ExprLike, digits: int) -> float:
     """Truncate a real number toward zero to ``digits`` significant digits."""
     if digits < 1:
         raise ValueError("digits must be positive")
@@ -86,7 +90,7 @@ def clamp[T: Comparable](value: T, *, min: T | None = None, max: T | None = None
     return value
 
 
-def sign(value: float | int | sympy.Expr) -> Literal[-1, 0, 1]:  # noqa: PYI041
+def sign(value: ExprLike) -> Literal[-1, 0, 1]:
     """Returns the sign of value"""
     if value == 0:
         return 0
@@ -199,8 +203,8 @@ def setrec[V](
     return v
 
 
-def str_to_sympy(raw_expr: str, variables: OneOrMore[Variable]) -> sympy.Expr:
-    """Parse a string as a SymPy expression using the allowed variables."""
+def str_to_sympy(raw_expr: str, variables: OneOrMore[Variable]) -> PlValue:
+    """Parse a string as a SymPy expression or set using the allowed variables."""
     if not isinstance(raw_expr, str):
         raise TypeError(
             f"Expected a string, got {raw_expr!r}\n\tHint: use to_expr instead."
@@ -216,6 +220,14 @@ def str_to_sympy(raw_expr: str, variables: OneOrMore[Variable]) -> sympy.Expr:
 
 
 type ParsableValue = SympyInput | dict | str
+
+
+@overload
+def to_expr(expr: ExprLike, variables: OneOrMore[Variable] = ()) -> sympy.Expr: ...
+@overload
+def to_expr(expr: SetLike, variables: OneOrMore[Variable] = ()) -> sympy.Set: ...
+@overload
+def to_expr(expr: ParsableValue, variables: OneOrMore[Variable] = ()) -> PlValue: ...
 
 
 def to_expr(expr: ParsableValue, variables: OneOrMore[Variable] = ()) -> PlValue:
@@ -261,6 +273,26 @@ def to_expr(expr: ParsableValue, variables: OneOrMore[Variable] = ()) -> PlValue
     if isinstance(expr, sympy.Basic):
         return expr
     raise TypeError(f"Expected a str, int, float, or sympy expression, got {expr!r}")
+
+
+def _to_expr_input(value: ExprInput, variables: OneOrMore[Variable] = ()) -> sympy.Expr:
+    """Parse and validate an expression-only symbolic input."""
+    parsed = to_expr(value, variables)
+    if not isinstance(parsed, sympy.Expr):
+        raise TypeError(
+            f"Expected an expression, but the input parsed to {type(parsed).__name__}"
+        )
+    return parsed
+
+
+def _to_set_input(value: SetInput, variables: OneOrMore[Variable] = ()) -> sympy.Set:
+    """Parse and validate a set-only symbolic input."""
+    parsed = to_expr(value, variables)
+    if not isinstance(parsed, sympy.Set):
+        raise TypeError(
+            f"Expected a set, but the input parsed to {type(parsed).__name__}"
+        )
+    return parsed
 
 
 def eq[T, R](
@@ -309,7 +341,7 @@ type LatexableValue = SympyInput | sympy.Rel
 def latex(
     expr: LatexableValue,
     *,
-    log_base: SympyInput | None = None,
+    log_base: ExprInput | None = None,
     reparse: bool = False,
     displaystyle: bool = True,
 ) -> str:
@@ -330,7 +362,10 @@ def latex(
     INV_TRIG_OPERATOR_RE = INV_TRIG_OPERATOR_RE or re.compile(
         r"\\operatorname{a(sin|cos|tan|csc|sec|cot)}"
     )
-    parsed = sympy.sympify(expr) if reparse else expr
+    if psu.is_sympy_json(expr):
+        parsed = to_expr(expr)
+    else:
+        parsed = sympy.sympify(expr) if reparse else expr
     unparsed = str(sympy.latex(parsed))
     rendered = INV_TRIG_OPERATOR_RE.sub(r"\\operatorname{\1}^{-1}", unparsed).replace(
         r"\int\limits", r"\int"
@@ -341,19 +376,22 @@ def latex(
         rendered = rendered.replace(r"\frac", r"\dfrac")
     if log_base is None:
         return rendered
-    if log_base == sympy.E or log_base == math.e:
+    if log_base == math.e:
+        return rendered.replace(r"\log", r"\ln")
+    parsed_log_base = _to_expr_input(log_base)
+    if parsed_log_base == sympy.E:
         return rendered.replace(r"\log", r"\ln")
 
-    return rendered.replace(r"\log", rf"\log_{{{log_base}}}")
+    return rendered.replace(r"\log", rf"\log_{{{sympy.latex(parsed_log_base)}}}")
 
 
 def lim_latex(
     *,
     var: Variable,
-    val: SympyInput,
+    val: ExprInput,
     dir: Literal["+", "-", "+-"] | str | None = None,
-    body: SympyInput,
-    log_base: SympyInput | None = None,
+    body: ExprInput,
+    log_base: ExprInput | None = None,
     reparse: bool = False,
     displaystyle: bool = True,
 ) -> str:
@@ -365,9 +403,17 @@ def lim_latex(
         reparse=reparse,
         displaystyle=displaystyle,
     )
-    val_tex = latex(val, log_base=log_base, reparse=reparse, displaystyle=displaystyle)
+    val_tex = latex(
+        _to_expr_input(val),
+        log_base=log_base,
+        reparse=reparse,
+        displaystyle=displaystyle,
+    )
     body_tex = latex(
-        body, log_base=log_base, reparse=reparse, displaystyle=displaystyle
+        _to_expr_input(body),
+        log_base=log_base,
+        reparse=reparse,
+        displaystyle=displaystyle,
     )
     disp_prefix = r"\displaystyle " if displaystyle else ""
     return rf"{disp_prefix}\lim_{{{var_tex} \to {val_tex}{direction}}} {{{body_tex}}}"
@@ -384,7 +430,7 @@ def count_in_latex(
     return sum(l.count(s) for s in substrings)
 
 
-def _is_trivial_constant_in(value: PlValue, variables: OneOrMore[Variable]) -> bool:
+def _is_trivial_constant_in(value: sympy.Expr, variables: OneOrMore[Variable]) -> bool:
     free_symbols = value.free_symbols
     return any(
         var_to_symbol(variable) not in free_symbols
@@ -392,12 +438,12 @@ def _is_trivial_constant_in(value: PlValue, variables: OneOrMore[Variable]) -> b
     )
 
 
-def _is_trivial_min_terms(value: PlValue, minimum: int) -> bool:
-    return len(sympy.Add.make_args(value)) < minimum  # type: ignore
+def _is_trivial_min_terms(value: sympy.Expr, minimum: int) -> bool:
+    return len(sympy.Add.make_args(value)) < minimum
 
 
 def is_trivial(
-    value: SympyInput,
+    value: ExprInput,
     *,
     constant_in: OneOrMore[Variable] | None = None,
     min_terms: int | None = None,
@@ -432,7 +478,7 @@ def is_trivial(
         Whether any provided triviality condition matches. Returns ``False`` if
         no conditions are provided.
     """
-    parsed = to_expr(value)
+    parsed = _to_expr_input(value)
     if simplify:
         parsed = cast(sympy.Expr, sympy.simplify(parsed))
     return (
