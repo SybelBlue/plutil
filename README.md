@@ -351,6 +351,44 @@ namespace:
 from plutil import rand
 ```
 
+### `rand.base`
+
+Access the underlying Python [`random`](https://docs.python.org/3/library/random.html)
+module for operations that `plutil` does not wrap directly. Its shared generator
+also controls the selections made by the other `rand` helpers, so it can be
+seeded when reproducible output is useful.
+
+```python
+rand.base.seed(1234)
+measurement = rand.base.uniform(2.5, 7.5)
+```
+
+### `rand.sign(odds=50.0) -> Literal[-1, 1]`
+
+Return `1` with an `odds` percent probability and `-1` otherwise. Probabilities
+below 0 or above 100 are clamped to the valid range.
+
+```python
+direction = rand.sign(70)  # 70% chance of 1, 30% chance of -1
+```
+
+### `rand.choice(population) -> T`
+
+Choose one value from a non-empty sequence.
+
+```python
+color = rand.choice(("red", "green", "blue"))
+```
+
+### `rand.choices(population, weights=None, *, cum_weights=None, k=1) -> Sequence[T]`
+
+Choose `k` values with replacement. Use either `weights` or `cum_weights` to
+give values different selection probabilities.
+
+```python
+rolls = rand.choices(range(1, 7), weights=(1, 1, 1, 1, 1, 3), k=4)
+```
+
 ### `rand.int(low, high, *, exclude=(), exclude_if=None, step=1, randsign=False) -> int`
 
 Choose an integer from an inclusive arithmetic progression. Use `exclude` or
@@ -400,11 +438,12 @@ Partition pairwise-coprime factors and return the product of each group.
 numerator, denominator = rand.coprimes((2, 3, 5, 7, 11))
 ```
 
-Every random helper also has a trailing-underscore form that delays evaluation
-until the returned zero-argument callable is invoked. Each invocation makes a
-fresh random selection:
+The random generators with trailing-underscore forms delay evaluation until the
+returned zero-argument callable is invoked. Each invocation makes a fresh
+random selection:
 
 ```python
+next_sign = rand.sign_(75)
 next_integer = rand.int_(1, 10)
 next_polynomial = rand.poly_(of="x", degree=3)
 next_root_polynomial = rand.poly_roots_(
@@ -417,4 +456,12 @@ next_coprimes = rand.coprimes_((2, 3, 5, 7, 11))
 
 a = next_integer()
 p = next_polynomial()
+```
+
+`rand.choices_` works slightly differently: it binds the weights and result
+count, then returns a callable that accepts the population to sample.
+
+```python
+weighted_pair = rand.choices_(weights=(1, 1, 3), k=2)
+colors = weighted_pair(("red", "green", "blue"))
 ```
