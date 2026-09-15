@@ -2,9 +2,12 @@ from typing import Final
 
 from . import rand
 from .common import (
+    ExprInput,
+    ExprLike,
     PlValue,
+    SetInput,
+    SetLike,
     SympyInput,
-    Value,
     clamp,
     count_in_latex,
     dbg,
@@ -49,13 +52,16 @@ from .sets import (
 
 __all__: Final[tuple[str, ...]] = (
     "Data",
+    "ExprInput",
+    "ExprLike",
     "NoPreferences",
     "PlMagicError",
     "PlValue",
     "Question",
+    "SetInput",
+    "SetLike",
     "SympyInput",
     "SympyQuestion",
-    "Value",
     "award_partial_credit",
     "clamp",
     "count_in_latex",

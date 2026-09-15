@@ -10,8 +10,8 @@ if TYPE_CHECKING:
 
 from .common import (
     OneOrMore,
+    PlValue,
     SympyInput,
-    Value,
     _normalize_one_or_more,
     eq,
 )
@@ -83,13 +83,13 @@ class CompoundRule[T](PartialCreditRule[T]):
 
 
 @overload
-def rule(score: float, *, if_: bool) -> PartialCreditRule[Value]: ...
+def rule(score: float, *, if_: bool) -> PartialCreditRule[PlValue]: ...
 @overload
-def rule[T: Value](
+def rule[T: PlValue](
     score: float, *, submitted_is: OneOrMore[T | bool], if_: bool | None = None
 ) -> PartialCreditRule[T]: ...
 @overload
-def rule[T: Value](
+def rule[T: PlValue](
     score: float,
     *,
     change_correct: OneOrMore[Callable[[T], T] | bool],
@@ -97,7 +97,7 @@ def rule[T: Value](
     if_: bool | None = None,
 ) -> PartialCreditRule[T]: ...
 @overload
-def rule[T: Value](
+def rule[T: PlValue](
     score: float,
     *,
     change_correct: OneOrMore[Callable[[T], T] | bool] = (),
@@ -105,20 +105,20 @@ def rule[T: Value](
     if_: bool | None = None,
 ) -> PartialCreditRule[T]: ...
 @overload
-def rule[T: Value](
+def rule[T: PlValue](
     score: float,
     *,
     change_both: OneOrMore[Callable[[T], T] | bool],
     if_: bool | None = None,
 ) -> PartialCreditRule[T]: ...
 @overload
-def rule[T: Value](
+def rule[T: PlValue](
     score: float,
     *,
     satisfies: OneOrMore[Callable[[T, T], bool] | bool],
     if_: bool | None = None,
 ) -> PartialCreditRule[T]: ...
-def rule[T: Value](
+def rule[T: PlValue](
     score: float,
     *,
     submitted_is: OneOrMore[T | bool] = (),
@@ -269,11 +269,11 @@ class CreditScheme[T](_CreditSchemeBase[T]):
         return True
 
 
-class SympyCreditScheme(_CreditSchemeBase[Value]):
+class SympyCreditScheme(_CreditSchemeBase[PlValue]):
     def grade(
         self,
         lens: SympyQuestion,
-        addl_correct_answers: OneOrMore[Value] = (),
+        addl_correct_answers: OneOrMore[PlValue] = (),
         include_display_ans: bool = True,
         clobber_existing_score: bool = False,
         feedback: str | None = None,
@@ -288,7 +288,7 @@ class SympyCreditScheme(_CreditSchemeBase[Value]):
             return False
 
         # find submitted answer
-        submitted: Value | None = lens.submitted_answer  # type: ignore
+        submitted: PlValue | None = lens.submitted_answer
         if submitted is None:
             return False
 

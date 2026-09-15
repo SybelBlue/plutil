@@ -58,6 +58,26 @@ The directory defaults to the current working directory.
 
 ## `common.py`
 
+### Core symbolic types
+
+The public symbolic types distinguish expression-only APIs from APIs that also
+accept sets:
+
+```python
+type ExprLike = sympy.Expr | int | float
+type SetLike = sympy.Set
+type PlValue = SetLike | ExprLike
+type ExprInput = ExprLike | SympyJson
+type SetInput = SetLike | SympyJson
+type SympyInput = ExprInput | SetInput
+```
+
+Calculus and evaluation helpers accept `ExprInput`; general symbolic storage,
+rendering, and grading APIs use `SympyInput` when sets are also valid. A
+serialized `SympyJson` is parsed and checked at the API boundary, so an
+expression-only function rejects JSON containing a set. `to_expr` preserves
+SymPy sets and converts an `ExprLike` value to a `sympy.Expr`.
+
 ### `eq(left, right) -> bool`
 
 Check symbolic equality after simplification (`simplify(left - right) == 0`).

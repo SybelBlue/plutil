@@ -12,20 +12,19 @@ from plutil.functions import eval_at
 
 from .calculus import derivative
 from .common import (
+    ExprInput,
     OneOrMore,
-    PlValue,
-    SympyInput,
     Variable,
     _normalize_one_or_more,
+    _to_expr_input,
     _var_names,
     latex,
-    to_expr,
     var_name,
     var_to_symbol,
 )
 
 
-def _check_result_is_solution(result):
+def _check_result_is_solution(result) -> bool:
     """Return True when every SymPy ODE-solution check passed."""
     if isinstance(result, list):
         return bool(result) and all(item[0] for item in result)
@@ -33,7 +32,7 @@ def _check_result_is_solution(result):
     return bool(result[0])
 
 
-def d_f(dependent: Variable, independent: Variable) -> PlValue:
+def d_f(dependent: Variable, independent: Variable) -> sp.Expr:
     """Construct an unevaluated ODE derivative from variable names or symbols.
 
     For example, ``d_f(y, x)`` returns SymPy's canonical representation of
@@ -65,20 +64,20 @@ class OdeCheckResult:
     correct: bool = False
     missing_constant: str | None = None
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         """Return whether the submitted ODE solution was correct."""
         return self.correct
 
 
 def check_implicit_solution(
     *,
-    student_sol: SympyInput,
-    reference_ode: SympyInput,
+    student_sol: ExprInput,
+    reference_ode: ExprInput,
     independent: Variable,
     dependent: Variable,
     C: Variable = "C",
     timeout_seconds: float = 2.5,
-):
+) -> OdeCheckResult:
     """Check whether an implicit family `F(x, y) = C` solves an ODE.
 
     `student_sol` is the left-hand side `F(x, y)` of the implicit solution.
@@ -93,8 +92,8 @@ def check_implicit_solution(
     C_s = var_to_symbol(C)
     y_x = Function(var_name(dependent))(x_s)
 
-    ref_ode = to_expr(reference_ode).subs(y_s, y_x)
-    stu_sol = Eq(to_expr(student_sol).subs(y_s, y_x), C_s)
+    ref_ode = _to_expr_input(reference_ode).subs(y_s, y_x)
+    stu_sol = Eq(_to_expr_input(student_sol).subs(y_s, y_x), C_s)
 
     check, correct = None, False
     try:
@@ -109,13 +108,13 @@ def check_implicit_solution(
 
 def check_explicit_solution(
     *,
-    student_solution: SympyInput,
-    reference_ode: SympyInput,
+    student_solution: ExprInput,
+    reference_ode: ExprInput,
     independent: Variable,
     dependent: Variable,
     C: Variable = "C",
     timeout_seconds: float = 2.5,
-):
+) -> OdeCheckResult:
     """Check whether an explicit solution `y = f(x)` solves an ODE.
 
     `student_solution` is the right-hand side `f(x)`. The helper first requires
@@ -129,11 +128,11 @@ def check_explicit_solution(
     y_s = var_to_symbol(dependent)
     y_x = Function(var_name(dependent))(x_s)
 
-    student_expr = to_expr(student_solution)
+    student_expr = _to_expr_input(student_solution)
     if C_s not in student_expr.free_symbols:
         return OdeCheckResult(missing_constant=var_name(C))
 
-    ref_ode = to_expr(reference_ode).subs(y_s, y_x)
+    ref_ode = _to_expr_input(reference_ode).subs(y_s, y_x)
     stu_sol = Eq(y_x, student_expr)
 
     correct, check = False, None
@@ -148,11 +147,11 @@ def check_explicit_solution(
 
 
 def implicit_diff(
-    f: SympyInput,
+    f: ExprInput,
     variables: OneOrMore[Variable],
     *,
     d: Variable,
-) -> PlValue:
+) -> sp.Expr:
     r"""The call `implicit_diff(f, (x0,x1,...), d=t)` constructs:
 
     .. math:
@@ -162,29 +161,29 @@ def implicit_diff(
     """
     from .calculus import d as d_
 
-    out: PlValue | None = None
+    out: sp.Expr | None = None
     indeps = tuple(_normalize_one_or_more(variables))
     if not indeps:
-        return to_expr(f)
+        return _to_expr_input(f)
     for v in indeps:
         dd = derivative(f, d=v)
         with sp.evaluate(False):
-            dd *= d_(v) / d_(d)
+            dd = cast(sp.Expr, dd * d_(v) / d_(d))  # type: ignore
             if out is None:
                 out = dd
             else:
-                out += dd
+                out += dd  # type: ignore
 
-    return out  # type: ignore
+    return cast(sp.Expr, out)
 
 
 def diffeq_latex(
-    expr: PlValue,
+    expr: ExprInput,
     *,
     dependent_vars: OneOrMore[Variable],
     independent_vars: OneOrMore[Variable],
     display_mode: Literal["dfrac", "pfrac", "prime"] = "dfrac",
-):
+) -> str:
     """
     Render SymPy ODE notation in the form mathematicians expect.
 
@@ -204,7 +203,7 @@ def diffeq_latex(
     """
     dependent_names = _var_names(dependent_vars)
     independent_names = _var_names(independent_vars)
-    normalized_expr = to_expr(expr)
+    normalized_expr = _to_expr_input(expr)
     if independent_names:
         independent = var_to_symbol(independent_names[0])
         for fn in dependent_names:

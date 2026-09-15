@@ -10,8 +10,7 @@ from typing import Literal
 import sympy
 
 from .common import (
-    PlValue,
-    Value,
+    ExprLike,
     Variable,
     clamp,
     var_to_symbol,
@@ -160,9 +159,9 @@ def poly(
     min_degree: py.int = 0,
     min_terms: py.int = 1,
     max_terms: py.int | None = None,
-    coeff_factory: Callable[[], PlValue | py.int] | None = None,
-    y_intercept: Value | None = None,
-) -> PlValue:
+    coeff_factory: Callable[[], ExprLike] | None = None,
+    y_intercept: ExprLike | None = None,
+) -> sympy.Expr:
     """Build a random sparse polynomial in ``of``.
 
     When ``max_degree`` is omitted, ``degree`` is the exact degree and its term
@@ -219,10 +218,10 @@ def poly(
         term_degs = base.sample(tuple(range(min_degree, max_degree + 1)), k=term_ct)
 
     term_degs.sort(reverse=True)
-    out = sum(coeff_factory() * x**d for d in term_degs)  # type: ignore
-
-    if isinstance(out, py.int):
-        return y_intercept if y_intercept is not None else out  # type: ignore
+    out: sympy.Expr = sum(
+        (coeff_factory() * x**d for d in term_degs),  # type: ignore
+        start=sympy.Integer(0),
+    )
 
     if y_intercept is not None:
         out = translate_through(out, x=0, y=y_intercept)
@@ -238,15 +237,15 @@ def poly_(
     min_degree: py.int = 0,
     min_terms: py.int = 1,
     max_terms: py.int | None = None,
-    coeff_factory: Callable[[], PlValue | py.int] | None = None,
-) -> Callable[[], PlValue]:
+    coeff_factory: Callable[[], ExprLike] | None = None,
+) -> Callable[[], sympy.Expr]:
     """Return a zero-argument callable that evaluates :func:`poly`.
 
     Polynomial generation, including coefficient generation, is delayed until
     each invocation of the returned callable.
     """
 
-    def generate() -> PlValue:
+    def generate() -> sympy.Expr:
         return poly(
             of=of,
             degree=degree,
@@ -267,7 +266,7 @@ def poly_roots(
     root_factory: Callable[[], py.int] | None = None,
     y_intercept: float | None = None,
     expand: py.bool = False,
-) -> PlValue:
+) -> sympy.Expr:
     """Build a polynomial from known and randomly generated integer roots.
 
     ``known_roots`` are retained in order, then ``root_factory`` is called
@@ -306,7 +305,7 @@ def poly_roots(
                 root_factory() for _ in range(max(0, degree - len(known_roots)))
             )
 
-    out: PlValue = sympy.Integer(1)
+    out: sympy.Expr = sympy.Integer(1)
     for r in roots:
         out *= x - r  # type: ignore
 
@@ -328,14 +327,14 @@ def poly_roots_(
     root_factory: Callable[[], py.int] | None = None,
     y_intercept: float | None = None,
     expand: py.bool = False,
-) -> Callable[[], PlValue]:
+) -> Callable[[], sympy.Expr]:
     """Return a zero-argument callable that evaluates :func:`poly_roots`.
 
     Additional roots are not generated until the returned callable is invoked.
     Each invocation builds a new polynomial using the supplied arguments.
     """
 
-    def generate() -> PlValue:
+    def generate() -> sympy.Expr:
         return poly_roots(
             *known_roots,
             of=of,

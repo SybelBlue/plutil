@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any, Final, cast
 
 import sympy
 
 from .common import (
-    PlValue,
-    SympyInput,
+    ExprInput,
     Variable,
-    to_expr,
+    _to_expr_input,
     var_to_symbol,
 )
 
@@ -24,7 +23,7 @@ def rearrange_eqn(
     equation: sympy.Basic | None = None,
     *,
     isolate: Variable | None = None,
-    **equation_kwarg: SympyInput,
+    **equation_kwarg: ExprInput,
 ) -> sympy.Expr:
     """Return the unique expression equal to a variable in an equation.
 
@@ -48,7 +47,7 @@ def rearrange_eqn(
             raise TypeError("Keyword syntax requires exactly one equation")
         variable_name, rhs = next(iter(equation_kwarg.items()))
         lhs = var_to_symbol(variable_name)
-        rhs = to_expr(rhs)
+        rhs = _to_expr_input(rhs)
         equation = sympy.Eq(lhs, rhs, evaluate=False)
         if isolate is None:
             candidate_variables = cast(set[sympy.Symbol], rhs.free_symbols - {lhs})
@@ -92,28 +91,40 @@ def rearrange_eqn(
 
 
 def eval_at(
-    f: SympyInput, simplify: bool = True, **bindings: SympyInput | None
+    f: ExprInput, simplify: bool = True, **bindings: ExprInput | None
 ) -> sympy.Expr:
     """Evaluate `f` after substituting the given bindings and simplify."""
+    return _eval_at(f, simplify=simplify, bindings=bindings)
+
+
+def _eval_at(
+    f: ExprInput, *, simplify: bool, bindings: Mapping[str, ExprInput | None]
+) -> sympy.Expr:
     values = (
-        (sympy.Symbol(k), to_expr(v)) for k, v in bindings.items() if v is not None
+        (sympy.Symbol(k), _to_expr_input(v))
+        for k, v in bindings.items()
+        if v is not None
     )
-    res = to_expr(f).subs(values)
+    res = _to_expr_input(f).subs(values)
     if simplify:
         res = sympy.simplify(res)
     return cast(sympy.Expr, res)
 
 
-def eval_at_(**bindings: SympyInput | None) -> Callable[[SympyInput], sympy.Expr]:
+def eval_at_(**bindings: ExprInput | None) -> Callable[[ExprInput], sympy.Expr]:
     """Return a callable that evaluates its argument using the given bindings."""
     return lambda f: eval_at(f, simplify=True, **bindings)
 
 
-def evalf_at(f: SympyInput, **bindings: SympyInput | None) -> float:
+def evalf_at(f: ExprInput, **bindings: ExprInput | None) -> float:
     """Evaluate `f` numerically after substituting the given bindings."""
-    fn = to_expr(f)
+    fn = _to_expr_input(f)
     out = fn.evalf(
-        subs={sympy.Symbol(k): to_expr(v) for k, v in bindings.items() if v is not None}
+        subs={
+            sympy.Symbol(k): _to_expr_input(v)
+            for k, v in bindings.items()
+            if v is not None
+        }
     )
     try:
         return float(out)  # type: ignore
@@ -121,14 +132,14 @@ def evalf_at(f: SympyInput, **bindings: SympyInput | None) -> float:
         raise ValueError(f"Could not evaluate as float {out}") from e
 
 
-def evalf_at_(**bindings: SympyInput | None) -> Callable[[SympyInput], float]:
+def evalf_at_(**bindings: ExprInput | None) -> Callable[[ExprInput], float]:
     """Return a callable that evaluates its argument using the given bindings."""
     return lambda f: evalf_at(f, **bindings)
 
 
 def translate_through(
-    f: PlValue, *, y0_name: str = "y", **bindings: SympyInput
-) -> PlValue:
+    f: ExprInput, *, y0_name: str = "y", **bindings: ExprInput
+) -> sympy.Expr:
     """Makes a transformation that takes a point `(x0..., y0)` and a
     function `f` and returns a translated `f'` s.t. `y_0 = f'(x_0,...)`
     """
@@ -138,12 +149,16 @@ def translate_through(
             f"`{y0_name}` not found in bindings. Set the output variable in bindings or change y0_name."
         )
 
-    return f + y0 - eval_at(f, **bindings)  # type: ignore
+    return (
+        _to_expr_input(f)
+        + _to_expr_input(y0)  # type: ignore
+        - _eval_at(f, simplify=True, bindings=bindings)
+    )
 
 
 def translate_through_(
-    *, y0_name: str = "y", **bindings: SympyInput
-) -> Callable[[PlValue], PlValue]:
+    *, y0_name: str = "y", **bindings: ExprInput
+) -> Callable[[ExprInput], sympy.Expr]:
     """Makes a transformation that takes a point `(x0..., y0)` and a
     function `f` and returns a translated `f'` s.t. `y_0 = f'(x_0,...)`
     """
@@ -155,7 +170,9 @@ def translate_through_(
     return lambda f: translate_through(f, y0_name=y0_name, **bindings)
 
 
-def scale_through(f: PlValue, *, y0_name: str = "y", **bindings: SympyInput) -> PlValue:
+def scale_through(
+    f: ExprInput, *, y0_name: str = "y", **bindings: ExprInput
+) -> sympy.Expr:
     """Makes a transformation that takes a point `(x0..., y0)` and a
     function `f` and returns a scaled `f'` s.t. `y_0 = f'(x_0,...)`
     """
@@ -165,12 +182,16 @@ def scale_through(f: PlValue, *, y0_name: str = "y", **bindings: SympyInput) -> 
             f"`{y0_name}` not found in bindings. Set the output variable in bindings or change y0_name."
         )
 
-    return f * y0 / eval_at(f, **bindings)  # type: ignore
+    return (
+        _to_expr_input(f)
+        * _to_expr_input(y0)  # type: ignore
+        / _eval_at(f, simplify=True, bindings=bindings)
+    )
 
 
 def scale_through_(
-    *, y0_name: str = "y", **bindings: SympyInput
-) -> Callable[[PlValue], PlValue]:
+    *, y0_name: str = "y", **bindings: ExprInput
+) -> Callable[[ExprInput], sympy.Expr]:
     """Makes a transformation that takes a point `(x0..., y0)` and a
     function `f` and returns a scaled `f'` s.t. `y_0 = f'(x_0,...)`
     """
