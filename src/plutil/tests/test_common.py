@@ -5,12 +5,13 @@ import math
 import prairielearn as pl  # type: ignore
 import pytest
 import sympy
-from sympy.abc import n, t, x
+from sympy.abc import n, t, x, y
 
 import plutil.common as common_mod
 from plutil.common import (
     eq,
     getrec,
+    is_trivial,
     json_to_sympy,
     latex,
     lim_latex,
@@ -51,6 +52,39 @@ def test_truncate_to_significant_digits(value, digits, expected):
 def test_truncate_to_significant_digits_requires_positive_digits():
     with pytest.raises(ValueError, match="digits must be positive"):
         truncate_to_significant_digits(12.3, 0)
+
+
+@pytest.mark.parametrize(
+    ("checks", "expected"),
+    [
+        ({}, False),
+        ({"constant_in": x}, False),
+        ({"constant_in": "y"}, True),
+        ({"min_terms": 2}, False),
+        ({"min_terms": 3}, True),
+        ({"constant_in": "y", "min_terms": 2}, True),
+        ({"constant_in": x, "min_terms": 3}, True),
+    ],
+)
+def test_is_trivial(checks, expected):
+    assert is_trivial(x**2 + 1, **checks) is expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(x + 1, True), (y + 1, True), (x + y, False)],
+)
+def test_is_trivial_constant_in_multiple_variables(value, expected):
+    assert is_trivial(value, constant_in=(x, y)) is expected
+
+
+def test_is_trivial_can_simplify_before_checking():
+    value = sympy.Add(x, -x, evaluate=False)
+
+    assert not is_trivial(value, min_terms=2)
+    assert not is_trivial(value, constant_in=x)
+    assert is_trivial(value, min_terms=2, simplify=True)
+    assert is_trivial(value, constant_in=x, simplify=True)
 
 
 def test_pl_json_to_sympy_round_trips_pl_json():
