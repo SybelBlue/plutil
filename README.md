@@ -69,6 +69,29 @@ from sympy.abc import x
 eq(x + 1, 1 + x)  # -> True
 ```
 
+### `is_trivial(value, *, constant_in=None, min_terms=None, simplify=False) -> bool`
+
+Check whether a symbolic value matches any requested triviality condition.
+`constant_in` matches when the value is constant with respect to at least one
+given variable, while `min_terms` matches when the value has fewer than that
+many additive terms. With multiple conditions, a match from either one returns
+`True`; with no conditions, the result is `False`.
+
+```python
+from plutil import is_trivial
+from sympy.abc import x, y
+
+value = x**2 + 1
+
+is_trivial(value, constant_in=x)  # -> False
+is_trivial(value, constant_in=(x, y))  # -> True because y is missing
+is_trivial(value, min_terms=3)  # -> True
+```
+
+Pass `simplify=True` to simplify the value before applying the checks. This can
+change the result when cancellation or another simplification changes its
+structure.
+
 ### `getrec(data, *keys, default=None) -> Any`
 
 Safe nested lookup: `getrec(data, "partial_scores", "f", "score")` is like `data["partial_scores"]["f"]["score"]` but returns `default` (or `None`) if any step is missing.
