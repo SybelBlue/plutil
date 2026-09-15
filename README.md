@@ -365,7 +365,8 @@ a = rand.int(2, 12, exclude=(4, 8), step=2)
 
 Build a random sparse polynomial. Pass `degree` for an exact degree or
 `max_degree` to allow the degree to vary; `coeff_factory` is called once for
-each selected term.
+each selected term. `min_terms` and `max_terms` define an inclusive range; set
+them equal to require an exact number of terms.
 
 ```python
 coefficient = rand.int_(-5, 5, exclude=(0,))
