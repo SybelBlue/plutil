@@ -136,6 +136,16 @@ def test_randpoly_can_sample_degree_below_maximum(
     assert polynomial == x**2 + 1  # type: ignore
 
 
+def test_randpoly_accepts_fixed_term_count(monkeypatch: pytest.MonkeyPatch) -> None:
+    x = sympy.Symbol("x")
+    monkeypatch.setattr(rand.pyrand, "randint", lambda low, high: low)
+    monkeypatch.setattr(rand.pyrand, "sample", lambda population, *, k: [0])
+
+    polynomial = rand.poly(of=x, degree=2, min_terms=2, max_terms=2)
+
+    assert polynomial == x**2 + 1  # type: ignore
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [
@@ -143,7 +153,6 @@ def test_randpoly_can_sample_degree_below_maximum(
         {"degree": 2, "min_degree": -1},
         {"degree": 2, "min_terms": 0},
         {"degree": 2, "min_degree": 2, "min_terms": 2},
-        {"degree": 2, "min_terms": 2, "max_terms": 2},
         {},
     ],
 )

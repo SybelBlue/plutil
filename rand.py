@@ -145,7 +145,7 @@ def poly(
         min_degree: Minimum exponent eligible for selection.
         min_terms: Minimum number of distinct monomials.
         max_terms: Maximum number of distinct monomials. Defaults to
-            ``degree + 1``.
+            ``degree + 1``. May equal ``min_terms`` to require an exact count.
         coeff_factory: Zero-argument callable invoked once per selected term.
 
     Returns:
@@ -160,7 +160,7 @@ def poly(
     assert degree >= 0
     assert degree >= min_degree + min_terms - 1
     max_terms = degree + 1 if max_terms is None else max_terms
-    assert max_terms > min_terms
+    assert max_terms >= min_terms
     coeff_factory = coeff_factory or (lambda: 1)
 
     x = var_to_symbol(of)
