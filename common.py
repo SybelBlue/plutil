@@ -382,3 +382,59 @@ def count_in_latex(
         return 0
     l = latex(value, reparse=False)
     return sum(l.count(s) for s in substrings)
+
+
+def _is_trivial_constant_in(value: PlValue, variables: OneOrMore[Variable]) -> bool:
+    free_symbols = value.free_symbols
+    return any(
+        var_to_symbol(variable) not in free_symbols
+        for variable in _normalize_one_or_more(variables)
+    )
+
+
+def _is_trivial_min_terms(value: PlValue, minimum: int) -> bool:
+    return len(sympy.Add.make_args(value)) < minimum  # type: ignore
+
+
+def is_trivial(
+    value: SympyInput,
+    *,
+    constant_in: OneOrMore[Variable] | None = None,
+    min_terms: int | None = None,
+    simplify: bool = False,
+) -> bool:
+    """Test whether a value meets any requested triviality condition.
+
+    ``constant_in`` matches when the value is constant with respect to at least
+    one of the given variables. ``min_terms`` matches when the value has fewer
+    additive terms than the given minimum. If multiple conditions are provided,
+    this returns ``True`` when any condition matches.
+
+    For example::
+
+        >>> x, y = sympy.symbols("x y")
+        >>> value = x**2 + 1
+        >>> is_trivial(value, constant_in=x)
+        False
+        >>> is_trivial(value, min_terms=3)
+        True
+        >>> is_trivial(value, constant_in=(x, y), min_terms=2)
+        True
+
+    Args:
+        value: The value to check.
+        constant_in: A variable, or sequence of variables, for which being
+            constant makes the value trivial.
+        min_terms: The minimum acceptable number of additive terms.
+        simplify: Whether to simplify the value before checking the conditions.
+
+    Returns:
+        Whether any provided triviality condition matches. Returns ``False`` if
+        no conditions are provided.
+    """
+    parsed = to_expr(value)
+    if simplify:
+        parsed = cast(sympy.Expr, sympy.simplify(parsed))
+    return (
+        constant_in is not None and _is_trivial_constant_in(parsed, constant_in)
+    ) or (min_terms is not None and _is_trivial_min_terms(parsed, min_terms))
