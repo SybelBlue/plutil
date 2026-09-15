@@ -1,9 +1,11 @@
 """Random-value helpers for building parameterized math questions. Meant to be imported as a module."""
 
 import builtins as py
-import random as pyrand
+import random as base
 from collections.abc import Callable, Sequence
+from functools import wraps
 from math import prod
+from typing import Literal
 
 import sympy
 
@@ -19,7 +21,7 @@ from .functions import scale_through, translate_through
 
 def bool(odds: float = 50.0) -> py.bool:
     """Returns True with ``odds``% chance"""
-    return pyrand.random() * 100.0 < clamp(odds, min=0.0, max=100.0)
+    return base.random() * 100.0 < clamp(odds, min=0.0, max=100.0)
 
 
 def bool_(odds: float = 50.0) -> Callable[[], py.bool]:
@@ -27,6 +29,46 @@ def bool_(odds: float = 50.0) -> Callable[[], py.bool]:
 
     def generate() -> py.bool:
         return bool(odds)
+
+    return generate
+
+
+def sign(odds: float = 50.0) -> Literal[-1, 1]:
+    """Return ``1`` with ``odds``% probability and ``-1`` otherwise."""
+    return 1 if bool(odds) else -1
+
+
+def sign_(odds: float = 50.0) -> Callable[[], Literal[-1, 1]]:
+    """Return a zero-argument callable that evaluates :func:`sign`."""
+
+    def generate() -> Literal[-1, 1]:
+        return sign(odds)
+
+    return generate
+
+
+@wraps(base.choice)
+def choice[T](pop: Sequence[T]) -> T:
+    return base.choice(pop)
+
+
+@wraps(base.choices)
+def choices[T](pop: Sequence[T], *args, **kwargs) -> Sequence[T]:
+    return base.choices(pop, *args, **kwargs)
+
+
+def choices_[T](
+    weights: Sequence[float] | None = None,
+    *,
+    cum_weights: Sequence[float] | None = None,
+    k: py.int = 1,
+) -> Callable[[Sequence[T]], Sequence[T]]:
+    """Return a callable that applies :func:`choices` to a supplied population."""
+
+    def generate(
+        pop: Sequence[T],
+    ) -> Sequence[T]:
+        return choices(pop, weights, cum_weights=cum_weights, k=k)
 
     return generate
 
@@ -68,18 +110,17 @@ def int(
     assert step != 0
     assert low <= high
 
-    sign = pyrand.choice((-1, 1)) if randsign else 1
+    sign = choice((-1, 1)) if randsign else 1
     if exclude_if or exclude:
         opts = tuple(
             nr
             for nr in range(low, high + 1, step)
             if nr not in exclude and not (exclude_if and exclude_if(nr))
         )
-        return sign * pyrand.choice(opts)
+        return sign * choice(opts)
 
     lim = (high - low) // step
-    base = pyrand.randint(0, lim) * step + low if lim else low
-    return sign * base
+    return sign * (base.randint(0, lim) * step + low if lim else low)
 
 
 def int_(
@@ -164,18 +205,18 @@ def poly(
     coeff_factory = coeff_factory or (lambda: 1)
 
     x = var_to_symbol(of)
-    term_ct = pyrand.randint(min_terms, max_terms)
+    term_ct = base.randint(min_terms, max_terms)
 
     if max_degree is None:
         mid_term_ct = term_ct - 1
         term_degs = (
-            pyrand.sample(tuple(range(min_degree, degree)), k=mid_term_ct)
+            base.sample(tuple(range(min_degree, degree)), k=mid_term_ct)
             if mid_term_ct
             else []
         )
         term_degs.append(degree)
     else:
-        term_degs = pyrand.sample(tuple(range(min_degree, max_degree + 1)), k=term_ct)
+        term_degs = base.sample(tuple(range(min_degree, max_degree + 1)), k=term_ct)
 
     term_degs.sort(reverse=True)
     out = sum(coeff_factory() * x**d for d in term_degs)  # type: ignore
@@ -358,7 +399,7 @@ def partitions[T](
     ]
 
     vs = list(values)
-    pyrand.shuffle(vs)
+    base.shuffle(vs)
 
     return tuple(tuple(vs.pop() for _ in range(s)) for s in final_sizes)
 

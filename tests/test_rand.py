@@ -7,6 +7,102 @@ from plutil import rand
 from plutil.common import PlValue
 
 
+@pytest.mark.parametrize(("outcome", "expected"), [(True, 1), (False, -1)])
+def test_randsign_converts_random_boolean_to_sign(
+    monkeypatch: pytest.MonkeyPatch,
+    outcome: bool,
+    expected: int,
+) -> None:
+    odds_seen: list[float] = []
+
+    def fake_randbool(odds: float) -> bool:
+        odds_seen.append(odds)
+        return outcome
+
+    monkeypatch.setattr(rand, "bool", fake_randbool)
+
+    assert rand.sign(37.5) == expected
+    assert odds_seen == [37.5]
+
+
+def test_randsign_factory_delays_and_repeats_evaluation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[float] = []
+    results = iter((1, -1))
+
+    def fake_randsign(odds: float) -> int:
+        calls.append(odds)
+        return next(results)
+
+    monkeypatch.setattr(rand, "sign", fake_randsign)
+    generate = rand.sign_(62.5)
+
+    assert calls == []
+    assert (generate(), generate()) == (1, -1)
+    assert calls == [62.5, 62.5]
+
+
+def test_randchoice_delegates_to_random_choice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[object] = []
+    population = ("red", "green", "blue")
+
+    def fake_choice(options: object) -> str:
+        calls.append(options)
+        return "green"
+
+    monkeypatch.setattr(rand.base, "choice", fake_choice)
+
+    assert rand.choice(population) == "green"
+    assert calls == [population]
+
+
+def test_randchoices_delegates_arguments_to_random_choices(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[object, tuple[object, ...], dict[str, object]]] = []
+    population = ("red", "green", "blue")
+    weights = (1.0, 2.0, 3.0)
+
+    def fake_choices(options: object, *args: object, **kwargs: object) -> list[str]:
+        calls.append((options, args, kwargs))
+        return ["blue", "green"]
+
+    monkeypatch.setattr(rand.base, "choices", fake_choices)
+
+    assert rand.choices(population, weights, k=2) == ["blue", "green"]
+    assert calls == [(population, (weights,), {"k": 2})]
+
+
+def test_randchoices_factory_delays_and_repeats_evaluation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[object, object, object, int]] = []
+
+    def fake_randchoices(
+        population: object,
+        weights: object,
+        *,
+        cum_weights: object,
+        k: int,
+    ) -> list[object]:
+        calls.append((population, weights, cum_weights, k))
+        return [population]
+
+    monkeypatch.setattr(rand, "choices", fake_randchoices)
+    generate = rand.choices_(cum_weights=(1.0, 3.0), k=2)
+
+    assert calls == []
+    assert generate(("red", "green")) == [("red", "green")]
+    assert generate(("blue",)) == [("blue",)]
+    assert calls == [
+        (("red", "green"), None, (1.0, 3.0), 2),
+        (("blue",), None, (1.0, 3.0), 2),
+    ]
+
+
 def test_randint_includes_bounds_and_respects_step(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -16,7 +112,7 @@ def test_randint_includes_bounds_and_respects_step(
         randint_calls.append((low, high))
         return high
 
-    monkeypatch.setattr(rand.pyrand, "randint", choose_upper_bound)
+    monkeypatch.setattr(rand.base, "randint", choose_upper_bound)
 
     assert rand.int(2, 11, step=3) == 11
     assert randint_calls == [(0, 3)]
@@ -29,7 +125,7 @@ def test_randint_filters_excluded_values(monkeypatch: pytest.MonkeyPatch) -> Non
         choices.append(tuple(options))
         return options[-1]
 
-    monkeypatch.setattr(rand.pyrand, "choice", choose_last)
+    monkeypatch.setattr(rand.base, "choice", choose_last)
 
     result = rand.int(1, 9, step=2, exclude=(3,), exclude_if=lambda value: value > 7)
 
@@ -40,8 +136,8 @@ def test_randint_filters_excluded_values(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_randint_applies_random_sign_after_sampling(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(rand.pyrand, "choice", lambda options: options[0])
-    monkeypatch.setattr(rand.pyrand, "randint", lambda low, high: high)
+    monkeypatch.setattr(rand.base, "choice", lambda options: options[0])
+    monkeypatch.setattr(rand.base, "randint", lambda low, high: high)
 
     assert rand.int(2, 4, randsign=True) == -4
 
@@ -49,7 +145,7 @@ def test_randint_applies_random_sign_after_sampling(
 def test_randint_accepts_descending_bounds_with_negative_step(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(rand.pyrand, "randint", lambda low, high: high)
+    monkeypatch.setattr(rand.base, "randint", lambda low, high: high)
 
     assert rand.int(5, 1, step=-2) == 5
 
@@ -101,9 +197,9 @@ def test_randpoly_builds_requested_degree_and_terms(
 ) -> None:
     x = sympy.Symbol("x")
     coefficients = iter((2, 3, 4))
-    monkeypatch.setattr(rand.pyrand, "randint", lambda low, high: 3)
+    monkeypatch.setattr(rand.base, "randint", lambda low, high: 3)
     monkeypatch.setattr(
-        rand.pyrand,
+        rand.base,
         "sample",
         lambda population, *, k: [1, 3],
     )
@@ -124,9 +220,9 @@ def test_randpoly_can_sample_degree_below_maximum(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     x = sympy.Symbol("x")
-    monkeypatch.setattr(rand.pyrand, "randint", lambda low, high: 2)
+    monkeypatch.setattr(rand.base, "randint", lambda low, high: 2)
     monkeypatch.setattr(
-        rand.pyrand,
+        rand.base,
         "sample",
         lambda population, *, k: [0, 2],
     )
@@ -138,8 +234,8 @@ def test_randpoly_can_sample_degree_below_maximum(
 
 def test_randpoly_accepts_fixed_term_count(monkeypatch: pytest.MonkeyPatch) -> None:
     x = sympy.Symbol("x")
-    monkeypatch.setattr(rand.pyrand, "randint", lambda low, high: low)
-    monkeypatch.setattr(rand.pyrand, "sample", lambda population, *, k: [0])
+    monkeypatch.setattr(rand.base, "randint", lambda low, high: low)
+    monkeypatch.setattr(rand.base, "sample", lambda population, *, k: [0])
 
     polynomial = rand.poly(of=x, degree=2, min_terms=2, max_terms=2)
 
@@ -267,8 +363,8 @@ def test_randpoly_roots_factory_delays_and_repeats_evaluation(
 def test_randpartitions_samples_ranges_before_splitting_remaining_values(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(rand.pyrand, "shuffle", lambda values: None)
-    monkeypatch.setattr(rand.pyrand, "randint", lambda low, high: low)
+    monkeypatch.setattr(rand.base, "shuffle", lambda values: None)
+    monkeypatch.setattr(rand.base, "randint", lambda low, high: low)
 
     partitions = rand.partitions(
         tuple(range(10)),
@@ -304,7 +400,7 @@ def test_randpartitions_factory_delays_and_repeats_evaluation(
 def test_randcoprimes_default_splits_all_primes_between_two_products(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(rand.pyrand, "shuffle", lambda values: None)
+    monkeypatch.setattr(rand.base, "shuffle", lambda values: None)
 
     assert rand.coprimes((2, 3, 5, 7, 11)) == (385, 6)
 
@@ -312,7 +408,7 @@ def test_randcoprimes_default_splits_all_primes_between_two_products(
 def test_randcoprimes_accepts_sympy_expressions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(rand.pyrand, "shuffle", lambda values: None)
+    monkeypatch.setattr(rand.base, "shuffle", lambda values: None)
     x = sympy.Symbol("x")
 
     products = rand.coprimes((x, x + 1, x + 2))  # type: ignore
