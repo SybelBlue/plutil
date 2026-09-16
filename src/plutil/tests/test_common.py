@@ -29,7 +29,7 @@ def test_spint_constructs_an_exact_sympy_integer():
     value = spint(3)
 
     assert isinstance(value, sympy.Integer)
-    assert value / 2 == sympy.Rational(3, 2)  # type: ignore
+    assert value / 2 == sympy.Rational(3, 2)
 
 
 @pytest.mark.parametrize(("value", "expected"), [(3.9, 3), (-3.9, -3)])
@@ -311,7 +311,7 @@ def test_str_to_sympy_passes_single_variable_name_as_one_item(monkeypatch):
 
 
 def test_latex_can_render_log_with_explicit_base_and_display_fractions():
-    rendered = latex(sympy.log(x / 2), log_base=2)  # type: ignore
+    rendered = latex(sympy.log(x / 2), log_base=2)
 
     assert rendered == r"\log_{2}{\left(\dfrac{x}{2} \right)}"
 
@@ -419,7 +419,7 @@ def test_lim_latex_forwards_latex_options():
     rendered = lim_latex(
         var=x,
         val=1,
-        body=sympy.log(x / 2),  # type: ignore
+        body=sympy.log(x / 2),
         log_base=2,
         reparse=False,
     )
@@ -432,7 +432,7 @@ def test_lim_latex_forwards_latex_options():
 
 @pytest.mark.parametrize("base", [common_mod.sympy.E, math.e])
 def test_latex_renders_base_e_log_as_ln(base):
-    rendered = latex(sympy.log(x / 2), log_base=base)  # type: ignore
+    rendered = latex(sympy.log(x / 2), log_base=base)
 
     assert rendered == r"\ln{\left(\dfrac{x}{2} \right)}"
 

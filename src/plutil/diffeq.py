@@ -169,7 +169,7 @@ def implicit_diff(
     for v in indeps:
         dd = derivative(f, d=v)
         with sp.evaluate(False):
-            dd = dd * d_(v) / d_(d)  # type: ignore
+            dd = dd * d_(v) / d_(d)
             if out is None:
                 out = dd
             else:
@@ -231,7 +231,7 @@ def diffeq_latex(
                     replacement = rf"{fn}'"
 
             out = out.replace(
-                latex(derivative(f(t), d=t), reparse=False),  # type: ignore
+                latex(derivative(f(t), d=t), reparse=False),
                 replacement,
             )
             out = re.sub(
@@ -239,6 +239,6 @@ def diffeq_latex(
                 rf"{fn}^{{\1}}",
                 out,
             )
-            out = out.replace(latex(f(t), reparse=False), fn)  # type: ignore
+            out = out.replace(latex(f(t), reparse=False), fn)
 
     return out

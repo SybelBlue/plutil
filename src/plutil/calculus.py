@@ -124,11 +124,11 @@ def integrate(
     if known_antideriv_point is None:
         if not C:
             return antideriv
-        return antideriv + var_to_symbol(C)  # type: ignore
+        return antideriv + var_to_symbol(C)
 
     x_0, y_0 = known_antideriv_point
     value_at_x_0 = require_expr(antideriv.subs(diff_var, _to_expr_input(x_0)))
-    return antideriv + (_to_expr_input(y_0) - value_at_x_0)  # type: ignore
+    return antideriv + (_to_expr_input(y_0) - value_at_x_0)
 
 
 def integrate_(
@@ -170,7 +170,7 @@ def approximate_area[key: NumberLike, value: NumberLike](
         raise ValueError("`n` must be positive")
 
     lo, hi = bounds
-    width = (to_expr(hi) - to_expr(lo)) / n  # type: ignore
+    width = (to_expr(hi) - to_expr(lo)) / n
     rect_xs = [lo + i * width for i in range(n + 1)]
 
     match method:
@@ -224,7 +224,7 @@ def mean_value_theorem(
     if upper < lower:
         raise ValueError("upper bound is less than lower bound")
     f_expr = _to_expr_input(f)
-    mean_val = integrate(f_expr, d=d, bounds=bounds) / (upper - lower)  # type: ignore
+    mean_val = integrate(f_expr, d=d, bounds=bounds) / (upper - lower)
     sols = sympy.solveset(
         f_expr - mean_val,
         var_to_symbol(d),
@@ -290,7 +290,7 @@ def tangent_line_of(
 
     bindings = {var_name(d): at[0], y0_name: at[1]}
     return translate_through(
-        eval_at(body, simplify=False, **bindings) * var_to_symbol(d),  # type: ignore
+        eval_at(body, simplify=False, **bindings) * var_to_symbol(d),
         y0_name=y0_name,
         **bindings,
     )

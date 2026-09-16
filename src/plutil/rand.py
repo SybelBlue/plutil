@@ -219,7 +219,7 @@ def poly(
 
     term_degs.sort(reverse=True)
     out: sympy.Expr = sum(
-        (coeff_factory() * x**d for d in term_degs),  # type: ignore
+        (coeff_factory() * x**d for d in term_degs),
         start=sympy.Integer(0),
     )
 
@@ -307,7 +307,7 @@ def poly_roots(
 
     out: sympy.Expr = sympy.Integer(1)
     for r in roots:
-        out *= x - r  # type: ignore
+        out *= x - r
 
     if y_intercept is not None:
         if any(r == 0 for r in roots):
@@ -447,7 +447,7 @@ def coprimes[T: ExprLike](
         ValueError: If the concrete sample sizes require more factors than
             are available.
     """
-    return tuple(prod(p) for p in partitions(primes, samples=samples))  # type: ignore
+    return tuple(prod(p) for p in partitions(primes, samples=samples))
 
 
 def coprimes_[T: ExprLike](
