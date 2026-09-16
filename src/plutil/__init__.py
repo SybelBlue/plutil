@@ -1,6 +1,7 @@
 from typing import Final
 
 from . import rand
+from .assumptions import AssumptionsTypedDict, check
 from .common import (
     ExprInput,
     ExprLike,
@@ -51,6 +52,7 @@ from .sets import (
 )
 
 __all__: Final[tuple[str, ...]] = (
+    "AssumptionsTypedDict",
     "Data",
     "ExprInput",
     "ExprLike",
@@ -63,6 +65,7 @@ __all__: Final[tuple[str, ...]] = (
     "SympyInput",
     "SympyQuestion",
     "award_partial_credit",
+    "check",
     "clamp",
     "count_in_latex",
     "dbg",

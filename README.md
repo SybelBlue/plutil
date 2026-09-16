@@ -56,6 +56,31 @@ The directory defaults to the current working directory.
 
 ---
 
+## `assumptions.py`
+
+### `check(*values, **assumptions) -> bool`
+
+Check that every value has all the requested SymPy assumptions. Assumption
+names and boolean values are type-checked against `AssumptionsTypedDict`, which
+matches the variable assumptions serialized in PrairieLearn `SympyJson` data.
+An assumption that SymPy cannot determine does not count as a match.
+
+```python
+from plutil import check
+import sympy
+
+p = sympy.Symbol("p", positive=True, integer=True)
+n = sympy.Symbol("n", integer=True)
+
+check(p, n, integer=True)  # -> True: both values are integers
+check(p, n, positive=True)  # -> False: n is not positive
+```
+
+Both dimensions use all semantics: every supplied value must match every
+supplied assumption.
+
+---
+
 ## `common.py`
 
 ### Core symbolic types
