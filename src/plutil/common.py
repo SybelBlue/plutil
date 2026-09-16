@@ -13,10 +13,14 @@ import sympy
 
 type ExprLike = sympy.Expr | int | float
 """A SymPy expression or a native number that can be converted to one."""
+type NumberLike = sympy.Number | int | float
+"""A SymPy or native numeric value."""
 type SetLike = sympy.Set
 """A SymPy set."""
 type PlValue = SetLike | ExprLike
 """A value supported by PrairieLearn symbolic inputs."""
+type SympyValue = sympy.Expr | sympy.Set
+"""A parsed SymPy expression or set."""
 type ExprInput = ExprLike | psu.SympyJson
 """An expression value or serialized PrairieLearn symbolic input."""
 type SetInput = SetLike | psu.SympyJson
@@ -36,17 +40,14 @@ spint: Final[type[sympy.Integer]] = sympy.Integer
 """Ergonomics type. Alias for :class:`sympy.Integer`"""
 
 
-def truncate_to_significant_digits(value: ExprLike, digits: int) -> float:
+def truncate_to_significant_digits(value: NumberLike, digits: int) -> float:
     """Truncate a real number toward zero to ``digits`` significant digits."""
     if digits < 1:
         raise ValueError("digits must be positive")
     if value == 0:
         return 0.0
 
-    expr = cast(
-        sympy.Expr,
-        sympy.Float(str(value)) if isinstance(value, float) else sympy.sympify(value),
-    )
+    expr = sympy.Float(str(value)) if isinstance(value, float) else to_expr(value)
     magnitude = math.floor(math.log10(abs(float(expr))))
     scale = sympy.Integer(10) ** (digits - magnitude - 1)
     truncated = sympy.sign(expr) * sympy.floor(abs(expr) * scale) / scale  # type: ignore
@@ -91,26 +92,32 @@ def clamp[T: Comparable](value: T, *, min: T | None = None, max: T | None = None
 
 
 def sign(value: ExprLike) -> Literal[-1, 0, 1]:
-    """Returns the sign of value"""
-    if value == 0:
+    """Return the sign of a value whose sign can be determined."""
+    expr = to_expr(value)
+    if expr.is_zero is True:
         return 0
-    if value > 0:  # type: ignore
+    if getattr(expr, "is_extended_positive", None) is True:
         return 1
-    return -1
+    if getattr(expr, "is_extended_negative", None) is True:
+        return -1
+    raise ValueError(f"Could not determine the sign of {expr}")
 
 
-def json_to_sympy(value: object | None) -> PlValue | None:
+def json_to_sympy(value: object | None) -> SympyValue | None:
     """Parses PrairieLearn JSON objects into a sympy Expression"""
     if value is None or not psu.is_sympy_json(value):
         return None
     try:
-        return psu.json_to_sympy(
+        parsed = psu.json_to_sympy(
             value,
             allow_complex=True,
             allow_sets=True,
             allow_trig_functions=True,
             simplify_expression=True,
         )
+        if isinstance(parsed, (sympy.Expr, sympy.Set)):
+            return parsed
+        return None
     except (psu.BaseSympyError, ValueError):
         return None
 
@@ -203,19 +210,24 @@ def setrec[V](
     return v
 
 
-def str_to_sympy(raw_expr: str, variables: OneOrMore[Variable]) -> PlValue:
+def str_to_sympy(raw_expr: str, variables: OneOrMore[Variable]) -> SympyValue:
     """Parse a string as a SymPy expression or set using the allowed variables."""
     if not isinstance(raw_expr, str):
         raise TypeError(
             f"Expected a string, got {raw_expr!r}\n\tHint: use to_expr instead."
         )
-    return psu.convert_string_to_sympy(
+    parsed = psu.convert_string_to_sympy(
         raw_expr,
         set(_var_names(variables)),
         allow_complex=True,
         allow_hidden=True,
         allow_sets=True,
         allow_trig_functions=True,
+    )
+    if isinstance(parsed, (sympy.Expr, sympy.Set)):
+        return parsed
+    raise TypeError(
+        f"Expected an expression or set, but parsed {type(parsed).__name__}"
     )
 
 
@@ -227,10 +239,10 @@ def to_expr(expr: ExprLike, variables: OneOrMore[Variable] = ()) -> sympy.Expr: 
 @overload
 def to_expr(expr: SetLike, variables: OneOrMore[Variable] = ()) -> sympy.Set: ...
 @overload
-def to_expr(expr: ParsableValue, variables: OneOrMore[Variable] = ()) -> PlValue: ...
+def to_expr(expr: ParsableValue, variables: OneOrMore[Variable] = ()) -> SympyValue: ...
 
 
-def to_expr(expr: ParsableValue, variables: OneOrMore[Variable] = ()) -> PlValue:
+def to_expr(expr: ParsableValue, variables: OneOrMore[Variable] = ()) -> SympyValue:
     """Convert a supported value to a SymPy expression or set.
 
     Numeric values are sympified, while existing SymPy expressions and sets are
@@ -260,7 +272,7 @@ def to_expr(expr: ParsableValue, variables: OneOrMore[Variable] = ()) -> PlValue
             PrairieLearn symbolic JSON object.
     """
     if isinstance(expr, (int, float)):
-        return sympy.sympify(expr)
+        return require_expr(sympy.sympify(expr))
     if isinstance(expr, str):
         return str_to_sympy(expr, variables)
     if isinstance(expr, dict):
@@ -270,19 +282,36 @@ def to_expr(expr: ParsableValue, variables: OneOrMore[Variable] = ()) -> PlValue
         raise TypeError(
             f"Expected a prairielearn.sympy_utils.SympyJson, got unexpected shape:\n{expr}"
         )
-    if isinstance(expr, sympy.Basic):
+    if isinstance(expr, (sympy.Expr, sympy.Set)):
         return expr
-    raise TypeError(f"Expected a str, int, float, or sympy expression, got {expr!r}")
+    raise TypeError(
+        f"Expected a string, number, SymPy expression, or set, got {expr!r}"
+    )
+
+
+def require_expr(value: sympy.Basic | Any) -> sympy.Expr:
+    """Return ``value`` narrowed to ``Expr``, or reject another SymPy kind.
+
+    This is useful at conservatively typed SymPy boundaries such as
+    :meth:`sympy.Basic.subs`, whose result annotation is broader than the
+    expression result expected by arithmetic-facing code.
+    """
+    if not isinstance(value, sympy.Expr):
+        raise TypeError(
+            f"Expected a SymPy Expr, but got {type(value).__name__}: {value!r}"
+        )
+    return value
 
 
 def _to_expr_input(value: ExprInput, variables: OneOrMore[Variable] = ()) -> sympy.Expr:
     """Parse and validate an expression-only symbolic input."""
     parsed = to_expr(value, variables)
-    if not isinstance(parsed, sympy.Expr):
+    try:
+        return require_expr(parsed)
+    except TypeError as exc:
         raise TypeError(
             f"Expected an expression, but the input parsed to {type(parsed).__name__}"
-        )
-    return parsed
+        ) from exc
 
 
 def _to_set_input(value: SetInput, variables: OneOrMore[Variable] = ()) -> sympy.Set:
@@ -316,9 +345,9 @@ def eq[T, R](
     if lhs is rhs or lhs == rhs:
         return True
 
-    if isinstance(left, sympy.Set):
-        return isinstance(right, sympy.Set) and bool(
-            left.symmetric_difference(right).is_empty
+    if isinstance(lhs, sympy.Set):
+        return isinstance(rhs, sympy.Set) and bool(
+            lhs.symmetric_difference(rhs).is_empty
         )
 
     if not isinstance(lhs, (sympy.Basic, int, float)) or not isinstance(
@@ -326,11 +355,18 @@ def eq[T, R](
     ):
         return False
 
-    lhs, rhs = sympy.sympify(lhs), sympy.sympify(rhs)
-    if lhs.is_finite is False or rhs.is_finite is False:
+    lhs_expr, rhs_expr = sympy.sympify(lhs), sympy.sympify(rhs)
+    if not isinstance(lhs_expr, sympy.Expr) or not isinstance(rhs_expr, sympy.Expr):
         return False
 
-    return sympy.simplify(lhs - rhs) == 0
+    if (
+        getattr(lhs_expr, "is_finite", None) is False
+        or getattr(rhs_expr, "is_finite", None) is False
+    ):
+        return False
+
+    difference = require_expr(sympy.simplify(lhs_expr - rhs_expr))  # type: ignore
+    return difference.is_zero is True
 
 
 INV_TRIG_OPERATOR_RE: re.Pattern[str] | None = None
@@ -347,12 +383,18 @@ def latex(
 ) -> str:
     """Render an expression as display-style LaTeX suitable for PrairieLearn."""
     if isinstance(expr, sympy.Limit):
-        (e, z, z0, dir) = expr.args
+        e, z, z0, direction = expr.args
+        if not isinstance(z, sympy.Symbol):
+            raise TypeError(f"Expected a limit variable, got {type(z).__name__}")
+        if not isinstance(direction, sympy.Symbol):
+            raise TypeError(
+                f"Expected a limit direction, got {type(direction).__name__}"
+            )
         return lim_latex(
-            body=e,  # type: ignore
-            var=z,  # type: ignore
-            val=z0,  # type: ignore
-            dir=dir,  # type: ignore
+            body=require_expr(e),
+            var=z,
+            val=require_expr(z0),
+            dir=direction,
             log_base=log_base,
             reparse=reparse,
             displaystyle=displaystyle,
@@ -389,7 +431,7 @@ def lim_latex(
     *,
     var: Variable,
     val: ExprInput,
-    dir: Literal["+", "-", "+-"] | str | None = None,
+    dir: Literal["+", "-", "+-"] | str | sympy.Symbol | None = None,
     body: ExprInput,
     log_base: ExprInput | None = None,
     reparse: bool = False,
@@ -480,7 +522,7 @@ def is_trivial(
     """
     parsed = _to_expr_input(value)
     if simplify:
-        parsed = cast(sympy.Expr, sympy.simplify(parsed))
+        parsed = require_expr(sympy.simplify(parsed))
     return (
         constant_in is not None and _is_trivial_constant_in(parsed, constant_in)
     ) or (min_terms is not None and _is_trivial_min_terms(parsed, min_terms))

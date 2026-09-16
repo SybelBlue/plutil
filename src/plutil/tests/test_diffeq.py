@@ -52,7 +52,7 @@ def test_check_implicit_solution_supports_custom_variables_and_constants():
 def test_check_explicit_solution_accepts_separable_solution():
     from sympy.abc import C, x, y
 
-    ode = d_f(y, x) - y**2 * (1 + sympy.sin(x))  # type: ignore
+    ode = d_f(y, x) - y**2 * (1 + sympy.sin(x))
 
     result = check_explicit_solution(
         student_solution=1 / (C - x + sympy.cos(x)),
@@ -70,7 +70,7 @@ def test_check_explicit_solution_accepts_separable_solution():
 def test_ode_notation_latex_renders_derivative_function_and_power_notation():
     from sympy.abc import x, y
 
-    ode = d_f(y, x) - y**2 * (1 + sympy.sin(x))  # type: ignore
+    ode = d_f(y, x) - y**2 * (1 + sympy.sin(x))
 
     rendered = diffeq_latex(
         ode,
@@ -84,7 +84,7 @@ def test_ode_notation_latex_renders_derivative_function_and_power_notation():
 def test_ode_notation_latex_tick_mode_renders_prime_notation():
     from sympy.abc import x, y
 
-    ode = d_f(y, x) - y**2 * (1 + sympy.sin(x))  # type: ignore
+    ode = d_f(y, x) - y**2 * (1 + sympy.sin(x))
 
     rendered = diffeq_latex(
         ode,
@@ -142,7 +142,7 @@ def test_ode_notation_latex_rewrites_multiple_dependent_functions():
 def test_check_explicit_solution_rejects_wrong_solution_with_constant():
     from sympy.abc import C, x, y
 
-    ode = d_f(y, x) - y**2 * (1 + sympy.sin(x))  # type: ignore
+    ode = d_f(y, x) - y**2 * (1 + sympy.sin(x))
 
     result = check_explicit_solution(
         student_solution=x + C,
@@ -160,7 +160,7 @@ def test_check_explicit_solution_rejects_wrong_solution_with_constant():
 def test_check_explicit_solution_reports_missing_constant_before_ode_check():
     from sympy.abc import x, y
 
-    ode = d_f(y, x) - y**2 * (1 + sympy.sin(x))  # type: ignore
+    ode = d_f(y, x) - y**2 * (1 + sympy.sin(x))
 
     result = check_explicit_solution(
         student_solution=1 / (1 - x + sympy.cos(x)),
@@ -180,7 +180,7 @@ def test_check_explicit_solution_supports_custom_variables_and_constants():
     ode = d_f(z, t) - a * z
 
     result = check_explicit_solution(
-        student_solution=K * sympy.exp(a * t),  # type: ignore
+        student_solution=K * sympy.exp(a * t),
         reference_ode=ode,
         independent=t,
         dependent=z,

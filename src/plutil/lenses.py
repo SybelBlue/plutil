@@ -34,6 +34,7 @@ from .common import (
     ParsableValue,
     PlValue,
     SympyInput,
+    SympyValue,
     Variable,
     _normalize_one_or_more,
     getrec,
@@ -70,7 +71,7 @@ def _matches_type(value: object, expected: object) -> bool:
 
 
 type JsonLiteral = (
-    dict[str, JsonLiteral] | list[JsonLiteral] | tuple[JsonLiteral] | str | int | float
+    dict[str, JsonValue] | list[JsonValue] | tuple[JsonValue, ...] | str | int | float
 )
 type Jsonable = PlValue | JsonLiteral
 type JsonValue = psu.SympyJson | JsonLiteral
@@ -83,8 +84,12 @@ class MultiDict[Out](Mapping[str, Out]):
     def __getitem_single__(self, key: str) -> Out:
         return self.base.__getitem__(key)
 
+    # This mapping intentionally extends the standard single-key API with
+    # sequence keys while preserving the Mapping behavior for string keys.
     @overload
-    def __getitem__(self, key: str) -> Out: ...  # type: ignore
+    def __getitem__(  # pyright: ignore[reportOverlappingOverload]
+        self, key: str
+    ) -> Out: ...
     @overload
     def __getitem__(self, key: Sequence[str]) -> Sequence[Out]: ...
     def __getitem__(self, key: OneOrMore[str]) -> OneOrMore[Out]:
@@ -104,15 +109,20 @@ class MultiDict[Out](Mapping[str, Out]):
     def __get_single__[T](self, key: str, default: T | None = None) -> Out | T | None:
         return self.base.get(key, default)
 
+    # These overloads extend Mapping.get with the same multi-key behavior.
     @overload
-    def get(self, key: str) -> Out | None: ...  # type: ignore
+    def get(  # pyright: ignore[reportOverlappingOverload]
+        self, key: str
+    ) -> Out | None: ...
     @overload
-    def get[T](self, key: str, *, default: T) -> Out | T: ...  # type: ignore
+    def get[T](  # pyright: ignore[reportOverlappingOverload]
+        self, key: str, *, default: T
+    ) -> Out | T: ...
     @overload
     def get(self, key: Sequence[str]) -> tuple[Out | None, ...]: ...
     @overload
     def get[T](self, key: Sequence[str], *, default: T) -> tuple[Out | T, ...]: ...
-    def get[T](  # type: ignore
+    def get[T](  # pyright: ignore[reportIncompatibleMethodOverride]
         self, key: OneOrMore[str], *, default: T = None
     ) -> Out | T | None | tuple[Out | T | None, ...]:
         keys = tuple(_normalize_one_or_more(key))
@@ -203,8 +213,10 @@ class SetParamsProxy[T, Encoded: JsonValue]:
 
     @property
     def inner_dict(self) -> MultiDict[Encoded]:
-        d: dict = self.params.setdefault(self.subkey, {})  # type: ignore
-        return MultiDict(d)
+        value = self.params.setdefault(self.subkey, {})
+        if not isinstance(value, dict):
+            raise TypeError(f"Expected params[{self.subkey!r}] to be a dictionary")
+        return MultiDict(cast(dict[str, Encoded], value))
 
     @staticmethod
     def is_single_key(key: OneOrMore[str]) -> bool:
@@ -229,8 +241,11 @@ class SetParamsProxy[T, Encoded: JsonValue]:
 class ParamsProxy[T, Encoded: JsonValue](SetParamsProxy[T, Encoded]):
     decode: Callable[[Encoded], T]
 
+    # ParamsProxy adds multi-key lookup to the standard mapping-style method.
     @overload
-    def __getitem__(self, key: str) -> T: ...  # type: ignore
+    def __getitem__(  # pyright: ignore[reportOverlappingOverload]
+        self, key: str
+    ) -> T: ...
     @overload
     def __getitem__(self, key: Sequence[str]) -> Sequence[T]: ...
     def __getitem__(self, key: OneOrMore[str]) -> OneOrMore[T]:
@@ -387,7 +402,7 @@ class PartialScoreProxy:
     @score.setter
     def score(self, score: float) -> None:
         adict = self.data.setdefault("partial_scores", {})
-        sdict = adict.setdefault(self.answers_name, {})  # type: ignore
+        sdict = adict.setdefault(self.answers_name, {"score": None})
         sdict["score"] = score
         self.already_scored = True
 
@@ -402,7 +417,7 @@ class PartialScoreProxy:
     @weight.setter
     def weight(self, weight: int) -> None:
         adict = self.data.setdefault("partial_scores", {})
-        sdict = adict.setdefault(self.answers_name, {})  # type: ignore
+        sdict = adict.setdefault(self.answers_name, {"score": None})
         sdict["weight"] = weight
 
     @property
@@ -503,7 +518,7 @@ class Question(BaseQuestion[object]):
 
 
 @dataclass(slots=True)
-class SympyQuestion(BaseQuestion[PlValue]):
+class SympyQuestion(BaseQuestion[SympyValue]):
     """A question lens that converts answer values to SymPy objects.
 
     Attributes:
@@ -512,7 +527,7 @@ class SympyQuestion(BaseQuestion[PlValue]):
 
     variables: OneOrMore[Variable] = ()
 
-    def to_expr(self, o: ParsableValue) -> PlValue:
+    def to_expr(self, o: ParsableValue) -> SympyValue:
         """Convert a supported value to SymPy using this lens's variables."""
         return to_expr(o, self.variables)
 
@@ -527,7 +542,7 @@ class SympyQuestion(BaseQuestion[PlValue]):
         adict[self.answers_name] = value
 
     @property
-    def correct_answer(self) -> PlValue:
+    def correct_answer(self) -> SympyValue:
         """Return the correct answer as a SymPy expression."""
         return self.to_expr(self.unparsed_correct_answer)
 
@@ -554,12 +569,12 @@ class SympyQuestion(BaseQuestion[PlValue]):
                     raise TypeError("The provided dict is not a SympyJson")
                 out = d
             case v:
-                out = pl.sympy_to_json(cast(sp.Expr | sp.Set, self.to_expr(v)))
+                out = pl.sympy_to_json(self.to_expr(v))
 
         self.unparsed_correct_answer = out
 
     @property
-    def submitted_answer(self) -> PlValue | None:
+    def submitted_answer(self) -> SympyValue | None:
         """Return the submitted answer as a SymPy expression."""
         if raw := self.data["submitted_answers"].get(self.answers_name):
             return self.to_expr(raw)

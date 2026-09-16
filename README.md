@@ -90,8 +90,10 @@ accept sets:
 
 ```python
 type ExprLike = sympy.Expr | int | float
+type NumberLike = sympy.Number | int | float
 type SetLike = sympy.Set
 type PlValue = SetLike | ExprLike
+type SympyValue = sympy.Expr | sympy.Set
 type ExprInput = ExprLike | SympyJson
 type SetInput = SetLike | SympyJson
 type SympyInput = ExprInput | SetInput
@@ -101,7 +103,22 @@ Calculus and evaluation helpers accept `ExprInput`; general symbolic storage,
 rendering, and grading APIs use `SympyInput` when sets are also valid. A
 serialized `SympyJson` is parsed and checked at the API boundary, so an
 expression-only function rejects JSON containing a set. `to_expr` preserves
-SymPy sets and converts an `ExprLike` value to a `sympy.Expr`.
+SymPy sets and converts an `ExprLike` value to a `sympy.Expr`. Strings and
+serialized values return `SympyValue` because set parsing is enabled. Other
+`Basic` subclasses, such as booleans and tuples, are rejected rather than
+being returned under an expression annotation.
+
+### `require_expr(value: Basic) -> Expr`
+
+Narrow a conservatively typed SymPy result to `Expr` with a runtime check.
+This is useful after APIs such as `Basic.subs()`: a set, boolean, tuple, or
+another non-expression `Basic` raises a clear `TypeError`.
+
+```python
+from plutil import require_expr
+
+substituted = require_expr(expr.subs(x, 2))
+```
 
 ### `eq(left, right) -> bool`
 
@@ -245,7 +262,9 @@ Helpers for evaluating and transforming symbolic functions.
 
 ### `eval_at(f, **bindings) -> Expr`
 
-Substitute values into a SymPy expression and simplify.
+Substitute values into a SymPy expression and simplify. Both the substitution
+result and simplified result are runtime-checked as `Expr`, so the return
+annotation is guaranteed without a cast.
 
 ```python
 from plutil import eval_at
@@ -254,6 +273,13 @@ from sympy.abc import t, x, y
 eval_at(x + y, x=2)  # -> y + 2
 eval_at(4 - t / 2 + t**2 / 10, t=8)  # -> 32/5
 ```
+
+### `evalf_at(f, **bindings) -> float`
+
+Substitute and numerically evaluate an expression. Non-expression results are
+rejected with `TypeError`; symbolic results that cannot be converted to a
+native float raise `ValueError` with the original conversion exception as the
+cause.
 
 ### `translate_through(f, *, y0_name="y", **bindings)` and `scale_through(f, *, y0_name="y", **bindings)`
 

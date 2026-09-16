@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 import sympy
 from sympy.abc import s, t, x, y
 
-from plutil import rearrange_eqn
+from plutil import evalf_at, rearrange_eqn
 from plutil.common import eq
 from plutil.functions import eval_at, translate_through_
 
@@ -85,7 +87,63 @@ def test_rearrange_eqn_requires_an_equation():
 
 
 def test_eval_at_substitutes_values_and_leaves_unbound_symbols():
-    assert eq(eval_at(x + y, x=2), y + 2)
+    result = eval_at(x + y, x=2)
+
+    assert isinstance(result, sympy.Expr)
+    assert eq(result, y + 2)
+
+
+def test_eval_at_substitutes_numeric_values_and_simplifies() -> None:
+    assert eval_at((x + 1) ** 2, x=2) == 9
+    assert eval_at(x**2 - y**2, x=y) == 0
+
+
+@pytest.mark.parametrize(
+    "value",
+    [sympy.FiniteSet(1), sympy.true, sympy.Tuple(1, 2)],
+)
+def test_eval_at_rejects_non_expression_inputs(value: sympy.Basic) -> None:
+    invalid: Any = value
+
+    with pytest.raises(TypeError, match="Expected"):
+        eval_at(invalid)
+
+
+@pytest.mark.parametrize(
+    "substitution_result",
+    [sympy.FiniteSet(1), sympy.true, sympy.Tuple(1, 2)],
+)
+def test_eval_at_rejects_non_expression_substitution_results(
+    substitution_result: sympy.Basic,
+) -> None:
+    class NonExprReturningExpr(sympy.Expr):
+        def _eval_subs(self, old: sympy.Basic, new: sympy.Basic) -> sympy.Basic:
+            return substitution_result
+
+    with pytest.raises(
+        TypeError, match=rf"Expected a SymPy Expr.*{type(substitution_result).__name__}"
+    ):
+        eval_at(NonExprReturningExpr(), x=1)
+
+
+def test_evalf_at_returns_a_float_for_numeric_expressions() -> None:
+    assert evalf_at(x / 2, x=3) == pytest.approx(1.5)
+
+
+def test_evalf_at_rejects_non_expression_evaluation_results() -> None:
+    class SetEvaluatingExpr(sympy.Expr):
+        def _eval_evalf(self, prec: int) -> Any:
+            return sympy.FiniteSet(1)
+
+    with pytest.raises(TypeError, match=r"Expected a SymPy Expr.*FiniteSet"):
+        evalf_at(SetEvaluatingExpr())
+
+
+def test_evalf_at_wraps_non_numeric_conversion_errors() -> None:
+    with pytest.raises(ValueError, match=r"Could not evaluate as float: x") as exc_info:
+        evalf_at(x)
+
+    assert isinstance(exc_info.value.__cause__, TypeError)
 
 
 def test_translate_through__shifts_function_to_hit_target_point():

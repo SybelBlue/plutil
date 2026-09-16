@@ -1,10 +1,7 @@
-from typing import cast
-
 import prairielearn.sympy_utils as psu
 import pytest
 import sympy as sp
 
-from plutil.common import PlValue
 from plutil.lenses import JsonValue, Params
 
 
@@ -106,7 +103,7 @@ def test_params_proxy_setitem_rejects_empty_keys(params: Params) -> None:
 def test_params_sympy_proxy_converts_from_sympy_json() -> None:
     value = sp.sin(sp.Symbol("x")) + 2 * sp.I
     backing_params: dict[str, JsonValue] = {
-        "sympy": {"value": psu.sympy_to_json(value)}  # type: ignore
+        "sympy": {"value": psu.sympy_to_json(value)}
     }
 
     assert Params(backing_params).sympy["value"] == value
@@ -127,10 +124,7 @@ def test_params_latex_proxy_sets_rendered_latex(
 ) -> None:
     x = sp.Symbol("x")
 
-    params.latex["expression"] = cast(
-        PlValue,
-        x / 2,  # type: ignore
-    )
+    params.latex["expression"] = x / 2
 
     assert backing_params["latex"] == {"expression": r"\dfrac{x}{2}"}
 
@@ -161,7 +155,8 @@ def test_params_latex_proxy_sets_multiple_rendered_values(
 
 def test_params_latex_proxy_does_not_support_getting(params: Params) -> None:
     with pytest.raises(TypeError, match="not subscriptable"):
-        params.latex["alpha"]  # type: ignore[index]
+        # This intentionally verifies that the write-only proxy rejects lookup.
+        params.latex["alpha"]  # pyright: ignore[reportIndexIssue]
 
 
 def test_params_latex_proxy_does_not_support_deleting(
@@ -170,6 +165,7 @@ def test_params_latex_proxy_does_not_support_deleting(
     original = backing_params.copy()
 
     with pytest.raises(AttributeError, match="__delitem__"):
-        del params.latex["alpha"]  # type: ignore[attr-defined]
+        # This intentionally verifies that deletion is unsupported.
+        del params.latex["alpha"]  # pyright: ignore[reportIndexIssue]
 
     assert backing_params == original

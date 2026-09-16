@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import math
+import operator
 from collections.abc import Callable, Sequence
+from functools import reduce
 from itertools import pairwise
-from typing import Any, Final, Literal, cast, overload
+from typing import Any, Final, Literal, overload
 
 import prairielearn.sympy_utils as psu
 import sympy
@@ -13,9 +15,12 @@ import sympy
 from .common import (
     ExprInput,
     ExprLike,
+    NumberLike,
     Variable,
     _normalize_one_or_more,
     _to_expr_input,
+    require_expr,
+    to_expr,
     var_name,
     var_to_symbol,
 )
@@ -96,18 +101,21 @@ def integrate(
     diff_var = var_to_symbol(d)
     f_expr = _to_expr_input(f)
 
-    integral: Callable[[Any, Any], sympy.Expr] = (
-        sympy.integrate if evaluate else sympy.Integral
-    )  # type: ignore
-
     if bounds is not None:
-        return integral(f_expr, (diff_var, *bounds))
+        result = (
+            sympy.integrate(f_expr, (diff_var, *bounds))
+            if evaluate
+            else sympy.Integral(f_expr, (diff_var, *bounds))
+        )
+        return require_expr(result)
 
-    antideriv = cast(
-        sympy.Expr,
-        integral(f_expr, diff_var).replace(
-            sympy.log, lambda x, *args: sympy.log(sympy.Abs(x), *args)
-        ),
+    result = (
+        sympy.integrate(f_expr, diff_var)
+        if evaluate
+        else sympy.Integral(f_expr, diff_var)
+    )
+    antideriv = require_expr(
+        result.replace(sympy.log, lambda x, *args: sympy.log(sympy.Abs(x), *args))
     )
 
     if not evaluate:
@@ -119,7 +127,8 @@ def integrate(
         return antideriv + var_to_symbol(C)  # type: ignore
 
     x_0, y_0 = known_antideriv_point
-    return antideriv + (y_0 - antideriv.subs(diff_var, x_0))  # type: ignore
+    value_at_x_0 = require_expr(antideriv.subs(diff_var, _to_expr_input(x_0)))
+    return antideriv + (_to_expr_input(y_0) - value_at_x_0)  # type: ignore
 
 
 def integrate_(
@@ -141,8 +150,8 @@ def integrate_(
     )
 
 
-def approximate_area[num: int | float](
-    f: ExprInput | dict[num, num],
+def approximate_area[key: NumberLike, value: NumberLike](
+    f: ExprInput | dict[key, value],
     *,
     d: Variable,
     bounds: tuple[ExprLike, ExprLike],
@@ -161,8 +170,8 @@ def approximate_area[num: int | float](
         raise ValueError("`n` must be positive")
 
     lo, hi = bounds
-    width = (hi - lo) / n  # type: ignore
-    rect_xs = [lo + i * width for i in range(n + 1)]  # type: ignore
+    width = (to_expr(hi) - to_expr(lo)) / n  # type: ignore
+    rect_xs = [lo + i * width for i in range(n + 1)]
 
     match method:
         case "left":
@@ -170,24 +179,35 @@ def approximate_area[num: int | float](
         case "right":
             rect_xs.pop(0)
         case "midpoint":
-            rect_xs = [(a + b) / 2 for a, b in pairwise(rect_xs)]  # type: ignore
+            rect_xs = [(a + b) / 2 for a, b in pairwise(rect_xs)]
 
-    f_x: Callable[[float], ExprLike]
+    f_x: Callable[[ExprLike], ExprLike]
     if isinstance(f, dict) and not psu.is_sympy_json(f):
-        table = {float(x): y for x, y in f.items()}
-        f_x = lambda x: next(v for k, v in table.items() if math.isclose(k, x))  # type: ignore
+        table = {
+            float(x): y
+            for x, y in f.items()
+            if isinstance(x, (int, float, sympy.Number))
+            and isinstance(y, (int, float, sympy.Number))
+        }
+        f_x = lambda x: next(v for k, v in table.items() if math.isclose(k, float(x)))
     else:
         f_expr = _to_expr_input(f).simplify()
         f_x = lambda x: eval_at(f_expr, **{var_name(d): x}, simplify=True)
 
-    return width * sum(map(f_x, rect_xs))  # type: ignore
+    terms: list[Any] = list(map(f_x, rect_xs))
+    area = operator.mul(width, reduce(operator.add, terms))
+    if not isinstance(area, (int, float, sympy.Expr)):
+        raise TypeError(
+            f"Expected a numeric or expression area, got {type(area).__name__}"
+        )
+    return area
 
 
 def mean_value_theorem(
     f: ExprInput,
     *,
     d: Variable,
-    bounds: tuple[int | float | sympy.Number, int | float | sympy.Number],
+    bounds: tuple[NumberLike, NumberLike],
 ) -> tuple[Sequence[sympy.Expr], sympy.Expr]:
     """Find points where ``f`` equals its average value on ``bounds``.
 
@@ -210,7 +230,15 @@ def mean_value_theorem(
         var_to_symbol(d),
         domain=sympy.Interval(lower, upper, left_open=True, right_open=True),
     )
-    return tuple(sols), mean_val  # type: ignore
+    iterator = getattr(sols, "__iter__", None)
+    if iterator is None:
+        raise TypeError(f"Expected iterable solutions, got {type(sols).__name__}")
+    solutions = []
+    for solution in iterator():
+        if not isinstance(solution, sympy.Basic):
+            raise TypeError(f"Expected a SymPy solution, got {type(solution).__name__}")
+        solutions.append(require_expr(solution))
+    return tuple(solutions), mean_val
 
 
 def d(u: Variable) -> sympy.Symbol:

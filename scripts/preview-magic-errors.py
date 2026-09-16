@@ -51,7 +51,8 @@ def main() -> None:
         show(
             MissingCorrectAnswer(
                 "generate",
-                {},  # type: ignore[arg-type]
+                # Intentionally incomplete data demonstrates this validation error.
+                {},  # pyright: ignore[reportArgumentType]
                 "integral",
                 question_dir / "question.html",
             )

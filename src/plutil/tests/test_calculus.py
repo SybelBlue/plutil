@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import prairielearn as pl  # type: ignore
+import prairielearn as pl
 import pytest
 import sympy
 from sympy.abc import x
@@ -34,7 +34,7 @@ def test_integrate_indefinite_accepts_symbol():
 def test_integrate_reciprocal_uses_log_absolute_value():
     indefinite = integrate(1 / x, d=x)
 
-    assert eq(indefinite, sympy.log(sympy.Abs(x)) + sympy.Symbol("C"))  # type: ignore
+    assert eq(indefinite, sympy.log(sympy.Abs(x)) + sympy.Symbol("C"))
 
 
 def test_integrate_indefinite_skips_false_constant():
@@ -63,41 +63,42 @@ def test_tangent_line_of_differentiates_function_at_point():
 
 def test_tangent_line_of_accepts_precomputed_derivative():
     t = sympy.Symbol("t")
-    line = tangent_line_of(df=3 * t**2, d=t, at=(2, 7))  # type: ignore
+    line = tangent_line_of(df=3 * t**2, d=t, at=(2, 7))
 
-    assert eq(line, 12 * t - 17)  # type: ignore
+    assert eq(line, 12 * t - 17)
 
 
 def test_tangent_line_of_supports_custom_output_variable_name():
     u = sympy.Symbol("u")
     line = tangent_line_of(f=u**3, d=u, at=(1, 5), y0_name="v")
 
-    assert eq(line, 3 * u + 2)  # type: ignore
+    assert eq(line, 3 * u + 2)
 
 
 def test_tangent_line_of_requires_function_or_derivative():
     with pytest.raises(ValueError, match="At least one of f and df must be specified"):
-        tangent_line_of(d=x, at=(2, 4))  # type: ignore[call-overload]
+        # This intentionally exercises runtime validation for an invalid call.
+        tangent_line_of(d=x, at=(2, 4))  # pyright: ignore[reportCallIssue]
 
 
 def test_mean_value_theorem_returns_solutions_and_average_value():
     solutions, average = mean_value_theorem(x**2, d=x, bounds=(0, 2))
 
-    assert solutions == (2 * sympy.sqrt(3) / 3,)  # type: ignore
+    assert solutions == (2 * sympy.sqrt(3) / 3,)
     assert eq(average, sympy.Rational(4, 3))
 
 
 def test_mean_value_theorem_excludes_solutions_outside_bounds():
     solutions, average = mean_value_theorem(x**2, d=x, bounds=(1, 2))
 
-    assert solutions == (sympy.sqrt(21) / 3,)  # type: ignore
+    assert solutions == (sympy.sqrt(21) / 3,)
     assert eq(average, sympy.Rational(7, 3))
 
 
 def test_mean_value_theorem_returns_multiple_solutions():
     solutions, average = mean_value_theorem(x**2, d=x, bounds=(-2, 2))
 
-    expected = 2 * sympy.sqrt(3) / 3  # type: ignore
+    expected = 2 * sympy.sqrt(3) / 3
     assert set(solutions) == {-expected, expected}
     assert eq(average, sympy.Rational(4, 3))
 
@@ -160,6 +161,13 @@ def test_approximate_area_uses_table_values_for_each_method_at_multiple_resoluti
     area = approximate_area(table, d="x", bounds=(0, 1), n=n, method=method)
 
     assert eq(area, expected)
+
+
+def test_approximate_area_preserves_native_numeric_table_results() -> None:
+    area = approximate_area({0: 0, 0.5: 1}, d="x", bounds=(0, 1), n=2, method="left")
+
+    assert isinstance(area, float)
+    assert area == 0.5
 
 
 def test_award_missing_constant_credit_grants_partial_credit(monkeypatch):
