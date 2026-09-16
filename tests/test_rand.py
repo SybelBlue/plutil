@@ -4,7 +4,6 @@ import pytest
 import sympy
 
 from plutil import rand
-from plutil.common import PlValue
 
 
 @pytest.mark.parametrize(("outcome", "expected"), [(True, 1), (False, -1)])
@@ -213,7 +212,7 @@ def test_randpoly_builds_requested_degree_and_terms(
         coeff_factory=lambda: next(coefficients),
     )
 
-    assert sympy.expand(polynomial) == 2 * x**4 + 3 * x**3 + 4 * x  # type: ignore
+    assert sympy.expand(polynomial) == 2 * x**4 + 3 * x**3 + 4 * x
 
 
 def test_randpoly_can_sample_degree_below_maximum(
@@ -229,7 +228,7 @@ def test_randpoly_can_sample_degree_below_maximum(
 
     polynomial = rand.poly(of="x", max_degree=5, min_terms=1, max_terms=2)
 
-    assert polynomial == x**2 + 1  # type: ignore
+    assert polynomial == x**2 + 1
 
 
 def test_randpoly_accepts_fixed_term_count(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -239,7 +238,7 @@ def test_randpoly_accepts_fixed_term_count(monkeypatch: pytest.MonkeyPatch) -> N
 
     polynomial = rand.poly(of=x, degree=2, min_terms=2, max_terms=2)
 
-    assert polynomial == x**2 + 1  # type: ignore
+    assert polynomial == x**2 + 1
 
 
 @pytest.mark.parametrize(
@@ -263,15 +262,15 @@ def test_randpoly_factory_delays_and_repeats_evaluation(
     x = sympy.Symbol("x")
     calls: list[dict[str, object]] = []
 
-    def fake_randpoly(**kwargs: object) -> PlValue:
+    def fake_randpoly(**kwargs: object) -> sympy.Expr:
         calls.append(kwargs)
-        return x + len(calls)  # type: ignore[return-value]
+        return x + len(calls)
 
     monkeypatch.setattr(rand, "poly", fake_randpoly)
     generate = rand.poly_(of=x, degree=3, min_terms=2, max_terms=4)
 
     assert calls == []
-    assert (generate(), generate()) == (x + 1, x + 2)  # type: ignore
+    assert (generate(), generate()) == (x + 1, x + 2)
     assert len(calls) == 2
     assert (
         calls[0]
@@ -299,7 +298,7 @@ def test_randpoly_roots_combines_known_and_generated_roots() -> None:
         root_factory=lambda: next(generated_roots),
     )
 
-    assert sympy.expand(polynomial) == sympy.expand((x + 1) * (x - 2) * (x - 3))  # type: ignore
+    assert sympy.expand(polynomial) == sympy.expand((x + 1) * (x - 2) * (x - 3))
 
 
 def test_randpoly_roots_truncates_known_roots_to_degree() -> None:
@@ -307,7 +306,7 @@ def test_randpoly_roots_truncates_known_roots_to_degree() -> None:
 
     polynomial = rand.poly_roots(1, 2, 3, of=x, degree=2)
 
-    assert sympy.expand(polynomial) == sympy.expand((x - 1) * (x - 2))  # type: ignore
+    assert sympy.expand(polynomial) == sympy.expand((x - 1) * (x - 2))
 
 
 def test_randpoly_roots_scales_to_y_intercept() -> None:
@@ -315,7 +314,7 @@ def test_randpoly_roots_scales_to_y_intercept() -> None:
 
     polynomial = rand.poly_roots(2, 4, of=x, degree=2, y_intercept=12)
 
-    assert float(polynomial.subs(x, 0)) == pytest.approx(12)  # type: ignore
+    assert float(polynomial.subs(x, 0)) == pytest.approx(12)
 
 
 def test_randpoly_roots_requires_factory_for_missing_roots() -> None:
@@ -334,9 +333,9 @@ def test_randpoly_roots_factory_delays_and_repeats_evaluation(
     x = sympy.Symbol("x")
     calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
 
-    def fake_randpoly_roots(*args: object, **kwargs: object) -> PlValue:
+    def fake_randpoly_roots(*args: object, **kwargs: object) -> sympy.Expr:
         calls.append((args, kwargs))
-        return x - len(calls)  # type: ignore[return-value]
+        return x - len(calls)
 
     monkeypatch.setattr(rand, "poly_roots", fake_randpoly_roots)
     generate = rand.poly_roots_(
@@ -350,7 +349,7 @@ def test_randpoly_roots_factory_delays_and_repeats_evaluation(
     )
 
     assert calls == []
-    assert (generate(), generate()) == (x - 1, x - 2)  # type: ignore
+    assert (generate(), generate()) == (x - 1, x - 2)
     assert len(calls) == 2
     assert calls[0] == calls[1]
     assert calls[0][0] == (1, 2)
@@ -411,9 +410,9 @@ def test_randcoprimes_accepts_sympy_expressions(
     monkeypatch.setattr(rand.base, "shuffle", lambda values: None)
     x = sympy.Symbol("x")
 
-    products = rand.coprimes((x, x + 1, x + 2))  # type: ignore
+    products = rand.coprimes((x, x + 1, x + 2))
 
-    assert products == ((x + 1) * (x + 2), x)  # type: ignore
+    assert products == ((x + 1) * (x + 2), x)
     assert all(isinstance(product, sympy.Expr) for product in products)
 
 

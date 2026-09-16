@@ -1,10 +1,24 @@
 import math
-from collections.abc import Iterable
-from typing import Literal, cast
+from typing import Literal
 
 import sympy as sp
 
 from .lenses import SympyQuestion
+
+
+def _finite_set_values(value: sp.Set) -> tuple[sp.Basic, ...] | None:
+    if value.is_finite_set is not True:
+        return None
+    iterator = getattr(value, "__iter__", None)
+    if iterator is None:
+        return None
+    try:
+        values = tuple(iterator())
+    except TypeError:
+        return None
+    if not all(isinstance(item, sp.Basic) for item in values):
+        return None
+    return values
 
 
 def reject_non_sympy_set_input(
@@ -54,8 +68,10 @@ def grade_sympy_set(lens: SympyQuestion) -> bool:
     if not isinstance(submitted, sp.Set) or not isinstance(correct, sp.Set):
         return False
 
-    submitted_values = tuple(cast(Iterable[sp.Basic], submitted))
-    correct_values = tuple(cast(Iterable[sp.Basic], correct))
+    submitted_values = _finite_set_values(submitted)
+    correct_values = _finite_set_values(correct)
+    if submitted_values is None or correct_values is None:
+        return False
 
     if not correct_values:
         lens.score = 0 if submitted_values else 1

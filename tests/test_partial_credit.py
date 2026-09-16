@@ -34,11 +34,14 @@ def test_rule_maps_submitted_answer() -> None:
 
 
 def test_rule_maps_both_answers() -> None:
-    partial_rule = rule(0.75, change_both=abs)  # type: ignore
+    def absolute(value: int) -> int:
+        return abs(value)
+
+    partial_rule = rule(0.75, change_both=absolute)
 
     assert isinstance(partial_rule, Transform)
-    assert partial_rule.transform_correct is abs
-    assert partial_rule.transform_submitted is abs
+    assert partial_rule.transform_correct is absolute
+    assert partial_rule.transform_submitted is absolute
     assert partial_rule.check(correct=-2, submitted=2)
 
 
@@ -78,6 +81,7 @@ def test_rule_tries_every_correct_and_submitted_mapping_combination() -> None:
 
 def test_rule_rejects_mapping_with_another_condition_kind() -> None:
     with pytest.raises(TypeError):
+        # This intentionally exercises runtime validation for conflicting arguments.
         rule(  # pyright: ignore[reportCallIssue]
             0.75, submitted_is=3, change_submitted=lambda submitted: submitted - 1
         )

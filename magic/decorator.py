@@ -60,7 +60,8 @@ def _build_answers_element_data_dict(
     if html_path in _html_file_cache:
         return _html_file_cache[html_path]
 
-    from lxml import etree  # type: ignore
+    # lxml ships without complete type information for this runtime-only parser.
+    from lxml import etree  # pyright: ignore[reportAttributeAccessIssue]
 
     rendered = chevron.render(html_path.read_text())
     fragments = html.fragments_fromstring(rendered)

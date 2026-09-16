@@ -421,11 +421,11 @@ def partitions_[T](
     return generate
 
 
-def coprimes[T](
+def coprimes[T: ExprLike](
     primes: Sequence[T],
     *,
     samples: Sequence[py.int | tuple[py.int, py.int] | None] = (None, None),
-) -> tuple[T, ...]:
+) -> tuple[ExprLike, ...]:
     """Return pairwise-coprime products of disjoint random groups of primes.
 
     By default, all primes are split as evenly as possible between two groups.
@@ -450,11 +450,11 @@ def coprimes[T](
     return tuple(prod(p) for p in partitions(primes, samples=samples))  # type: ignore
 
 
-def coprimes_[T](
+def coprimes_[T: ExprLike](
     primes: Sequence[T],
     *,
     samples: Sequence[py.int | tuple[py.int, py.int] | None] = (None, None),
-) -> Callable[[], tuple[T, ...]]:
+) -> Callable[[], tuple[ExprLike, ...]]:
     """Return a zero-argument callable that evaluates :func:`coprimes`.
 
     Factor partitioning and multiplication are delayed until the returned
@@ -462,7 +462,7 @@ def coprimes_[T](
     supplied arguments.
     """
 
-    def generate() -> tuple[T, ...]:
+    def generate() -> tuple[ExprLike, ...]:
         return coprimes(primes, samples=samples)
 
     return generate

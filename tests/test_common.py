@@ -22,6 +22,7 @@ from plutil.common import (
     truncate_to_significant_digits,
 )
 from plutil.lenses import Question, SympyQuestion
+from plutil.tests.helpers import question_data
 
 
 def test_spint_constructs_an_exact_sympy_integer():
@@ -99,7 +100,7 @@ def test_pl_json_to_sympy_returns_none_for_none():
 
 
 def test_sympy_lens_correct_answer_stores_pl_json():
-    data: pl.QuestionData = {}  # type: ignore
+    data = question_data()
     lens = SympyQuestion(data, "answer")
 
     lens.correct_answer = 2 * x + 3
@@ -109,7 +110,7 @@ def test_sympy_lens_correct_answer_stores_pl_json():
 
 
 def test_sympy_lens_correct_answer_parses_strings():
-    data: pl.QuestionData = {}  # type: ignore
+    data = question_data()
     lens = SympyQuestion(data, "answer", variables=x)
 
     lens.correct_answer = "2*x + 3"
@@ -118,7 +119,7 @@ def test_sympy_lens_correct_answer_parses_strings():
 
 
 def test_lens_format_error_sets_error():
-    data: pl.QuestionData = {"format_errors": {}}  # type: ignore
+    data = question_data(format_errors={})
     lens = Question(data, "answer")
 
     lens.format_error = "Use a set."
@@ -128,9 +129,7 @@ def test_lens_format_error_sets_error():
 
 
 def test_lens_format_error_replaces_existing_error():
-    data: pl.QuestionData = {  # type: ignore
-        "format_errors": {"answer": "Original error."}
-    }
+    data = question_data(format_errors={"answer": "Original error."})
     lens = Question(data, "answer")
 
     lens.format_error = "Replacement error."
@@ -139,9 +138,7 @@ def test_lens_format_error_replaces_existing_error():
 
 
 def test_lens_format_error_can_be_cleared():
-    data: pl.QuestionData = {  # type: ignore
-        "format_errors": {"answer": "Original error."}
-    }
+    data = question_data(format_errors={"answer": "Original error."})
     lens = Question(data, "answer")
 
     lens.format_error = None
@@ -151,7 +148,7 @@ def test_lens_format_error_can_be_cleared():
 
 
 def test_lens_feedback_sets_question_feedback():
-    data: pl.QuestionData = {"feedback": {}}  # type: ignore
+    data = question_data(feedback={})
     question = Question(data, "answer")
 
     question.feedback = "Try factoring first."
@@ -160,7 +157,7 @@ def test_lens_feedback_sets_question_feedback():
 
 
 def test_lens_feedback_sets_data_feedback():
-    data: pl.QuestionData = {"feedback": {}}  # type: ignore
+    data = question_data(feedback={})
     question = Question(data, "answer")
 
     question.feedback = "Try factoring first."
@@ -173,7 +170,7 @@ def test_lens_feedback_sets_data_feedback():
     ["Try factoring first.", {"suggestion": "Try factoring first."}],
 )
 def test_lens_feedback_reads_data_feedback(feedback: str | dict[str, str]):
-    data: pl.QuestionData = {"feedback": {"answer": feedback}}  # type: ignore
+    data = question_data(feedback={"answer": feedback})
     question = Question(data, "answer")
 
     assert question.feedback == feedback
@@ -459,3 +456,8 @@ def test_latex_renders_base_e_log_as_ln(base):
 )
 def test_sign(v, s):
     assert sign(v) == s
+
+
+def test_sign_rejects_an_indeterminate_symbolic_sign() -> None:
+    with pytest.raises(ValueError, match="Could not determine the sign"):
+        sign(x)

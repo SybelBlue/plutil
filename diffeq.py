@@ -2,7 +2,7 @@
 
 import re
 from dataclasses import KW_ONLY, dataclass
-from typing import Literal, cast
+from typing import Literal
 
 import sympy as sp
 from prairielearn import timeout_utils
@@ -19,6 +19,7 @@ from .common import (
     _to_expr_input,
     _var_names,
     latex,
+    require_expr,
     var_name,
     var_to_symbol,
 )
@@ -40,7 +41,7 @@ def d_f(dependent: Variable, independent: Variable) -> sp.Expr:
     rest of the equation.
     """
     x_s = var_to_symbol(independent)
-    y_x = cast(sp.Expr, Function(var_name(dependent))(x_s))
+    y_x = require_expr(Function(var_name(dependent))(x_s))
     return derivative(y_x, d=x_s, evaluate=False)
 
 
@@ -92,8 +93,8 @@ def check_implicit_solution(
     C_s = var_to_symbol(C)
     y_x = Function(var_name(dependent))(x_s)
 
-    ref_ode = _to_expr_input(reference_ode).subs(y_s, y_x)
-    stu_sol = Eq(_to_expr_input(student_sol).subs(y_s, y_x), C_s)
+    ref_ode = require_expr(_to_expr_input(reference_ode).subs(y_s, y_x))
+    stu_sol = Eq(require_expr(_to_expr_input(student_sol).subs(y_s, y_x)), C_s)
 
     check, correct = None, False
     try:
@@ -132,7 +133,7 @@ def check_explicit_solution(
     if C_s not in student_expr.free_symbols:
         return OdeCheckResult(missing_constant=var_name(C))
 
-    ref_ode = _to_expr_input(reference_ode).subs(y_s, y_x)
+    ref_ode = require_expr(_to_expr_input(reference_ode).subs(y_s, y_x))
     stu_sol = Eq(y_x, student_expr)
 
     correct, check = False, None
@@ -168,13 +169,14 @@ def implicit_diff(
     for v in indeps:
         dd = derivative(f, d=v)
         with sp.evaluate(False):
-            dd = cast(sp.Expr, dd * d_(v) / d_(d))  # type: ignore
+            dd = dd * d_(v) / d_(d)  # type: ignore
             if out is None:
                 out = dd
             else:
-                out += dd  # type: ignore
+                out += dd
 
-    return cast(sp.Expr, out)
+    assert out is not None
+    return out
 
 
 def diffeq_latex(
@@ -209,7 +211,7 @@ def diffeq_latex(
         for fn in dependent_names:
             normalized_expr = eval_at(
                 normalized_expr,
-                **{var_name(fn): cast(sp.Expr, Function(fn)(independent))},
+                **{var_name(fn): require_expr(Function(fn)(independent))},
                 simplify=False,
             )
 

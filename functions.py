@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import Any, Final, cast
+from typing import Final
 
 import sympy
 
@@ -11,6 +11,7 @@ from .common import (
     ExprInput,
     Variable,
     _to_expr_input,
+    require_expr,
     var_to_symbol,
 )
 
@@ -50,16 +51,20 @@ def rearrange_eqn(
         rhs = _to_expr_input(rhs)
         equation = sympy.Eq(lhs, rhs, evaluate=False)
         if isolate is None:
-            candidate_variables = cast(set[sympy.Symbol], rhs.free_symbols - {lhs})
+            candidate_variables = {
+                variable
+                for variable in rhs.free_symbols - {lhs}
+                if isinstance(variable, sympy.Symbol)
+            }
             if len(candidate_variables) > 1:
                 raise TypeError(
                     "`isolate` is required when the right-hand side has multiple variables"
                 )
             isolate = next(iter(candidate_variables), lhs)
-    elif isolate is None:
+
+    if isolate is None:
         raise TypeError("`isolate` is required for a positional equation")
 
-    assert isolate is not None
     symbol = var_to_symbol(isolate)
 
     # SymPy eagerly reduces identities and contradictions to boolean atoms.
@@ -73,11 +78,11 @@ def rearrange_eqn(
     if not isinstance(equation, sympy.Equality):
         raise TypeError("`equation` must be a SymPy Eq")
 
-    lhs = cast(sympy.Expr, equation.lhs)
-    rhs = cast(Any, equation.rhs)
-    linear_symbol, linear_solution = sympy.solve_linear(lhs, rhs, symbols=[symbol])
+    lhs = require_expr(equation.lhs)
+    rhs = require_expr(equation.rhs)
+    linear_symbol, linear_solution = sympy.solve_linear(lhs - rhs, symbols=[symbol])  # type: ignore
     if linear_symbol == symbol:
-        return cast(sympy.Expr, linear_solution)
+        return require_expr(linear_solution)
 
     try:
         solutions = sympy.solve(equation, symbol, dict=True)
@@ -87,13 +92,18 @@ def rearrange_eqn(
         raise ValueError(
             f"Expected exactly one solution for {symbol}, got {len(solutions)}"
         )
-    return cast(sympy.Expr, solutions[0][symbol])
+    return require_expr(solutions[0][symbol])
 
 
 def eval_at(
     f: ExprInput, simplify: bool = True, **bindings: ExprInput | None
 ) -> sympy.Expr:
-    """Evaluate `f` after substituting the given bindings and simplify."""
+    """Evaluate ``f`` after substitution, returning a checked expression.
+
+    Raises:
+        TypeError: If the input, substitution result, or simplified result is
+            not a :class:`sympy.Expr`.
+    """
     return _eval_at(f, simplify=simplify, bindings=bindings)
 
 
@@ -105,10 +115,10 @@ def _eval_at(
         for k, v in bindings.items()
         if v is not None
     )
-    res = _to_expr_input(f).subs(values)
+    res = require_expr(_to_expr_input(f).subs(values))
     if simplify:
-        res = sympy.simplify(res)
-    return cast(sympy.Expr, res)
+        res = require_expr(sympy.simplify(res))
+    return res
 
 
 def eval_at_(**bindings: ExprInput | None) -> Callable[[ExprInput], sympy.Expr]:
@@ -117,19 +127,26 @@ def eval_at_(**bindings: ExprInput | None) -> Callable[[ExprInput], sympy.Expr]:
 
 
 def evalf_at(f: ExprInput, **bindings: ExprInput | None) -> float:
-    """Evaluate `f` numerically after substituting the given bindings."""
+    """Evaluate ``f`` numerically after substituting the given bindings.
+
+    Raises:
+        TypeError: If evaluation produces a non-expression SymPy object.
+        ValueError: If the resulting expression cannot be converted to float.
+    """
     fn = _to_expr_input(f)
-    out = fn.evalf(
-        subs={
-            sympy.Symbol(k): _to_expr_input(v)
-            for k, v in bindings.items()
-            if v is not None
-        }
+    out = require_expr(
+        fn.evalf(
+            subs={
+                sympy.Symbol(k): _to_expr_input(v)
+                for k, v in bindings.items()
+                if v is not None
+            }
+        )
     )
     try:
-        return float(out)  # type: ignore
-    except Exception as e:
-        raise ValueError(f"Could not evaluate as float {out}") from e
+        return float(out)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Could not evaluate as float: {out}") from exc
 
 
 def evalf_at_(**bindings: ExprInput | None) -> Callable[[ExprInput], float]:
