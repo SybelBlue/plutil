@@ -18,6 +18,17 @@ def test_assumptions_type_matches_serialized_sympy_variable_assumptions() -> Non
     assert assumptions.get("negative") is False
 
 
+def test_polar_assumption_is_serialized_and_checkable() -> None:
+    x = sympy.Symbol("x", polar=True)
+    value = pl.sympy_to_json(x)
+    assumptions_by_variable = value.get("_assumptions")
+    assert assumptions_by_variable is not None
+    assumptions = cast(AssumptionsTypedDict, assumptions_by_variable["x"])
+
+    assert assumptions.get("polar") is True
+    assert check(x, polar=True)
+
+
 def test_is_matches_known_true_and_false_assumptions() -> None:
     x = sympy.Symbol("x", positive=True, integer=True)
 

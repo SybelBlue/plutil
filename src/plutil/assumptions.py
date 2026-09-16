@@ -37,6 +37,7 @@ class AssumptionsTypedDict(TypedDict, total=False):
     nonpositive: bool
     nonzero: bool
     odd: bool
+    polar: bool
     positive: bool
     prime: bool
     rational: bool
