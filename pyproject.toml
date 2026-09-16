@@ -20,3 +20,6 @@ subdirectory = "apps/prairielearn/python"
 
 [dependency-groups]
 dev = ["ipython", "pyfakefs", "pyright", "pytest", "ruff"]
+
+[tool.pyright]
+reportUnnecessaryTypeIgnoreComment = "error"

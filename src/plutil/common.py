@@ -330,7 +330,7 @@ def eq[T, R](
     if lhs.is_finite is False or rhs.is_finite is False:
         return False
 
-    return sympy.simplify(lhs - rhs) == 0  # type: ignore
+    return sympy.simplify(lhs - rhs) == 0
 
 
 INV_TRIG_OPERATOR_RE: re.Pattern[str] | None = None
