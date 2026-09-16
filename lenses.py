@@ -95,7 +95,7 @@ class MultiDict[Out](Mapping[str, Out]):
             return self.__getitem_single__(keys[0])
         return tuple(map(self.__getitem_single__, keys))
 
-    @overload  # type: ignore[override]
+    @overload
     def __get_single__(self, key: str, default: None = None, /) -> Out | None: ...
     @overload
     def __get_single__(self, key: str, default: Out, /) -> Out: ...
@@ -134,7 +134,7 @@ class MultiDict[Out](Mapping[str, Out]):
         values = tuple(_normalize_one_or_more(value))
         if len(keys) == 1:
             # TODO: would be lovely if we could assert that Out is a sequence
-            return self.__setitem_single__(keys[0], cast(Out, value))  # type: ignore
+            return self.__setitem_single__(keys[0], cast(Out, value))
         if len(keys) != len(values):
             raise ValueError("Number of keys and values must match")
         if len(keys) == 0:
@@ -151,7 +151,7 @@ class MultiDict[Out](Mapping[str, Out]):
     def items(self) -> ItemsView[str, Out]:
         return self.base.items()
 
-    def values(self) -> ValuesView[Out]:  # type: ignore
+    def values(self) -> ValuesView[Out]:
         return self.base.values()
 
     def keys(self) -> KeysView[str]:
@@ -418,7 +418,7 @@ class PartialScoreProxy:
     @feedback.setter
     def feedback(self, feedback: str | dict[str, str]) -> None:
         adict = self.data.setdefault("partial_scores", {})
-        sdict = adict.setdefault(self.answers_name, {"score": 0.0})  # type: ignore
+        sdict = adict.setdefault(self.answers_name, {"score": 0.0})
         sdict["feedback"] = feedback
         self._write_data_feedback(feedback)
 
@@ -562,7 +562,7 @@ class SympyQuestion(BaseQuestion[PlValue]):
     def submitted_answer(self) -> PlValue | None:
         """Return the submitted answer as a SymPy expression."""
         if raw := self.data["submitted_answers"].get(self.answers_name):
-            return self.to_expr(raw)  # type: ignore
+            return self.to_expr(raw)
         return None
 
     @property

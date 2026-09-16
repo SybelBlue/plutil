@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 
-import prairielearn as pl  # type: ignore
+import prairielearn as pl
 import pytest
 import sympy
 from sympy.abc import n, t, x, y
@@ -348,12 +348,12 @@ def test_latex_renders_inverse_trig_operators_as_negative_powers(operator, name)
     ("expr", "display_latex", "inline_latex"),
     [
         (
-            sympy.Sum(1 / x, (x, 1, n)),  # type: ignore
+            sympy.Sum(1 / x, (x, 1, n)),
             r"\displaystyle \sum_{x=1}^{n} \dfrac{1}{x}",
             r"\sum_{x=1}^{n} \frac{1}{x}",
         ),
         (
-            2 * sympy.Sum(1 / x, (x, 1, n)),  # type: ignore
+            sympy.Integer(2) * sympy.Sum(1 / x, (x, 1, n)),
             r"2 \displaystyle \sum_{x=1}^{n} \dfrac{1}{x}",
             r"2 \sum_{x=1}^{n} \frac{1}{x}",
         ),
