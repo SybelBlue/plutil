@@ -170,7 +170,7 @@ def approximate_area[key: NumberLike, value: NumberLike](
         raise ValueError("`n` must be positive")
 
     lo, hi = bounds
-    width = (to_expr(hi) - to_expr(lo)) / n
+    width = (hi - lo) / n
     rect_xs = [lo + i * width for i in range(n + 1)]
 
     match method:
