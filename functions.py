@@ -80,7 +80,7 @@ def rearrange_eqn(
 
     lhs = require_expr(equation.lhs)
     rhs = require_expr(equation.rhs)
-    linear_symbol, linear_solution = sympy.solve_linear(lhs - rhs, symbols=[symbol])  # type: ignore
+    linear_symbol, linear_solution = sympy.solve_linear(lhs - rhs, symbols=[symbol])
     if linear_symbol == symbol:
         return require_expr(linear_solution)
 
@@ -168,7 +168,7 @@ def translate_through(
 
     return (
         _to_expr_input(f)
-        + _to_expr_input(y0)  # type: ignore
+        + _to_expr_input(y0)
         - _eval_at(f, simplify=True, bindings=bindings)
     )
 
@@ -201,7 +201,7 @@ def scale_through(
 
     return (
         _to_expr_input(f)
-        * _to_expr_input(y0)  # type: ignore
+        * _to_expr_input(y0)
         / _eval_at(f, simplify=True, bindings=bindings)
     )
 

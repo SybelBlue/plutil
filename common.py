@@ -50,7 +50,7 @@ def truncate_to_significant_digits(value: NumberLike, digits: int) -> float:
     expr = sympy.Float(str(value)) if isinstance(value, float) else to_expr(value)
     magnitude = math.floor(math.log10(abs(float(expr))))
     scale = sympy.Integer(10) ** (digits - magnitude - 1)
-    truncated = sympy.sign(expr) * sympy.floor(abs(expr) * scale) / scale  # type: ignore
+    truncated = sympy.sign(expr) * sympy.floor(abs(expr) * scale) / scale
     return float(truncated)
 
 
@@ -365,7 +365,7 @@ def eq[T, R](
     ):
         return False
 
-    difference = require_expr(sympy.simplify(lhs_expr - rhs_expr))  # type: ignore
+    difference = require_expr(sympy.simplify(lhs_expr - rhs_expr))
     return difference.is_zero is True
 
 
