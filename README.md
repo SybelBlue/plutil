@@ -470,6 +470,15 @@ Choose an integer from an inclusive arithmetic progression. Use `exclude` or
 a = rand.int(2, 12, exclude=(4, 8), step=2)
 ```
 
+### `rand.spint(low, high, *, exclude=(), exclude_if=None, step=1, randsign=False) -> sympy.Integer`
+
+Choose a value using the same rules as `rand.int`, but return it as an exact
+SymPy `Integer` for use in symbolic expressions.
+
+```python
+coefficient = rand.spint(-5, 5, exclude=(0,))
+```
+
 ### `rand.poly(...) -> Expr`
 
 Build a random sparse polynomial. Pass `degree` for an exact degree or
@@ -515,7 +524,13 @@ random selection:
 
 ```python
 next_sign = rand.sign_(75)
+next_choices = rand.choices_(
+    ("red", "green", "blue"),
+    weights=(1, 1, 3),
+    k=2,
+)
 next_integer = rand.int_(1, 10)
+next_sympy_integer = rand.spint_(1, 10)
 next_polynomial = rand.poly_(of="x", degree=3)
 next_root_polynomial = rand.poly_roots_(
     of="x",
@@ -526,13 +541,6 @@ next_partitions = rand.partitions_(range(10), samples=(None, None))
 next_coprimes = rand.coprimes_((2, 3, 5, 7, 11))
 
 a = next_integer()
+colors = next_choices()
 p = next_polynomial()
-```
-
-`rand.choices_` works slightly differently: it binds the weights and result
-count, then returns a callable that accepts the population to sample.
-
-```python
-weighted_pair = rand.choices_(weights=(1, 1, 3), k=2)
-colors = weighted_pair(("red", "green", "blue"))
 ```

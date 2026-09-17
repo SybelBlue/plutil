@@ -91,14 +91,15 @@ def test_randchoices_factory_delays_and_repeats_evaluation(
         return [population]
 
     monkeypatch.setattr(rand, "choices", fake_randchoices)
-    generate = rand.choices_(cum_weights=(1.0, 3.0), k=2)
+    population = ("red", "green")
+    generate = rand.choices_(population, cum_weights=(1.0, 3.0), k=2)
 
     assert calls == []
-    assert generate(("red", "green")) == [("red", "green")]
-    assert generate(("blue",)) == [("blue",)]
+    assert generate() == [population]
+    assert generate() == [population]
     assert calls == [
-        (("red", "green"), None, (1.0, 3.0), 2),
-        (("blue",), None, (1.0, 3.0), 2),
+        (population, None, (1.0, 3.0), 2),
+        (population, None, (1.0, 3.0), 2),
     ]
 
 
@@ -185,6 +186,62 @@ def test_randint_factory_delays_and_repeats_evaluation(
 
     assert calls == []
     assert (generate(), generate()) == (1, 2)
+    assert calls == [
+        ((1, 9), {"exclude": (3,), "exclude_if": None, "step": 2, "randsign": True}),
+        ((1, 9), {"exclude": (3,), "exclude_if": None, "step": 2, "randsign": True}),
+    ]
+
+
+def test_randspint_delegates_to_randint_and_returns_sympy_integer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+    exclude_if = lambda value: value > 7
+
+    def fake_randint(*args: object, **kwargs: object) -> int:
+        calls.append((args, kwargs))
+        return 5
+
+    monkeypatch.setattr(rand, "int", fake_randint)
+
+    result = rand.spint(
+        1,
+        9,
+        exclude=(3,),
+        exclude_if=exclude_if,
+        step=2,
+        randsign=True,
+    )
+
+    assert result == sympy.Integer(5)
+    assert isinstance(result, sympy.Integer)
+    assert calls == [
+        (
+            (1, 9),
+            {
+                "exclude": (3,),
+                "exclude_if": exclude_if,
+                "step": 2,
+                "randsign": True,
+            },
+        )
+    ]
+
+
+def test_randspint_factory_delays_and_repeats_evaluation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+    def fake_randspint(*args: object, **kwargs: object) -> sympy.Integer:
+        calls.append((args, kwargs))
+        return sympy.Integer(len(calls))
+
+    monkeypatch.setattr(rand, "spint", fake_randspint)
+    generate = rand.spint_(1, 9, exclude=(3,), step=2, randsign=True)
+
+    assert calls == []
+    assert (generate(), generate()) == (sympy.Integer(1), sympy.Integer(2))
     assert calls == [
         ((1, 9), {"exclude": (3,), "exclude_if": None, "step": 2, "randsign": True}),
         ((1, 9), {"exclude": (3,), "exclude_if": None, "step": 2, "randsign": True}),
