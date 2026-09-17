@@ -15,6 +15,7 @@ from .common import (
     clamp,
     var_to_symbol,
 )
+from .common import spint as _spint
 from .functions import scale_through, translate_through
 
 
@@ -57,16 +58,15 @@ def choices[T](pop: Sequence[T], *args, **kwargs) -> Sequence[T]:
 
 
 def choices_[T](
+    pop: Sequence[T],
     weights: Sequence[float] | None = None,
     *,
     cum_weights: Sequence[float] | None = None,
     k: py.int = 1,
-) -> Callable[[Sequence[T]], Sequence[T]]:
-    """Return a callable that applies :func:`choices` to a supplied population."""
+) -> Callable[[], Sequence[T]]:
+    """Return a zero-argument callable that evaluates :func:`choices`."""
 
-    def generate(
-        pop: Sequence[T],
-    ) -> Sequence[T]:
+    def generate() -> Sequence[T]:
         return choices(pop, weights, cum_weights=cum_weights, k=k)
 
     return generate
@@ -140,6 +140,57 @@ def int_(
 
     def generate() -> py.int:
         return int(
+            low,
+            high,
+            exclude=exclude,
+            exclude_if=exclude_if,
+            step=step,
+            randsign=randsign,
+        )
+
+    return generate
+
+
+def spint(
+    low: py.int,
+    high: py.int,
+    *,
+    exclude: Sequence[py.int] = (),
+    exclude_if: Callable[[py.int], py.bool] | None = None,
+    step: py.int = 1,
+    randsign: py.bool = False,
+) -> sympy.Integer:
+    """Return a random integer as a SymPy ``Integer``."""
+    return _spint(
+        int(
+            low,
+            high,
+            exclude=exclude,
+            exclude_if=exclude_if,
+            step=step,
+            randsign=randsign,
+        )
+    )
+
+
+def spint_(
+    low: py.int,
+    high: py.int,
+    *,
+    exclude: Sequence[py.int] = (),
+    exclude_if: Callable[[py.int], py.bool] | None = None,
+    step: py.int = 1,
+    randsign: py.bool = False,
+) -> Callable[[], sympy.Integer]:
+    """Return a zero-argument callable that evaluates :func:`spint`.
+
+    No random value is selected until the returned callable is invoked. Each
+    invocation performs a new, independent selection using the supplied
+    arguments.
+    """
+
+    def generate() -> sympy.Integer:
+        return spint(
             low,
             high,
             exclude=exclude,
