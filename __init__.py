@@ -1,6 +1,6 @@
 from typing import Final
 
-from . import rand
+from . import fabc, rand
 from .assumptions import AssumptionsTypedDict, check
 from .common import (
     ExprInput,
@@ -80,6 +80,7 @@ __all__: Final[tuple[str, ...]] = (
     "eval_at_",
     "evalf_at",
     "evalf_at_",
+    "fabc",
     "getrec",
     "grade_sympy_set",
     "is_trivial",
