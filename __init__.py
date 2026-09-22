@@ -53,6 +53,7 @@ from .sets import (
     grade_sympy_set,
     reject_non_sympy_set_input,
 )
+from .symbolic_decimals import parse_symbolic_decimals
 
 __all__: Final[tuple[str, ...]] = (
     "AssumptionsTypedDict",
@@ -86,6 +87,7 @@ __all__: Final[tuple[str, ...]] = (
     "latex",
     "lim_latex",
     "main",
+    "parse_symbolic_decimals",
     "plmagic",
     "rand",
     "rearrange_eqn",
