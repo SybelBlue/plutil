@@ -584,3 +584,16 @@ a = next_integer()
 colors = next_choices()
 p = next_polynomial()
 ```
+
+## `fabc.py`
+
+`plutil.fabc` mirrors `sympy.abc` with undefined functions instead of symbols
+and also provides uppercase Greek names:
+
+```python
+from plutil.fabc import Omega, f
+from sympy.abc import x
+
+f_x = f(x)
+assert plutil.sympy(Omega(x)) == "\Omega(x)"
+```
