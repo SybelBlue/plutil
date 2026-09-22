@@ -42,6 +42,42 @@ def test_randsign_factory_delays_and_repeats_evaluation(
     assert calls == [62.5, 62.5]
 
 
+def test_randspsign_delegates_to_randsign_and_returns_sympy_integer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[float] = []
+
+    def fake_randsign(odds: float) -> int:
+        calls.append(odds)
+        return -1
+
+    monkeypatch.setattr(rand, "sign", fake_randsign)
+
+    result = rand.spsign(37.5)
+
+    assert result == sympy.Integer(-1)
+    assert isinstance(result, sympy.Integer)
+    assert calls == [37.5]
+
+
+def test_randspsign_factory_delays_and_repeats_evaluation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[float] = []
+    results = iter((sympy.Integer(1), sympy.Integer(-1)))
+
+    def fake_randspsign(odds: float) -> sympy.Integer:
+        calls.append(odds)
+        return next(results)
+
+    monkeypatch.setattr(rand, "spsign", fake_randspsign)
+    generate = rand.spsign_(62.5)
+
+    assert calls == []
+    assert (generate(), generate()) == (sympy.Integer(1), sympy.Integer(-1))
+    assert calls == [62.5, 62.5]
+
+
 def test_randchoice_delegates_to_random_choice(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
