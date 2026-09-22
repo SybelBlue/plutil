@@ -483,6 +483,15 @@ below 0 or above 100 are clamped to the valid range.
 direction = rand.sign(70)  # 70% chance of 1, 30% chance of -1
 ```
 
+### `rand.spsign(odds=50.0) -> sympy.Integer`
+
+Choose a value using the same rules as `rand.sign`, but return it as an exact
+SymPy `Integer` for use in symbolic expressions.
+
+```python
+direction = rand.spsign(70)
+```
+
 ### `rand.choice(population) -> T`
 
 Choose one value from a non-empty sequence.
@@ -564,6 +573,7 @@ random selection:
 
 ```python
 next_sign = rand.sign_(75)
+next_sympy_sign = rand.spsign_(75)
 next_choices = rand.choices_(
     ("red", "green", "blue"),
     weights=(1, 1, 3),

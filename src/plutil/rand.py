@@ -47,6 +47,20 @@ def sign_(odds: float = 50.0) -> Callable[[], Literal[-1, 1]]:
     return generate
 
 
+def spsign(odds: float = 50.0) -> sympy.Integer:
+    """Return a random sign as a SymPy ``Integer``."""
+    return _spint(sign(odds))
+
+
+def spsign_(odds: float = 50.0) -> Callable[[], sympy.Integer]:
+    """Return a zero-argument callable that evaluates :func:`spsign`."""
+
+    def generate() -> sympy.Integer:
+        return spsign(odds)
+
+    return generate
+
+
 @wraps(base.choice)
 def choice[T](pop: Sequence[T]) -> T:
     return base.choice(pop)
