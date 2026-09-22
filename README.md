@@ -256,6 +256,46 @@ award_partial_credit(
 
 ---
 
+## Exact decimal symbolic input
+
+`parse_symbolic_decimals` is an opt-in helper for `pl-symbolic-input`. Call it
+from the question's `parse(data)` function after the element has parsed the
+submission. It reads `raw_submitted_answers`, checks every decimal token before
+SymPy can simplify it, and stores PrairieLearn symbolic JSON for grading.
+
+```html
+<pl-symbolic-input answers-name="expression" variables="x"></pl-symbolic-input>
+```
+
+```python
+# server.py
+from plutil import SympyQuestion, parse_symbolic_decimals
+
+
+def parse(data):
+    parse_symbolic_decimals(SympyQuestion(data, "expression", variables="x"))
+```
+
+`max_mantissa_digits` defaults to `3` and counts **digits after the decimal
+point**; set, for example, `max_mantissa_digits=2` to change it. With the
+default, `.5`, `1.`, `0.333`, and `0.125*x` are accepted. `0.333` is exactly
+`333/1000`, not an approximation to `1/3`. `1.0000` and any expression with a
+decimal containing four or more fractional digits receive a format error, even
+if that term would cancel.
+Integers, fractions such as `1/3`, and submissions without decimals retain
+PrairieLearn's normal parsing. The helper never rounds or guesses a nearby
+fraction.
+
+For a `formula-editor="true"` element, pass `formula_editor=True`; the helper
+uses its expression text and leaves the companion `expression-latex` display
+value untouched. If the element enables sets, complex values, custom functions,
+or other parser options, pass matching keyword arguments to the helper.
+PrairieLearn's distinction between `1.2e3` (scientific notation) and `1.2e+3`
+(Euler's `e` followed by `+3`) is retained. The helper returns `True` when it
+stores a converted answer and `False` otherwise.
+
+---
+
 ## `functions.py`
 
 Helpers for evaluating and transforming symbolic functions.
