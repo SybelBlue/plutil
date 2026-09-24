@@ -229,16 +229,20 @@ choice.correct_answer = "b"
 Because it extends `BaseQuestion`, the usual score, weight, feedback, format
 error, and raw-submission APIs remain available.
 
-#### `award_complement(*, score=1.0, feedback=None) -> bool`
+#### `award_credit_for(credit_for=None, *, score=1.0, feedback=None) -> bool`
 
-Award follow-through credit when a prepared `pl-multiple-choice` has
-exactly two distinct options and the submitted key is the valid noncanonical
-key. The helper uses PrairieLearn's prepared option keys—not option order,
-rendered HTML, or displayed letter labels—and preserves the native element
-weight and any equal or higher score. `score` defaults to full credit (`1.0`)
-and can be set to a lower partial-credit value.
+Award follow-through credit when the submitted key for a prepared
+`pl-multiple-choice` is valid and noncanonical. This works for any number of
+options. The helper uses PrairieLearn's prepared option keys—not option order,
+rendered HTML, displayed letter labels, or option count—and preserves the
+native element weight and any equal or higher score. `score` defaults to full
+credit (`1.0`) and can be set to a lower partial-credit value.
 
-Question-local grading must first decide that the complementary choice is
+Use `credit_for` to restrict credit to a subset of the prepared options. It
+accepts one option key, one `MultipleChoiceOption`, or a sequence mixing both.
+Omitting it makes every valid noncanonical option eligible.
+
+Question-local grading must first decide which noncanonical choices are
 mathematically justified:
 
 ```python
@@ -249,15 +253,18 @@ def grade(data):
     # Derive this from the student's submitted work for the particular problem.
     follow_through_is_justified = check_student_reasoning(data)
     if follow_through_is_justified:
-        MultipleChoiceQuestion(data, "convergence").award_complement(
-            feedback="This choice is consistent with your submitted work."
+        choice = MultipleChoiceQuestion(data, "convergence")
+        choice.award_credit_for(
+            ("b", choice.answer_choices[2]),
+            feedback="This choice is consistent with your submitted work.",
         )
 ```
 
 Blank, absent, invalid, and canonical submissions return `False`. Malformed
-prepared question data raises `TypeError` or `ValueError`, including nonbinary
-option sets, duplicate or invalid option keys, and a missing or invalid
-canonical key.
+prepared question data raises `TypeError` or `ValueError`, including duplicate
+or invalid option keys and a missing or invalid canonical key. The method never
+decides which noncanonical option is mathematically justified; that remains the
+caller's responsibility.
 
 ### `award_partial_credit(lens, *rules, ...) -> bool`
 

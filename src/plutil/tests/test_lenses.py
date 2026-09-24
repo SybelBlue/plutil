@@ -415,7 +415,7 @@ def test_multiple_choice_general_properties_allow_more_than_two_choices() -> Non
     ("option_keys", "canonical_key", "submitted_key"),
     [(("a", "b"), "a", "b"), (("b", "a"), "a", "b")],
 )
-def test_multiple_choice_awards_complement_independent_of_option_order(
+def test_multiple_choice_awards_credit_independent_of_option_order(
     monkeypatch,
     option_keys: tuple[str, str],
     canonical_key: str,
@@ -432,7 +432,7 @@ def test_multiple_choice_awards_complement_independent_of_option_order(
         partial_score={"score": 0.0, "weight": 5},
     )
 
-    changed = MultipleChoiceQuestion(data, "convergence").award_complement(
+    changed = MultipleChoiceQuestion(data, "convergence").award_credit_for(
         feedback="Consistent with your submitted work."
     )
 
@@ -445,7 +445,7 @@ def test_multiple_choice_awards_complement_independent_of_option_order(
     assert calls == [data]
 
 
-def test_multiple_choice_awards_custom_complement_score(monkeypatch) -> None:
+def test_multiple_choice_awards_custom_credit_score(monkeypatch) -> None:
     calls: list[pl.QuestionData] = []
     monkeypatch.setattr(
         lenses_mod.pl, "set_weighted_score_data", lambda data: calls.append(data)
@@ -454,7 +454,7 @@ def test_multiple_choice_awards_custom_complement_score(monkeypatch) -> None:
         partial_score={"score": 0.25, "weight": 3},
     )
 
-    changed = MultipleChoiceQuestion(data, "convergence").award_complement(
+    changed = MultipleChoiceQuestion(data, "convergence").award_credit_for(
         score=0.6,
         feedback="Partial follow-through credit",
     )
@@ -482,7 +482,7 @@ def test_multiple_choice_leaves_canonical_submission_to_native_grading(
     }
     data = _multiple_choice_data(submitted_key="a", partial_score=native_score.copy())
 
-    changed = MultipleChoiceQuestion(data, "convergence").award_complement(
+    changed = MultipleChoiceQuestion(data, "convergence").award_credit_for(
         feedback="Follow-through"
     )
 
@@ -501,7 +501,7 @@ def test_multiple_choice_ignores_absent_blank_or_invalid_submissions(
     )
     data = _multiple_choice_data(submitted_key=submitted_key)
 
-    changed = MultipleChoiceQuestion(data, "convergence").award_complement()
+    changed = MultipleChoiceQuestion(data, "convergence").award_credit_for()
 
     assert changed is False
     assert data["partial_scores"] == {}
@@ -528,24 +528,148 @@ def test_multiple_choice_rejects_absent_or_malformed_canonical_answer(
         data["correct_answers"]["convergence"] = correct_answer
 
     with pytest.raises(exception, match="correct_answers"):
-        MultipleChoiceQuestion(data, "convergence").award_complement()
+        MultipleChoiceQuestion(data, "convergence").award_credit_for()
 
 
-@pytest.mark.parametrize("option_keys", [("a",), ("a", "b", "c")])
-def test_multiple_choice_requires_exactly_two_options(
-    option_keys: tuple[str, ...],
+@pytest.mark.parametrize("submitted_key", ["b", "c", "d"])
+def test_multiple_choice_awards_any_valid_noncanonical_option(
+    monkeypatch, submitted_key: str
 ) -> None:
-    data = _multiple_choice_data(option_keys=option_keys)
+    calls: list[pl.QuestionData] = []
+    monkeypatch.setattr(
+        lenses_mod.pl, "set_weighted_score_data", lambda data: calls.append(data)
+    )
+    data = _multiple_choice_data(
+        option_keys=("a", "b", "c", "d"),
+        canonical_key="a",
+        submitted_key=submitted_key,
+        partial_score={"score": 0.0, "weight": 2},
+    )
 
-    with pytest.raises(ValueError, match="exactly two"):
-        MultipleChoiceQuestion(data, "convergence").award_complement()
+    changed = MultipleChoiceQuestion(data, "convergence").award_credit_for()
+
+    assert changed is True
+    assert data["partial_scores"]["convergence"] == {"score": 1.0, "weight": 2}
+    assert calls == [data]
+
+
+@pytest.mark.parametrize("submitted_key", ["b", "c"])
+def test_multiple_choice_awards_options_in_credit_subset(
+    monkeypatch, submitted_key: str
+) -> None:
+    calls: list[pl.QuestionData] = []
+    monkeypatch.setattr(
+        lenses_mod.pl, "set_weighted_score_data", lambda data: calls.append(data)
+    )
+    data = _multiple_choice_data(
+        option_keys=("a", "b", "c", "d"),
+        canonical_key="a",
+        submitted_key=submitted_key,
+        partial_score={"score": 0.0, "weight": 2},
+    )
+    question = MultipleChoiceQuestion(data, "convergence")
+    choice_c = question.get_choice("c")
+    assert choice_c is not None
+
+    changed = question.award_credit_for(("b", choice_c))
+
+    assert changed is True
+    assert data["partial_scores"]["convergence"] == {"score": 1.0, "weight": 2}
+    assert calls == [data]
+
+
+def test_multiple_choice_ignores_valid_option_outside_credit_subset(
+    monkeypatch,
+) -> None:
+    calls: list[pl.QuestionData] = []
+    monkeypatch.setattr(
+        lenses_mod.pl, "set_weighted_score_data", lambda data: calls.append(data)
+    )
+    original: pl.PartialScore = {"score": 0.0, "weight": 2}
+    data = _multiple_choice_data(
+        option_keys=("a", "b", "c"),
+        canonical_key="a",
+        submitted_key="c",
+        partial_score=original.copy(),
+    )
+
+    changed = MultipleChoiceQuestion(data, "convergence").award_credit_for("b")
+
+    assert changed is False
+    assert data["partial_scores"]["convergence"] == original
+    assert calls == []
+
+
+def test_multiple_choice_accepts_one_prepared_option_as_credit_subset(
+    monkeypatch,
+) -> None:
+    calls: list[pl.QuestionData] = []
+    monkeypatch.setattr(
+        lenses_mod.pl, "set_weighted_score_data", lambda data: calls.append(data)
+    )
+    data = _multiple_choice_data(
+        option_keys=("a", "b", "c"),
+        canonical_key="a",
+        submitted_key="c",
+        partial_score={"score": 0.0, "weight": 2},
+    )
+    question = MultipleChoiceQuestion(data, "convergence")
+    choice_c = question.get_choice("c")
+    assert choice_c is not None
+
+    changed = question.award_credit_for(choice_c)
+
+    assert changed is True
+    assert data["partial_scores"]["convergence"] == {"score": 1.0, "weight": 2}
+    assert calls == [data]
+
+
+@pytest.mark.parametrize(
+    ("credit_for", "exception", "message"),
+    [
+        (["missing"], ValueError, "does not match an option key"),
+        ([{"key": ""}], ValueError, "nonempty string key"),
+        ([1], TypeError, "option key or prepared option"),
+        (1, TypeError, "option key, prepared option, or sequence"),
+    ],
+)
+def test_multiple_choice_rejects_invalid_credit_subset(
+    credit_for: object,
+    exception: type[Exception],
+    message: str,
+) -> None:
+    data = _multiple_choice_data()
+
+    with pytest.raises(exception, match=message):
+        MultipleChoiceQuestion(data, "convergence").award_credit_for(
+            credit_for  # pyright: ignore[reportArgumentType]
+        )
+
+
+def test_multiple_choice_single_canonical_option_is_a_noop(monkeypatch) -> None:
+    calls: list[pl.QuestionData] = []
+    monkeypatch.setattr(
+        lenses_mod.pl, "set_weighted_score_data", lambda data: calls.append(data)
+    )
+    data = _multiple_choice_data(
+        option_keys=("a",),
+        canonical_key="a",
+        submitted_key="a",
+        partial_score={"score": 1.0, "weight": 2},
+    )
+
+    changed = MultipleChoiceQuestion(data, "convergence").award_credit_for()
+
+    assert changed is False
+    assert data["partial_scores"]["convergence"] == {"score": 1.0, "weight": 2}
+    assert calls == []
 
 
 def test_multiple_choice_requires_distinct_option_keys() -> None:
     data = _multiple_choice_data(option_keys=("a", "a"))
 
     with pytest.raises(ValueError, match="distinct"):
-        MultipleChoiceQuestion(data, "convergence").award_complement()
+        MultipleChoiceQuestion(data, "convergence").award_credit_for()
 
 
 @pytest.mark.parametrize("option_key", [None, "", 1])
@@ -556,7 +680,7 @@ def test_multiple_choice_requires_nonempty_string_option_keys(
     data["params"]["convergence"][1]["key"] = option_key
 
     with pytest.raises(ValueError, match="nonempty string key"):
-        MultipleChoiceQuestion(data, "convergence").award_complement()
+        MultipleChoiceQuestion(data, "convergence").award_credit_for()
 
 
 @pytest.mark.parametrize("options", [None, "a,b", [{"key": "a"}, "b"]])
@@ -565,7 +689,7 @@ def test_multiple_choice_rejects_malformed_prepared_options(options: object) -> 
     data["params"]["convergence"] = options
 
     with pytest.raises(TypeError, match="prepared"):
-        MultipleChoiceQuestion(data, "convergence").award_complement()
+        MultipleChoiceQuestion(data, "convergence").award_credit_for()
 
 
 @pytest.mark.parametrize(
@@ -587,7 +711,7 @@ def test_multiple_choice_preserves_equal_or_higher_scores(
         }
     )
 
-    changed = MultipleChoiceQuestion(data, "convergence").award_complement(
+    changed = MultipleChoiceQuestion(data, "convergence").award_credit_for(
         feedback="Follow-through"
     )
 

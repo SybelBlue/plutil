@@ -660,45 +660,44 @@ class MultipleChoiceQuestion(BaseQuestion[str]):
         submitted = self.submitted_answer
         return self.get_choice(submitted) if submitted else None
 
-    def _binary_option_keys(self) -> tuple[str, str]:
-        keys = self.answer_keys
-        if len(keys) != 2:
-            raise ValueError(
-                f"params[{self.answers_name!r}] must contain exactly two options"
-            )
-        return keys[0], keys[1]
-
-    def award_complement(
+    def award_credit_for(
         self,
+        credit_for: OneOrMore[str | MultipleChoiceOption] | None = None,
         *,
         score: float = 1.0,
         feedback: str | None = None,
     ) -> bool:
-        """Award ``score`` for the noncanonical choice in a binary question.
+        """Award ``score`` for a valid noncanonical multiple-choice submission.
 
         Call this only after question-local grading establishes that the
-        complementary answer is mathematically justified. Blank, absent,
-        invalid, and canonical submissions are no-ops. Any equal or higher
-        stored score, its feedback, and its weight are preserved. A successful
-        award preserves the existing PrairieLearn element weight.
+        submitted choice is mathematically justified. This method does not
+        infer semantics from the number, order, HTML, or labels of the options.
+        ``credit_for`` may contain option keys, prepared option mappings, or a
+        mixture of both. If omitted, every noncanonical option is eligible.
+        Blank, absent, invalid, canonical, and unlisted submissions are no-ops.
+        Any equal or higher stored score, its feedback, and its weight are
+        preserved. A successful award preserves the existing PrairieLearn
+        element weight.
 
         Returns:
             Whether the score changed.
 
         Raises:
             TypeError: If the prepared option collection, an option, or the
-                canonical answer has the wrong representation.
-            ValueError: If there are not exactly two distinct string option
-                keys, or if the canonical keyed answer is missing or invalid.
+                canonical answer has the wrong representation, or if a
+                ``credit_for`` entry is not a string or option mapping.
+            ValueError: If option keys are invalid or duplicated, or if the
+                canonical keyed answer or a ``credit_for`` key is invalid.
         """
-        option_keys = self._binary_option_keys()
+        option_keys = self.answer_keys
         canonical_key = self.correct_answer
         submitted_key = self.submitted_answer
+        credited_keys = self._credit_keys(credit_for, option_keys)
 
         if (
             not submitted_key
-            or submitted_key not in option_keys
             or submitted_key == canonical_key
+            or submitted_key not in credited_keys
         ):
             return False
 
@@ -707,6 +706,43 @@ class MultipleChoiceQuestion(BaseQuestion[str]):
             feedback=feedback,
             preserve_higher=True,
         )
+
+    def _credit_keys(
+        self,
+        credit_for: OneOrMore[str | MultipleChoiceOption] | None,
+        answer_keys: tuple[str, ...],
+    ) -> frozenset[str]:
+        if credit_for is None:
+            return frozenset(answer_keys)
+        if isinstance(credit_for, dict):
+            references = (credit_for,)
+        elif isinstance(credit_for, (str, Sequence)):
+            references = _normalize_one_or_more(credit_for)
+        else:
+            raise TypeError(
+                "credit_for must be an option key, prepared option, or sequence"
+            )
+
+        credited_keys: set[str] = set()
+        for reference in references:
+            if isinstance(reference, str):
+                key = reference
+            elif isinstance(reference, dict):
+                key = reference.get("key")
+                if not isinstance(key, str) or not key:
+                    raise ValueError(
+                        "each credit_for option must have a nonempty string key"
+                    )
+            else:
+                raise TypeError(
+                    "each credit_for entry must be an option key or prepared option"
+                )
+
+            if key not in answer_keys:
+                raise ValueError(f"credit_for key {key!r} does not match an option key")
+            credited_keys.add(key)
+
+        return frozenset(credited_keys)
 
 
 @dataclass(slots=True)

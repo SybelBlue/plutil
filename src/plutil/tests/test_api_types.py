@@ -77,7 +77,8 @@ def test_multiple_choice_lens_has_a_typed_boolean_award() -> None:
     assert_type(question.correct_choice, MultipleChoiceOption)
     assert_type(question.submitted_answer, str | None)
     assert_type(question.submitted_choice, MultipleChoiceOption | None)
-    assert_type(question.award_complement(), bool)
+    assert_type(question.award_credit_for(), bool)
+    assert_type(question.award_credit_for(("a", {"key": "b"})), bool)
 
 
 def test_text_parsers_preserve_the_expression_or_set_possibility() -> None:
