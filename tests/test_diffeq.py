@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import sympy
+from prairielearn import timeout_utils
 
+import plutil.diffeq as diffeq_module
 from plutil.diffeq import (
     check_explicit_solution,
     check_implicit_solution,
@@ -28,12 +30,36 @@ def test_check_implicit_solution_rejects_incorrect_exact_equation_potential():
 
     ode = 4 * x**3 * y**3 + 3 * x**2 + (3 * x**4 * y**2 + 6 * y**2) * d_f(y, x)
 
-    assert not check_implicit_solution(
+    result = check_implicit_solution(
         student_sol=x**4 * y**3 + x**3,
         reference_ode=ode,
         independent=x,
         dependent=y,
     )
+
+    assert result.timeout is False
+    assert result.checked is True
+    assert result.correct is False
+
+
+def test_check_implicit_solution_reports_timeout_without_waiting(monkeypatch):
+    from sympy.abc import x, y
+
+    def timeout_checkodesol(*_args, **_kwargs):
+        raise timeout_utils.TimeoutExceptionError()
+
+    monkeypatch.setattr(diffeq_module, "checkodesol", timeout_checkodesol)
+
+    result = check_implicit_solution(
+        student_sol=x + y,
+        reference_ode=d_f(y, x),
+        independent=x,
+        dependent=y,
+    )
+
+    assert result.timeout is True
+    assert result.checked is False
+    assert result.correct is False
 
 
 def test_check_implicit_solution_supports_custom_variables_and_constants():

@@ -99,7 +99,12 @@ def check_implicit_solution(
     check, correct = None, False
     try:
         with timeout_utils.SignalTimeout(timeout_seconds, swallow_exc=False):
-            check = checkodesol(ref_ode, stu_sol, func=y_x)
+            check = checkodesol(
+                ref_ode,
+                stu_sol,
+                func=y_x,
+                solve_for_func=False,
+            )
             correct = _check_result_is_solution(check)
     except timeout_utils.TimeoutExceptionError:
         return OdeCheckResult(timeout=True)
