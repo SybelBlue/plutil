@@ -277,11 +277,13 @@ class SympyCreditScheme(_CreditSchemeBase[PlValue]):
         include_display_ans: bool = True,
         clobber_existing_score: bool = False,
         feedback: str | None = None,
+        preserve_higher: bool = False,
     ) -> bool:
         """Grade a symbolic answer using SymPy equivalence and this ruleset.
 
         Returns ``True`` when a score is written and ``False`` when grading is
-        skipped or no candidate or rule matches.
+        skipped, no candidate or rule matches, or ``preserve_higher`` prevents
+        an equal or lower score from replacing the stored score.
         """
         # check if already scored
         if not clobber_existing_score and lens.already_scored:
@@ -311,9 +313,11 @@ class SympyCreditScheme(_CreditSchemeBase[PlValue]):
         else:
             return False
 
-        lens.set_rich_score(final_score, feedback=feedback)
-
-        return True
+        return lens.set_rich_score(
+            final_score,
+            feedback=feedback,
+            preserve_higher=preserve_higher,
+        )
 
 
 def award_partial_credit(
@@ -323,6 +327,7 @@ def award_partial_credit(
     feedback: str | None = None,
     include_display_ans: bool = True,
     clobber_existing_score: bool = True,
+    preserve_higher: bool = False,
 ) -> bool:
     """Grade a symbolic answer using an ordered set of partial-credit rules.
 
@@ -372,6 +377,13 @@ def award_partial_credit(
         include_display_ans: Whether to include the canonical correct answer
             from the lens data among the correct-answer candidates.
         clobber_existing_score: Whether to replace an answer's existing score.
+            This retains its legacy lens-local behavior: when false, grading is
+            skipped after this lens has assigned a score.
+        preserve_higher: Whether a matching score should be written only when
+            strictly higher than the score currently stored in question data.
+            Unlike ``clobber_existing_score``, this also sees scores assigned by
+            native grading before the lens was constructed. The default is
+            false for backwards compatibility.
 
     Returns:
         ``True`` if a score was awarded, or ``False`` if grading was skipped or
@@ -385,4 +397,5 @@ def award_partial_credit(
         include_display_ans=include_display_ans,
         clobber_existing_score=clobber_existing_score,
         feedback=feedback,
+        preserve_higher=preserve_higher,
     )
