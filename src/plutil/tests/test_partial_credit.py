@@ -261,3 +261,218 @@ def test_award_partial_credit_uses_additional_correct_answers_for_rules(
     assert awarded is True
     assert data["partial_scores"]["answer"]["score"] == 0.5
     assert calls == [data]
+
+
+def test_award_partial_credit_preserve_higher_keeps_native_score_and_feedback(
+    monkeypatch,
+) -> None:
+    calls = []
+    monkeypatch.setattr(
+        lenses_mod.pl,
+        "set_weighted_score_data",
+        lambda data: calls.append(data),
+    )
+    native_score: pl.PartialScore = {
+        "score": 0.8,
+        "weight": 3,
+        "feedback": "Native feedback",
+    }
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(x**2)},
+        correct_answers={"answer": "x^2 + C"},
+        partial_scores={"answer": native_score.copy()},
+    )
+
+    awarded = award_partial_credit(
+        SympyQuestion(data, "answer", variables=("x", "C")),
+        rule(0.4, change_correct=lambda correct: eval_at(correct, C=0)),
+        feedback="Custom feedback",
+        preserve_higher=True,
+    )
+
+    assert awarded is False
+    assert data["partial_scores"]["answer"] == native_score
+    assert calls == []
+
+
+def test_award_partial_credit_preserve_higher_replaces_lower_native_score(
+    monkeypatch,
+) -> None:
+    calls = []
+    monkeypatch.setattr(
+        lenses_mod.pl,
+        "set_weighted_score_data",
+        lambda data: calls.append(data),
+    )
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(x**2)},
+        correct_answers={"answer": "x^2 + C"},
+        partial_scores={
+            "answer": {"score": 0.2, "weight": 4, "feedback": "Native feedback"}
+        },
+    )
+
+    awarded = award_partial_credit(
+        SympyQuestion(data, "answer", variables=("x", "C")),
+        rule(0.7, change_correct=lambda correct: eval_at(correct, C=0)),
+        feedback="Follow-through feedback",
+        preserve_higher=True,
+    )
+
+    assert awarded is True
+    assert data["partial_scores"]["answer"] == {
+        "score": 0.7,
+        "weight": 4,
+        "feedback": "Follow-through feedback",
+    }
+    assert calls == [data]
+
+
+def test_award_partial_credit_preserve_higher_keeps_feedback_on_equal_score(
+    monkeypatch,
+) -> None:
+    calls = []
+    monkeypatch.setattr(
+        lenses_mod.pl,
+        "set_weighted_score_data",
+        lambda data: calls.append(data),
+    )
+    native_score: pl.PartialScore = {
+        "score": 0.7,
+        "feedback": "Equal native feedback",
+    }
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(x**2)},
+        correct_answers={"answer": "x^2 + C"},
+        partial_scores={"answer": native_score.copy()},
+    )
+
+    awarded = SympyQuestion(data, "answer", variables=("x", "C")).award_partial_credit(
+        rule(0.7, change_correct=lambda correct: eval_at(correct, C=0)),
+        feedback="Do not use",
+        preserve_higher=True,
+    )
+
+    assert awarded is False
+    assert data["partial_scores"]["answer"] == native_score
+    assert calls == []
+
+
+def test_award_partial_credit_preserve_higher_leaves_native_canonical_credit(
+    monkeypatch,
+) -> None:
+    calls = []
+    monkeypatch.setattr(
+        lenses_mod.pl,
+        "set_weighted_score_data",
+        lambda data: calls.append(data),
+    )
+    native_score: pl.PartialScore = {
+        "score": 1.0,
+        "weight": 2,
+        "feedback": "Native correct feedback",
+    }
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(x**2)},
+        correct_answers={"answer": "x^2"},
+        partial_scores={"answer": native_score.copy()},
+    )
+
+    awarded = award_partial_credit(
+        SympyQuestion(data, "answer", variables="x"),
+        rule(0.5, submitted_is=x**2 + 1),
+        feedback="Do not use",
+        preserve_higher=True,
+    )
+
+    assert awarded is False
+    assert data["partial_scores"]["answer"] == native_score
+    assert calls == []
+
+
+def test_award_partial_credit_preserve_higher_awards_additional_correct_answer(
+    monkeypatch,
+) -> None:
+    calls = []
+    monkeypatch.setattr(
+        lenses_mod.pl,
+        "set_weighted_score_data",
+        lambda data: calls.append(data),
+    )
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(x**2 + 1)},
+        correct_answers={"answer": "x^2"},
+        partial_scores={"answer": {"score": 0.0, "weight": 2}},
+    )
+
+    awarded = award_partial_credit(
+        SympyQuestion(data, "answer", variables="x"),
+        addl_correct_ans=x**2 + 1,
+        feedback="Accepted alternative",
+        preserve_higher=True,
+    )
+
+    assert awarded is True
+    assert data["partial_scores"]["answer"] == {
+        "score": 1.0,
+        "weight": 2,
+        "feedback": "Accepted alternative",
+    }
+    assert calls == [data]
+
+
+def test_award_partial_credit_default_still_replaces_a_higher_native_score(
+    monkeypatch,
+) -> None:
+    calls = []
+    monkeypatch.setattr(
+        lenses_mod.pl,
+        "set_weighted_score_data",
+        lambda data: calls.append(data),
+    )
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(x**2)},
+        correct_answers={"answer": "x^2 + C"},
+        partial_scores={"answer": {"score": 0.9, "weight": 4}},
+    )
+
+    awarded = award_partial_credit(
+        SympyQuestion(data, "answer", variables=("x", "C")),
+        rule(0.4, change_correct=lambda correct: eval_at(correct, C=0)),
+    )
+
+    assert awarded is True
+    assert data["partial_scores"]["answer"] == {"score": 0.4}
+    assert calls == [data]
+
+
+def test_award_partial_credit_preserve_higher_no_match_leaves_state_untouched(
+    monkeypatch,
+) -> None:
+    calls = []
+    monkeypatch.setattr(
+        lenses_mod.pl,
+        "set_weighted_score_data",
+        lambda data: calls.append(data),
+    )
+    original: pl.PartialScore = {
+        "score": 0.3,
+        "weight": 2,
+        "feedback": "Native feedback",
+    }
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(x**2)},
+        correct_answers={"answer": "x^2 + C"},
+        partial_scores={"answer": original.copy()},
+    )
+
+    awarded = award_partial_credit(
+        SympyQuestion(data, "answer", variables=("x", "C")),
+        rule(0.8, submitted_is=x**2 + 2),
+        feedback="Do not use",
+        preserve_higher=True,
+    )
+
+    assert awarded is False
+    assert data["partial_scores"]["answer"] == original
+    assert calls == []

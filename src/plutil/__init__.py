@@ -1,7 +1,12 @@
 from typing import Final
 
 from . import fabc, rand
-from .assumptions import AssumptionsTypedDict, check
+from .assumptions import (
+    AssumptionsTypedDict,
+    check,
+    is_finite_integer,
+    is_finite_real_number,
+)
 from .common import (
     ExprInput,
     ExprLike,
@@ -36,6 +41,7 @@ from .functions import (
 )
 from .lenses import (
     Data,
+    MultipleChoiceQuestion,
     NoPreferences,
     Question,
     SympyQuestion,
@@ -60,6 +66,7 @@ __all__: Final[tuple[str, ...]] = (
     "Data",
     "ExprInput",
     "ExprLike",
+    "MultipleChoiceQuestion",
     "NoPreferences",
     "NumberLike",
     "PlMagicError",
@@ -83,6 +90,8 @@ __all__: Final[tuple[str, ...]] = (
     "fabc",
     "getrec",
     "grade_sympy_set",
+    "is_finite_integer",
+    "is_finite_real_number",
     "is_trivial",
     "json_to_sympy",
     "latex",

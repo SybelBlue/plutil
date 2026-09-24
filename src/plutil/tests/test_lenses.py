@@ -1,8 +1,16 @@
+import prairielearn as pl
 import prairielearn.sympy_utils as psu
 import pytest
 import sympy as sp
 
-from plutil.lenses import JsonValue, Params
+import plutil.lenses as lenses_mod
+from plutil.lenses import (
+    JsonValue,
+    MultipleChoiceQuestion,
+    Params,
+    Question,
+)
+from plutil.tests.helpers import question_data
 
 
 @pytest.fixture
@@ -169,3 +177,361 @@ def test_params_latex_proxy_does_not_support_deleting(
         del params.latex["alpha"]  # pyright: ignore[reportIndexIssue]
 
     assert backing_params == original
+
+
+def test_set_rich_score_preserves_higher_writes_when_no_score_exists(
+    monkeypatch,
+) -> None:
+    calls: list[pl.QuestionData] = []
+    monkeypatch.setattr(
+        lenses_mod.pl, "set_weighted_score_data", lambda data: calls.append(data)
+    )
+    data = question_data()
+    lens = Question(data, "answer")
+
+    changed = lens.set_rich_score(
+        0.5,
+        feedback="Follow-through",
+        preserve_higher=True,
+    )
+
+    assert changed is True
+    assert data["partial_scores"]["answer"] == {
+        "score": 0.5,
+        "feedback": "Follow-through",
+    }
+    assert calls == [data]
+
+
+def test_set_rich_score_default_still_overwrites_a_higher_score(monkeypatch) -> None:
+    calls: list[pl.QuestionData] = []
+    monkeypatch.setattr(
+        lenses_mod.pl, "set_weighted_score_data", lambda data: calls.append(data)
+    )
+    data = question_data(
+        partial_scores={
+            "answer": {"score": 0.8, "weight": 4, "feedback": "Old feedback"}
+        }
+    )
+
+    changed = Question(data, "answer").set_rich_score(
+        0.25,
+        feedback="Replacement feedback",
+    )
+
+    assert changed is True
+    assert data["partial_scores"]["answer"] == {
+        "score": 0.25,
+        "feedback": "Replacement feedback",
+    }
+    assert calls == [data]
+
+
+def test_set_rich_score_preserves_higher_reads_native_score_and_weight(
+    monkeypatch,
+) -> None:
+    calls: list[pl.QuestionData] = []
+    monkeypatch.setattr(
+        lenses_mod.pl, "set_weighted_score_data", lambda data: calls.append(data)
+    )
+    data = question_data(
+        partial_scores={
+            "answer": {"score": 0.25, "weight": 4, "feedback": "Native feedback"}
+        }
+    )
+
+    changed = Question(data, "answer").set_rich_score(
+        0.75,
+        feedback="Replacement feedback",
+        preserve_higher=True,
+    )
+
+    assert changed is True
+    assert data["partial_scores"]["answer"] == {
+        "score": 0.75,
+        "weight": 4,
+        "feedback": "Replacement feedback",
+    }
+    assert calls == [data]
+
+
+@pytest.mark.parametrize("stored_score", [0.75, 0.9])
+def test_set_rich_score_preserves_equal_or_higher_record(
+    monkeypatch, stored_score: float
+) -> None:
+    calls: list[pl.QuestionData] = []
+    monkeypatch.setattr(
+        lenses_mod.pl, "set_weighted_score_data", lambda data: calls.append(data)
+    )
+    original: pl.PartialScore = {
+        "score": stored_score,
+        "weight": 3,
+        "feedback": "Keep this feedback",
+    }
+    data = question_data(partial_scores={"answer": original.copy()})
+
+    changed = Question(data, "answer").set_rich_score(
+        0.75,
+        weight=9,
+        feedback="Do not use",
+        preserve_higher=True,
+    )
+
+    assert changed is False
+    assert data["partial_scores"]["answer"] == original
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    ("stored_score", "expected_changed"),
+    [(None, True), (0.0, False)],
+)
+def test_set_rich_score_preserves_higher_distinguishes_none_from_zero(
+    monkeypatch, stored_score: float | None, expected_changed: bool
+) -> None:
+    calls: list[pl.QuestionData] = []
+    monkeypatch.setattr(
+        lenses_mod.pl, "set_weighted_score_data", lambda data: calls.append(data)
+    )
+    data = question_data(partial_scores={"answer": {"score": stored_score}})
+
+    changed = Question(data, "answer").set_rich_score(
+        0.0,
+        preserve_higher=True,
+    )
+
+    assert changed is expected_changed
+    assert data["partial_scores"]["answer"]["score"] == 0.0
+    assert calls == ([data] if expected_changed else [])
+
+
+def test_set_rich_score_preserves_higher_applies_explicit_weight_only_on_write(
+    monkeypatch,
+) -> None:
+    calls: list[pl.QuestionData] = []
+    monkeypatch.setattr(
+        lenses_mod.pl, "set_weighted_score_data", lambda data: calls.append(data)
+    )
+    data = question_data(partial_scores={"answer": {"score": 0.2, "weight": 4}})
+    lens = Question(data, "answer")
+
+    assert lens.set_rich_score(0.6, weight=7, preserve_higher=True) is True
+    assert data["partial_scores"]["answer"] == {"score": 0.6, "weight": 7}
+    assert calls == [data]
+
+
+def _multiple_choice_data(
+    *,
+    option_keys: tuple[str, ...] = ("a", "b"),
+    canonical_key: object = "a",
+    submitted_key: object = "b",
+    partial_score: pl.PartialScore | None = None,
+) -> pl.QuestionData:
+    submitted_answers = {} if submitted_key is None else {"convergence": submitted_key}
+    partial_scores = {} if partial_score is None else {"convergence": partial_score}
+    return question_data(
+        params={
+            "convergence": [
+                {
+                    "key": key,
+                    "html": f"<strong>Rendered {index}</strong>",
+                    "display_order": len(option_keys) - index,
+                }
+                for index, key in enumerate(option_keys)
+            ]
+        },
+        correct_answers={"convergence": {"key": canonical_key}},
+        submitted_answers=submitted_answers,
+        partial_scores=partial_scores,
+    )
+
+
+@pytest.mark.parametrize(
+    ("option_keys", "canonical_key", "submitted_key"),
+    [(("a", "b"), "a", "b"), (("b", "a"), "a", "b")],
+)
+def test_multiple_choice_awards_complement_independent_of_option_order(
+    monkeypatch,
+    option_keys: tuple[str, str],
+    canonical_key: str,
+    submitted_key: str,
+) -> None:
+    calls: list[pl.QuestionData] = []
+    monkeypatch.setattr(
+        lenses_mod.pl, "set_weighted_score_data", lambda data: calls.append(data)
+    )
+    data = _multiple_choice_data(
+        option_keys=option_keys,
+        canonical_key=canonical_key,
+        submitted_key=submitted_key,
+        partial_score={"score": 0.0, "weight": 5},
+    )
+
+    changed = MultipleChoiceQuestion(data, "convergence").award_complement(
+        feedback="Consistent with your submitted work."
+    )
+
+    assert changed is True
+    assert data["partial_scores"]["convergence"] == {
+        "score": 1.0,
+        "weight": 5,
+        "feedback": "Consistent with your submitted work.",
+    }
+    assert calls == [data]
+
+
+def test_multiple_choice_awards_custom_complement_score(monkeypatch) -> None:
+    calls: list[pl.QuestionData] = []
+    monkeypatch.setattr(
+        lenses_mod.pl, "set_weighted_score_data", lambda data: calls.append(data)
+    )
+    data = _multiple_choice_data(
+        partial_score={"score": 0.25, "weight": 3},
+    )
+
+    changed = MultipleChoiceQuestion(data, "convergence").award_complement(
+        score=0.6,
+        feedback="Partial follow-through credit",
+    )
+
+    assert changed is True
+    assert data["partial_scores"]["convergence"] == {
+        "score": 0.6,
+        "weight": 3,
+        "feedback": "Partial follow-through credit",
+    }
+    assert calls == [data]
+
+
+def test_multiple_choice_leaves_canonical_submission_to_native_grading(
+    monkeypatch,
+) -> None:
+    calls: list[pl.QuestionData] = []
+    monkeypatch.setattr(
+        lenses_mod.pl, "set_weighted_score_data", lambda data: calls.append(data)
+    )
+    native_score: pl.PartialScore = {
+        "score": 1.0,
+        "weight": 2,
+        "feedback": "Native feedback",
+    }
+    data = _multiple_choice_data(submitted_key="a", partial_score=native_score.copy())
+
+    changed = MultipleChoiceQuestion(data, "convergence").award_complement(
+        feedback="Follow-through"
+    )
+
+    assert changed is False
+    assert data["partial_scores"]["convergence"] == native_score
+    assert calls == []
+
+
+@pytest.mark.parametrize("submitted_key", [None, "", "not-an-option", 1])
+def test_multiple_choice_ignores_absent_blank_or_invalid_submissions(
+    monkeypatch, submitted_key: object
+) -> None:
+    calls: list[pl.QuestionData] = []
+    monkeypatch.setattr(
+        lenses_mod.pl, "set_weighted_score_data", lambda data: calls.append(data)
+    )
+    data = _multiple_choice_data(submitted_key=submitted_key)
+
+    changed = MultipleChoiceQuestion(data, "convergence").award_complement()
+
+    assert changed is False
+    assert data["partial_scores"] == {}
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    ("correct_answer", "exception"),
+    [
+        (None, ValueError),
+        ({}, ValueError),
+        ({"key": None}, ValueError),
+        ({"key": "not-an-option"}, ValueError),
+        ("a", TypeError),
+    ],
+)
+def test_multiple_choice_rejects_absent_or_malformed_canonical_answer(
+    correct_answer: object, exception: type[Exception]
+) -> None:
+    data = _multiple_choice_data()
+    if correct_answer is None:
+        data["correct_answers"].pop("convergence")
+    else:
+        data["correct_answers"]["convergence"] = correct_answer
+
+    with pytest.raises(exception, match="correct_answers"):
+        MultipleChoiceQuestion(data, "convergence").award_complement()
+
+
+@pytest.mark.parametrize("option_keys", [("a",), ("a", "b", "c")])
+def test_multiple_choice_requires_exactly_two_options(
+    option_keys: tuple[str, ...],
+) -> None:
+    data = _multiple_choice_data(option_keys=option_keys)
+
+    with pytest.raises(ValueError, match="exactly two"):
+        MultipleChoiceQuestion(data, "convergence").award_complement()
+
+
+def test_multiple_choice_requires_distinct_option_keys() -> None:
+    data = _multiple_choice_data(option_keys=("a", "a"))
+
+    with pytest.raises(ValueError, match="distinct"):
+        MultipleChoiceQuestion(data, "convergence").award_complement()
+
+
+@pytest.mark.parametrize("option_key", [None, "", 1])
+def test_multiple_choice_requires_nonempty_string_option_keys(
+    option_key: object,
+) -> None:
+    data = _multiple_choice_data()
+    data["params"]["convergence"][1]["key"] = option_key
+
+    with pytest.raises(ValueError, match="nonempty string key"):
+        MultipleChoiceQuestion(data, "convergence").award_complement()
+
+
+@pytest.mark.parametrize("options", [None, "a,b", [{"key": "a"}, "b"]])
+def test_multiple_choice_rejects_malformed_prepared_options(options: object) -> None:
+    data = _multiple_choice_data()
+    data["params"]["convergence"] = options
+
+    with pytest.raises(TypeError, match="prepared"):
+        MultipleChoiceQuestion(data, "convergence").award_complement()
+
+
+@pytest.mark.parametrize(
+    ("stored_score", "expected_changed"),
+    [(0.25, True), (1.0, False), (1.25, False)],
+)
+def test_multiple_choice_preserves_equal_or_higher_scores(
+    monkeypatch, stored_score: float, expected_changed: bool
+) -> None:
+    calls: list[pl.QuestionData] = []
+    monkeypatch.setattr(
+        lenses_mod.pl, "set_weighted_score_data", lambda data: calls.append(data)
+    )
+    data = _multiple_choice_data(
+        partial_score={
+            "score": stored_score,
+            "weight": 6,
+            "feedback": "Native feedback",
+        }
+    )
+
+    changed = MultipleChoiceQuestion(data, "convergence").award_complement(
+        feedback="Follow-through"
+    )
+
+    assert changed is expected_changed
+    assert data["partial_scores"]["convergence"]["score"] == (
+        1.0 if expected_changed else stored_score
+    )
+    assert data["partial_scores"]["convergence"].get("weight") == 6
+    assert data["partial_scores"]["convergence"].get("feedback") == (
+        "Follow-through" if expected_changed else "Native feedback"
+    )
+    assert calls == ([data] if expected_changed else [])

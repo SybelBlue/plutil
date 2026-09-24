@@ -9,11 +9,14 @@ from sympy.abc import x
 from plutil import (
     ExprInput,
     ExprLike,
+    MultipleChoiceQuestion,
     PlValue,
     SetInput,
     SetLike,
     SympyInput,
     SympyValue,
+    is_finite_integer,
+    is_finite_real_number,
     latex,
     require_expr,
     to_expr,
@@ -34,10 +37,37 @@ def test_expression_apis_return_sympy_expressions() -> None:
     assert_type(integrate(value, d=x), sympy.Expr)
     assert_type(eval_at(value, x=2), sympy.Expr)
     assert_type(evalf_at(value, x=2), float)
+    assert_type(is_finite_real_number(value), bool)
+    assert_type(is_finite_integer(value), bool)
     assert_type(
         approximate_area(value, d=x, bounds=(0, 1), n=2, method="left"),
         ExprLike,
     )
+
+
+def test_numeric_predicates_narrow_objects_to_sympy_expressions() -> None:
+    finite_real: object = sympy.sqrt(2)
+    finite_integer: object = sympy.Add(1, 1, evaluate=False)
+
+    if is_finite_real_number(finite_real):
+        assert_type(finite_real, sympy.Expr)
+
+    if is_finite_integer(finite_integer):
+        assert_type(finite_integer, sympy.Expr)
+
+
+def test_multiple_choice_lens_has_a_typed_boolean_award() -> None:
+    data: pl.QuestionData
+    data = {  # pyright: ignore[reportAssignmentType]
+        "params": {"answer": [{"key": "a"}, {"key": "b"}]},
+        "correct_answers": {"answer": {"key": "a"}},
+        "submitted_answers": {"answer": "b"},
+        "partial_scores": {},
+        "feedback": {},
+        "score": 0.0,
+    }
+
+    assert_type(MultipleChoiceQuestion(data, "answer").award_complement(), bool)
 
 
 def test_text_parsers_preserve_the_expression_or_set_possibility() -> None:

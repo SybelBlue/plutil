@@ -1,9 +1,16 @@
 from typing import assert_type, cast
 
 import prairielearn as pl
+import pytest
 import sympy
+from sympy.abc import x
 
-from plutil import AssumptionsTypedDict, check
+from plutil import (
+    AssumptionsTypedDict,
+    check,
+    is_finite_integer,
+    is_finite_real_number,
+)
 
 
 def test_assumptions_type_matches_serialized_sympy_variable_assumptions() -> None:
@@ -50,3 +57,60 @@ def test_is_does_not_match_an_unknown_assumption() -> None:
 
     assert not check(x, positive=True)
     assert not check(x, positive=False)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        sympy.Integer(-3),
+        sympy.Rational(2, 3),
+        sympy.Float("1.25"),
+        sympy.pi,
+        sympy.sqrt(2),
+    ],
+)
+def test_is_finite_real_number_accepts_closed_finite_real_expressions(value):
+    assert is_finite_real_number(value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        sympy.I,
+        1 + sympy.I,
+        x,
+        x + 1,
+        sympy.FiniteSet(1),
+        sympy.oo,
+        -sympy.oo,
+        sympy.nan,
+        sympy.zoo,
+        sympy.Symbol("unknown"),
+        1,
+        1.5,
+    ],
+)
+def test_is_finite_real_number_conservatively_rejects_other_values(value):
+    assert not is_finite_real_number(value)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (sympy.Integer(-3), True),
+        # SymPy does not establish Float.is_integer, even for an integral value.
+        (sympy.Float("2.0"), False),
+        (sympy.Rational(2, 3), False),
+        (sympy.Float("1.25"), False),
+        (sympy.pi, False),
+        (sympy.sqrt(2), False),
+        (sympy.I, False),
+        (x, False),
+        (sympy.FiniteSet(1), False),
+        (sympy.oo, False),
+        (sympy.nan, False),
+        (sympy.zoo, False),
+    ],
+)
+def test_is_finite_integer_requires_a_known_integer_assumption(value, expected):
+    assert is_finite_integer(value) is expected

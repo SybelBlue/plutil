@@ -79,6 +79,14 @@ check(p, n, positive=True)  # -> False: n is not positive
 Both dimensions use all semantics: every supplied value must match every
 supplied assumption.
 
+### `is_finite_real_number(value) -> bool` and `is_finite_integer(value) -> bool`
+
+Conservatively identify closed SymPy numeric expressions using the same
+assumption checks. These predicates return `True` only when SymPy establishes
+all required assumptions as true; they reject expressions with free symbols,
+sets, complex values, infinities, indeterminate values, and unknown
+assumptions. They do not classify whether a value is pedagogically trivial.
+
 ---
 
 ## `common.py`
@@ -168,6 +176,58 @@ from plutil import setrec
 setrec(data, "partial_scores", "f", v={"score": 0.8})  # -> {"score": 0.8}
 ```
 
+### `Question.set_rich_score(score, *, weight=None, feedback=None, preserve_higher=False) -> bool`
+
+Assign a score with optional weight and feedback. The default preserves the
+historical behavior of replacing any stored score. Pass
+`preserve_higher=True` to write only when no score exists or the proposed score
+is strictly higher. That comparison reads the current `partial_scores` data,
+including native grading that predates the lens. In this mode, an existing
+weight is preserved unless `weight` is explicitly supplied; an equal or lower
+score leaves the entire record unchanged. The return value reports whether the
+score was written.
+
+```python
+from plutil import Question
+
+lens = Question(data, "answer")
+lens.set_rich_score(
+    0.75,
+    feedback="Your later work is consistent with this answer.",
+    preserve_higher=True,
+)
+```
+
+### `MultipleChoiceQuestion.award_complement(*, score=1.0, feedback=None) -> bool`
+
+Award follow-through credit when a prepared `pl-multiple-choice` has
+exactly two distinct options and the submitted key is the valid noncanonical
+key. The helper uses PrairieLearn's prepared option keys—not option order,
+rendered HTML, or displayed letter labels—and preserves the native element
+weight and any equal or higher score. `score` defaults to full credit (`1.0`)
+and can be set to a lower partial-credit value.
+
+Question-local grading must first decide that the complementary choice is
+mathematically justified:
+
+```python
+from plutil import MultipleChoiceQuestion
+
+
+def grade(data):
+    # Derive this from the student's submitted work for the particular problem.
+    follow_through_is_justified = check_student_reasoning(data)
+    if follow_through_is_justified:
+        MultipleChoiceQuestion(data, "convergence").award_complement(
+            feedback="This choice is consistent with your submitted work."
+        )
+```
+
+Blank, absent, invalid, and canonical submissions return `False`. Malformed
+prepared question data raises `TypeError` or `ValueError`, including nonbinary
+option sets, duplicate or invalid option keys, and a missing or invalid
+canonical key.
+
 ### `award_partial_credit(lens, *rules, ...) -> bool`
 
 Grade a symbolic answer using a `SympyQuestion` lens and an ordered list of rules.
@@ -214,8 +274,30 @@ def grade(data):
 ```
 
 Optional kwargs: `addl_correct_ans`, `feedback`, `include_display_ans` (default
-`True`), and `clobber_existing_score` (default `True`). You can also call the
-same API as `lens.award_partial_credit(*rules, ...)`.
+`True`), `clobber_existing_score` (default `True`), and `preserve_higher`
+(default `False`). You can also call the same API as
+`lens.award_partial_credit(*rules, ...)`.
+
+Use `preserve_higher=True` for custom grading that runs after native element
+grading. A matching custom score is then written only if it improves the score
+currently stored in `partial_scores`; otherwise the native score and feedback
+remain intact. Follow-through feedback is therefore installed only when the
+custom score wins:
+
+```python
+award_partial_credit(
+    SympyQuestion(data, "expression", variables="x"),
+    rule(0.7, submitted_is=follow_through_answer),
+    feedback="Correctly follows from your earlier result.",
+    preserve_higher=True,
+)
+```
+
+`clobber_existing_score=False` retains its legacy behavior of skipping grading
+after that lens instance has already assigned a score. `preserve_higher=True`
+controls the eventual write and, unlike the lens-local flag, compares against
+native scores that predate the lens. The defaults are unchanged for backwards
+compatibility.
 
 ### `partial_credit.rule(score, *, ...) -> PartialCreditRule`
 

@@ -20,7 +20,6 @@ from .common import (
     _normalize_one_or_more,
     _to_expr_input,
     require_expr,
-    to_expr,
     var_name,
     var_to_symbol,
 )

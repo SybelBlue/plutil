@@ -383,14 +383,42 @@ class PartialScoreProxy:
         *,
         weight: int | None = None,
         feedback: str | None = None,
-    ):
-        """Set a score together with optional weight and feedback."""
+        preserve_higher: bool = False,
+    ) -> bool:
+        """Set a score together with optional weight and feedback.
+
+        By default, this retains the historical behavior of replacing any
+        stored score. If ``preserve_higher`` is true, the comparison reads the
+        current ``partial_scores`` record, including native grading that
+        predates this lens, and writes only when ``score`` is strictly higher or
+        no score exists. In that mode, omitting ``weight`` preserves an existing
+        weight. Feedback is replaced whenever a score is written.
+
+        Returns:
+            ``True`` when the score record and weighted question score are
+            written. If ``preserve_higher`` is true, returns ``False`` for an
+            equal or lower score and leaves the existing score, weight, and
+            feedback untouched.
+        """
+        existing = self.score_dict
+        existing_score = existing.get("score") if existing is not None else None
+        if (
+            preserve_higher
+            and existing_score is not None
+            and not score > existing_score
+        ):
+            return False
+
         score_dict: pl.PartialScore = {"score": score}
         if weight is not None:
             score_dict["weight"] = weight
+        elif preserve_higher and existing is not None and "weight" in existing:
+            score_dict["weight"] = existing["weight"]
         if feedback is not None:
             score_dict["feedback"] = feedback
+
         self.score_dict = score_dict
+        return True
 
     @property
     def score(self) -> float | None:
@@ -518,6 +546,101 @@ class Question(BaseQuestion[object]):
 
 
 @dataclass(slots=True)
+class MultipleChoiceQuestion(PartialScoreProxy):
+    """A lens for PrairieLearn's prepared ``pl-multiple-choice`` data."""
+
+    def _option_keys(self) -> tuple[str, str]:
+        options = self.data.setdefault("params", {}).get(self.answers_name)
+        if not isinstance(options, list):
+            raise TypeError(
+                f"params[{self.answers_name!r}] must be a prepared option list"
+            )
+        if len(options) != 2:
+            raise ValueError(
+                f"params[{self.answers_name!r}] must contain exactly two options"
+            )
+
+        # These keys are PrairieLearn's stable prepared-answer identifiers. The
+        # list order, rendered HTML, and displayed letter labels are not semantic.
+        keys: list[str] = []
+        for option in options:
+            if not isinstance(option, dict):
+                raise TypeError(
+                    "each prepared multiple-choice option must be a mapping"
+                )
+            key = option.get("key")
+            if not isinstance(key, str) or not key:
+                raise ValueError(
+                    "each prepared multiple-choice option must have a nonempty string key"
+                )
+            keys.append(key)
+
+        if keys[0] == keys[1]:
+            raise ValueError("prepared multiple-choice option keys must be distinct")
+        return keys[0], keys[1]
+
+    def _canonical_key(self, option_keys: tuple[str, str]) -> str:
+        correct = self.data.setdefault("correct_answers", {}).get(self.answers_name)
+        if correct is None:
+            raise ValueError(
+                f"correct_answers[{self.answers_name!r}] must contain a keyed answer"
+            )
+        if not isinstance(correct, dict):
+            raise TypeError(
+                f"correct_answers[{self.answers_name!r}] must be a keyed-answer mapping"
+            )
+        key = correct.get("key")
+        if not isinstance(key, str) or key not in option_keys:
+            raise ValueError(
+                f"correct_answers[{self.answers_name!r}]['key'] must match an option key"
+            )
+        return key
+
+    def award_complement(
+        self,
+        *,
+        score: float = 1.0,
+        feedback: str | None = None,
+    ) -> bool:
+        """Award ``score`` for the noncanonical choice in a binary question.
+
+        Call this only after question-local grading establishes that the
+        complementary answer is mathematically justified. Blank, absent,
+        invalid, and canonical submissions are no-ops. Any equal or higher
+        stored score, its feedback, and its weight are preserved. A successful
+        award preserves the existing PrairieLearn element weight.
+
+        Returns:
+            Whether the score changed.
+
+        Raises:
+            TypeError: If the prepared option collection, an option, or the
+                canonical answer has the wrong representation.
+            ValueError: If there are not exactly two distinct string option
+                keys, or if the canonical keyed answer is missing or invalid.
+        """
+        option_keys = self._option_keys()
+        canonical_key = self._canonical_key(option_keys)
+        submitted_key = self.data.setdefault("submitted_answers", {}).get(
+            self.answers_name
+        )
+
+        if (
+            not isinstance(submitted_key, str)
+            or not submitted_key
+            or submitted_key not in option_keys
+            or submitted_key == canonical_key
+        ):
+            return False
+
+        return self.set_rich_score(
+            score,
+            feedback=feedback,
+            preserve_higher=True,
+        )
+
+
+@dataclass(slots=True)
 class SympyQuestion(BaseQuestion[SympyValue]):
     """A question lens that converts answer values to SymPy objects.
 
@@ -592,6 +715,7 @@ class SympyQuestion(BaseQuestion[SympyValue]):
         feedback: str | None = None,
         include_display_ans: bool = True,
         clobber_existing_score: bool = True,
+        preserve_higher: bool = False,
     ) -> bool:
         """Apply symbolic partial-credit rules to this answer."""
         return award_partial_credit(
@@ -601,4 +725,5 @@ class SympyQuestion(BaseQuestion[SympyValue]):
             feedback=feedback,
             include_display_ans=include_display_ans,
             clobber_existing_score=clobber_existing_score,
+            preserve_higher=preserve_higher,
         )
