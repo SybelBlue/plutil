@@ -9,6 +9,7 @@ from sympy.abc import x
 from plutil import (
     ExprInput,
     ExprLike,
+    MultipleChoiceOption,
     MultipleChoiceQuestion,
     PlValue,
     SetInput,
@@ -67,7 +68,16 @@ def test_multiple_choice_lens_has_a_typed_boolean_award() -> None:
         "score": 0.0,
     }
 
-    assert_type(MultipleChoiceQuestion(data, "answer").award_complement(), bool)
+    question = MultipleChoiceQuestion(data, "answer")
+
+    assert_type(question.answer_choices, tuple[MultipleChoiceOption, ...])
+    assert_type(question.answer_keys, tuple[str, ...])
+    assert_type(question.get_choice("a"), MultipleChoiceOption | None)
+    assert_type(question.correct_answer, str)
+    assert_type(question.correct_choice, MultipleChoiceOption)
+    assert_type(question.submitted_answer, str | None)
+    assert_type(question.submitted_choice, MultipleChoiceOption | None)
+    assert_type(question.award_complement(), bool)
 
 
 def test_text_parsers_preserve_the_expression_or_set_possibility() -> None:

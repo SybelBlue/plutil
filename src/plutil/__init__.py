@@ -41,6 +41,7 @@ from .functions import (
 )
 from .lenses import (
     Data,
+    MultipleChoiceOption,
     MultipleChoiceQuestion,
     NoPreferences,
     Question,
@@ -66,6 +67,7 @@ __all__: Final[tuple[str, ...]] = (
     "Data",
     "ExprInput",
     "ExprLike",
+    "MultipleChoiceOption",
     "MultipleChoiceQuestion",
     "NoPreferences",
     "NumberLike",

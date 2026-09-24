@@ -198,7 +198,38 @@ lens.set_rich_score(
 )
 ```
 
-### `MultipleChoiceQuestion.award_complement(*, score=1.0, feedback=None) -> bool`
+### `MultipleChoiceQuestion`
+
+`MultipleChoiceQuestion` extends the standard `BaseQuestion[str]` lens for
+PrairieLearn's prepared `pl-multiple-choice` representation. A
+`pl-multiple-choice` parameter injected by `@plmagic` automatically receives
+this lens.
+
+Its typed multiple-choice properties are:
+
+- `answer_choices`: prepared option mappings in presentation order;
+- `answer_keys`: the corresponding stable option keys;
+- `correct_answer`: the canonical key, which can also be assigned to select an
+  existing prepared option;
+- `correct_choice`: the full prepared canonical option;
+- `submitted_answer`: the submitted key, or `None` for a non-string value;
+- `submitted_choice`: the submitted prepared option when the key is valid; and
+- `get_choice(key)`: look up a prepared option by key.
+
+```python
+choice = MultipleChoiceQuestion(data, "convergence")
+choice.answer_keys  # e.g. ("a", "b")
+choice.correct_answer  # e.g. "a"
+choice.submitted_choice  # the selected option mapping, if valid
+
+# Select another already-prepared option as canonical.
+choice.correct_answer = "b"
+```
+
+Because it extends `BaseQuestion`, the usual score, weight, feedback, format
+error, and raw-submission APIs remain available.
+
+#### `award_complement(*, score=1.0, feedback=None) -> bool`
 
 Award follow-through credit when a prepared `pl-multiple-choice` has
 exactly two distinct options and the submitted key is the valid noncanonical

@@ -15,6 +15,7 @@ from typing import (
     Any,
     ClassVar,
     Literal,
+    NotRequired,
     Self,
     TypedDict,
     cast,
@@ -75,6 +76,15 @@ type JsonLiteral = (
 )
 type Jsonable = PlValue | JsonLiteral
 type JsonValue = psu.SympyJson | JsonLiteral
+
+
+class MultipleChoiceOption(TypedDict):
+    """One option in PrairieLearn's prepared multiple-choice representation."""
+
+    key: str
+    html: NotRequired[str]
+    feedback: NotRequired[str | None]
+    score: NotRequired[float | None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -546,23 +556,28 @@ class Question(BaseQuestion[object]):
 
 
 @dataclass(slots=True)
-class MultipleChoiceQuestion(PartialScoreProxy):
-    """A lens for PrairieLearn's prepared ``pl-multiple-choice`` data."""
+class MultipleChoiceQuestion(BaseQuestion[str]):
+    """A typed lens for PrairieLearn's prepared ``pl-multiple-choice`` data."""
 
-    def _option_keys(self) -> tuple[str, str]:
+    @property
+    def answer_choices(self) -> tuple[MultipleChoiceOption, ...]:
+        """Return the prepared answer options in their presentation order.
+
+        Raises:
+            TypeError: If the option collection or an option has the wrong
+                representation.
+            ValueError: If an option key is empty, non-string, or duplicated.
+        """
         options = self.data.setdefault("params", {}).get(self.answers_name)
         if not isinstance(options, list):
             raise TypeError(
                 f"params[{self.answers_name!r}] must be a prepared option list"
             )
-        if len(options) != 2:
-            raise ValueError(
-                f"params[{self.answers_name!r}] must contain exactly two options"
-            )
 
         # These keys are PrairieLearn's stable prepared-answer identifiers. The
         # list order, rendered HTML, and displayed letter labels are not semantic.
-        keys: list[str] = []
+        choices: list[MultipleChoiceOption] = []
+        keys: set[str] = set()
         for option in options:
             if not isinstance(option, dict):
                 raise TypeError(
@@ -573,13 +588,35 @@ class MultipleChoiceQuestion(PartialScoreProxy):
                 raise ValueError(
                     "each prepared multiple-choice option must have a nonempty string key"
                 )
-            keys.append(key)
+            if key in keys:
+                raise ValueError(
+                    "prepared multiple-choice option keys must be distinct"
+                )
+            keys.add(key)
+            choices.append(cast(MultipleChoiceOption, option))
 
-        if keys[0] == keys[1]:
-            raise ValueError("prepared multiple-choice option keys must be distinct")
-        return keys[0], keys[1]
+        return tuple(choices)
 
-    def _canonical_key(self, option_keys: tuple[str, str]) -> str:
+    @property
+    def answer_keys(self) -> tuple[str, ...]:
+        """Return the prepared option keys in presentation order."""
+        return tuple(choice["key"] for choice in self.answer_choices)
+
+    def get_choice(self, key: str) -> MultipleChoiceOption | None:
+        """Return the prepared option identified by ``key``, if present."""
+        return next(
+            (choice for choice in self.answer_choices if choice["key"] == key),
+            None,
+        )
+
+    @property
+    def correct_choice(self) -> MultipleChoiceOption:
+        """Return the prepared canonical option.
+
+        Raises:
+            TypeError: If the canonical answer is not a keyed-answer mapping.
+            ValueError: If its key is missing or does not identify an option.
+        """
         correct = self.data.setdefault("correct_answers", {}).get(self.answers_name)
         if correct is None:
             raise ValueError(
@@ -590,11 +627,46 @@ class MultipleChoiceQuestion(PartialScoreProxy):
                 f"correct_answers[{self.answers_name!r}] must be a keyed-answer mapping"
             )
         key = correct.get("key")
-        if not isinstance(key, str) or key not in option_keys:
+        if not isinstance(key, str) or (choice := self.get_choice(key)) is None:
             raise ValueError(
                 f"correct_answers[{self.answers_name!r}]['key'] must match an option key"
             )
-        return key
+        return choice
+
+    @property
+    def correct_answer(self) -> str:
+        """Return the canonical option key."""
+        return self.correct_choice["key"]
+
+    @correct_answer.setter
+    def correct_answer(self, value: str) -> None:
+        """Select an existing prepared option as the canonical answer."""
+        choice = self.get_choice(value)
+        if choice is None:
+            raise ValueError(
+                f"correct answer key {value!r} does not match an option key"
+            )
+        self.data.setdefault("correct_answers", {})[self.answers_name] = choice
+
+    @property
+    def submitted_answer(self) -> str | None:
+        """Return the submitted option key, or ``None`` for a non-string value."""
+        submitted = self.data.setdefault("submitted_answers", {}).get(self.answers_name)
+        return submitted if isinstance(submitted, str) else None
+
+    @property
+    def submitted_choice(self) -> MultipleChoiceOption | None:
+        """Return the submitted prepared option, if its key is valid."""
+        submitted = self.submitted_answer
+        return self.get_choice(submitted) if submitted else None
+
+    def _binary_option_keys(self) -> tuple[str, str]:
+        keys = self.answer_keys
+        if len(keys) != 2:
+            raise ValueError(
+                f"params[{self.answers_name!r}] must contain exactly two options"
+            )
+        return keys[0], keys[1]
 
     def award_complement(
         self,
@@ -619,15 +691,12 @@ class MultipleChoiceQuestion(PartialScoreProxy):
             ValueError: If there are not exactly two distinct string option
                 keys, or if the canonical keyed answer is missing or invalid.
         """
-        option_keys = self._option_keys()
-        canonical_key = self._canonical_key(option_keys)
-        submitted_key = self.data.setdefault("submitted_answers", {}).get(
-            self.answers_name
-        )
+        option_keys = self._binary_option_keys()
+        canonical_key = self.correct_answer
+        submitted_key = self.submitted_answer
 
         if (
-            not isinstance(submitted_key, str)
-            or not submitted_key
+            not submitted_key
             or submitted_key not in option_keys
             or submitted_key == canonical_key
         ):

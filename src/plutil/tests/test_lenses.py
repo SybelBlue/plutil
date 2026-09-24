@@ -5,7 +5,9 @@ import sympy as sp
 
 import plutil.lenses as lenses_mod
 from plutil.lenses import (
+    BaseQuestion,
     JsonValue,
+    MultipleChoiceOption,
     MultipleChoiceQuestion,
     Params,
     Question,
@@ -343,7 +345,70 @@ def _multiple_choice_data(
         correct_answers={"convergence": {"key": canonical_key}},
         submitted_answers=submitted_answers,
         partial_scores=partial_scores,
+        raw_submitted_answers=submitted_answers.copy(),
     )
+
+
+def test_multiple_choice_exposes_prepared_answers() -> None:
+    data = _multiple_choice_data()
+    question = MultipleChoiceQuestion(data, "convergence")
+
+    assert isinstance(question, BaseQuestion)
+    assert question.answer_choices == tuple(data["params"]["convergence"])
+    assert question.answer_keys == ("a", "b")
+    assert question.get_choice("a") is data["params"]["convergence"][0]
+    assert question.get_choice("missing") is None
+    assert question.correct_answer == "a"
+    assert question.correct_choice is data["params"]["convergence"][0]
+    assert question.submitted_answer == "b"
+    assert question.submitted_choice is data["params"]["convergence"][1]
+    assert question.raw_submitted_answer == "b"
+
+
+def test_multiple_choice_correct_answer_selects_a_prepared_choice() -> None:
+    data = _multiple_choice_data()
+    question = MultipleChoiceQuestion(data, "convergence")
+
+    question.correct_answer = "b"
+
+    assert question.correct_answer == "b"
+    assert question.correct_choice is data["params"]["convergence"][1]
+    assert data["correct_answers"]["convergence"] is question.correct_choice
+
+
+def test_multiple_choice_correct_answer_rejects_an_unknown_key() -> None:
+    data = _multiple_choice_data()
+    original = data["correct_answers"]["convergence"]
+    question = MultipleChoiceQuestion(data, "convergence")
+
+    with pytest.raises(ValueError, match="does not match an option key"):
+        question.correct_answer = "missing"
+
+    assert data["correct_answers"]["convergence"] is original
+
+
+@pytest.mark.parametrize(
+    ("submitted", "expected_answer", "expected_choice"),
+    [(None, None, None), (1, None, None), ("", "", None), ("missing", "missing", None)],
+)
+def test_multiple_choice_handles_absent_blank_or_invalid_submitted_choices(
+    submitted: object,
+    expected_answer: str | None,
+    expected_choice: MultipleChoiceOption | None,
+) -> None:
+    data = _multiple_choice_data(submitted_key=submitted)
+    question = MultipleChoiceQuestion(data, "convergence")
+
+    assert question.submitted_answer == expected_answer
+    assert question.submitted_choice == expected_choice
+
+
+def test_multiple_choice_general_properties_allow_more_than_two_choices() -> None:
+    data = _multiple_choice_data(option_keys=("a", "b", "c"))
+    question = MultipleChoiceQuestion(data, "convergence")
+
+    assert question.answer_keys == ("a", "b", "c")
+    assert question.correct_answer == "a"
 
 
 @pytest.mark.parametrize(
