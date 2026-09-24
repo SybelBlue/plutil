@@ -15,6 +15,7 @@ from typing import (
     Any,
     ClassVar,
     Literal,
+    NotRequired,
     Self,
     TypedDict,
     cast,
@@ -75,6 +76,15 @@ type JsonLiteral = (
 )
 type Jsonable = PlValue | JsonLiteral
 type JsonValue = psu.SympyJson | JsonLiteral
+
+
+class MultipleChoiceOption(TypedDict):
+    """One option in PrairieLearn's prepared multiple-choice representation."""
+
+    key: str
+    html: NotRequired[str]
+    feedback: NotRequired[str | None]
+    score: NotRequired[float | None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -383,14 +393,42 @@ class PartialScoreProxy:
         *,
         weight: int | None = None,
         feedback: str | None = None,
-    ):
-        """Set a score together with optional weight and feedback."""
+        preserve_higher: bool = False,
+    ) -> bool:
+        """Set a score together with optional weight and feedback.
+
+        By default, this retains the historical behavior of replacing any
+        stored score. If ``preserve_higher`` is true, the comparison reads the
+        current ``partial_scores`` record, including native grading that
+        predates this lens, and writes only when ``score`` is strictly higher or
+        no score exists. In that mode, omitting ``weight`` preserves an existing
+        weight. Feedback is replaced whenever a score is written.
+
+        Returns:
+            ``True`` when the score record and weighted question score are
+            written. If ``preserve_higher`` is true, returns ``False`` for an
+            equal or lower score and leaves the existing score, weight, and
+            feedback untouched.
+        """
+        existing = self.score_dict
+        existing_score = existing.get("score") if existing is not None else None
+        if (
+            preserve_higher
+            and existing_score is not None
+            and not score > existing_score
+        ):
+            return False
+
         score_dict: pl.PartialScore = {"score": score}
         if weight is not None:
             score_dict["weight"] = weight
+        elif preserve_higher and existing is not None and "weight" in existing:
+            score_dict["weight"] = existing["weight"]
         if feedback is not None:
             score_dict["feedback"] = feedback
+
         self.score_dict = score_dict
+        return True
 
     @property
     def score(self) -> float | None:
@@ -518,6 +556,196 @@ class Question(BaseQuestion[object]):
 
 
 @dataclass(slots=True)
+class MultipleChoiceQuestion(BaseQuestion[str]):
+    """A typed lens for PrairieLearn's prepared ``pl-multiple-choice`` data."""
+
+    @property
+    def answer_choices(self) -> tuple[MultipleChoiceOption, ...]:
+        """Return the prepared answer options in their presentation order.
+
+        Raises:
+            TypeError: If the option collection or an option has the wrong
+                representation.
+            ValueError: If an option key is empty, non-string, or duplicated.
+        """
+        options = self.data.setdefault("params", {}).get(self.answers_name)
+        if not isinstance(options, list):
+            raise TypeError(
+                f"params[{self.answers_name!r}] must be a prepared option list"
+            )
+
+        # These keys are PrairieLearn's stable prepared-answer identifiers. The
+        # list order, rendered HTML, and displayed letter labels are not semantic.
+        choices: list[MultipleChoiceOption] = []
+        keys: set[str] = set()
+        for option in options:
+            if not isinstance(option, dict):
+                raise TypeError(
+                    "each prepared multiple-choice option must be a mapping"
+                )
+            key = option.get("key")
+            if not isinstance(key, str) or not key:
+                raise ValueError(
+                    "each prepared multiple-choice option must have a nonempty string key"
+                )
+            if key in keys:
+                raise ValueError(
+                    "prepared multiple-choice option keys must be distinct"
+                )
+            keys.add(key)
+            choices.append(cast(MultipleChoiceOption, option))
+
+        return tuple(choices)
+
+    @property
+    def answer_keys(self) -> tuple[str, ...]:
+        """Return the prepared option keys in presentation order."""
+        return tuple(choice["key"] for choice in self.answer_choices)
+
+    def get_choice(self, key: str) -> MultipleChoiceOption | None:
+        """Return the prepared option identified by ``key``, if present."""
+        return next(
+            (choice for choice in self.answer_choices if choice["key"] == key),
+            None,
+        )
+
+    @property
+    def correct_choice(self) -> MultipleChoiceOption:
+        """Return the prepared canonical option.
+
+        Raises:
+            TypeError: If the canonical answer is not a keyed-answer mapping.
+            ValueError: If its key is missing or does not identify an option.
+        """
+        correct = self.data.setdefault("correct_answers", {}).get(self.answers_name)
+        if correct is None:
+            raise ValueError(
+                f"correct_answers[{self.answers_name!r}] must contain a keyed answer"
+            )
+        if not isinstance(correct, dict):
+            raise TypeError(
+                f"correct_answers[{self.answers_name!r}] must be a keyed-answer mapping"
+            )
+        key = correct.get("key")
+        if not isinstance(key, str) or (choice := self.get_choice(key)) is None:
+            raise ValueError(
+                f"correct_answers[{self.answers_name!r}]['key'] must match an option key"
+            )
+        return choice
+
+    @property
+    def correct_answer(self) -> str:
+        """Return the canonical option key."""
+        return self.correct_choice["key"]
+
+    @correct_answer.setter
+    def correct_answer(self, value: str) -> None:
+        """Select an existing prepared option as the canonical answer."""
+        choice = self.get_choice(value)
+        if choice is None:
+            raise ValueError(
+                f"correct answer key {value!r} does not match an option key"
+            )
+        self.data.setdefault("correct_answers", {})[self.answers_name] = choice
+
+    @property
+    def submitted_answer(self) -> str | None:
+        """Return the submitted option key, or ``None`` for a non-string value."""
+        submitted = self.data.setdefault("submitted_answers", {}).get(self.answers_name)
+        return submitted if isinstance(submitted, str) else None
+
+    @property
+    def submitted_choice(self) -> MultipleChoiceOption | None:
+        """Return the submitted prepared option, if its key is valid."""
+        submitted = self.submitted_answer
+        return self.get_choice(submitted) if submitted else None
+
+    def award_credit_for(
+        self,
+        credit_for: OneOrMore[str | MultipleChoiceOption] | None = None,
+        *,
+        score: float = 1.0,
+        feedback: str | None = None,
+    ) -> bool:
+        """Award ``score`` for a valid noncanonical multiple-choice submission.
+
+        Call this only after question-local grading establishes that the
+        submitted choice is mathematically justified. This method does not
+        infer semantics from the number, order, HTML, or labels of the options.
+        ``credit_for`` may contain option keys, prepared option mappings, or a
+        mixture of both. If omitted, every noncanonical option is eligible.
+        Blank, absent, invalid, canonical, and unlisted submissions are no-ops.
+        Any equal or higher stored score, its feedback, and its weight are
+        preserved. A successful award preserves the existing PrairieLearn
+        element weight.
+
+        Returns:
+            Whether the score changed.
+
+        Raises:
+            TypeError: If the prepared option collection, an option, or the
+                canonical answer has the wrong representation, or if a
+                ``credit_for`` entry is not a string or option mapping.
+            ValueError: If option keys are invalid or duplicated, or if the
+                canonical keyed answer or a ``credit_for`` key is invalid.
+        """
+        option_keys = self.answer_keys
+        canonical_key = self.correct_answer
+        submitted_key = self.submitted_answer
+        credited_keys = self._credit_keys(credit_for, option_keys)
+
+        if (
+            not submitted_key
+            or submitted_key == canonical_key
+            or submitted_key not in credited_keys
+        ):
+            return False
+
+        return self.set_rich_score(
+            score,
+            feedback=feedback,
+            preserve_higher=True,
+        )
+
+    def _credit_keys(
+        self,
+        credit_for: OneOrMore[str | MultipleChoiceOption] | None,
+        answer_keys: tuple[str, ...],
+    ) -> frozenset[str]:
+        if credit_for is None:
+            return frozenset(answer_keys)
+        if isinstance(credit_for, dict):
+            references = (credit_for,)
+        elif isinstance(credit_for, (str, Sequence)):
+            references = _normalize_one_or_more(credit_for)
+        else:
+            raise TypeError(
+                "credit_for must be an option key, prepared option, or sequence"
+            )
+
+        credited_keys: set[str] = set()
+        for reference in references:
+            if isinstance(reference, str):
+                key = reference
+            elif isinstance(reference, dict):
+                key = reference.get("key")
+                if not isinstance(key, str) or not key:
+                    raise ValueError(
+                        "each credit_for option must have a nonempty string key"
+                    )
+            else:
+                raise TypeError(
+                    "each credit_for entry must be an option key or prepared option"
+                )
+
+            if key not in answer_keys:
+                raise ValueError(f"credit_for key {key!r} does not match an option key")
+            credited_keys.add(key)
+
+        return frozenset(credited_keys)
+
+
+@dataclass(slots=True)
 class SympyQuestion(BaseQuestion[SympyValue]):
     """A question lens that converts answer values to SymPy objects.
 
@@ -592,6 +820,7 @@ class SympyQuestion(BaseQuestion[SympyValue]):
         feedback: str | None = None,
         include_display_ans: bool = True,
         clobber_existing_score: bool = True,
+        preserve_higher: bool = False,
     ) -> bool:
         """Apply symbolic partial-credit rules to this answer."""
         return award_partial_credit(
@@ -601,4 +830,5 @@ class SympyQuestion(BaseQuestion[SympyValue]):
             feedback=feedback,
             include_display_ans=include_display_ans,
             clobber_existing_score=clobber_existing_score,
+            preserve_higher=preserve_higher,
         )

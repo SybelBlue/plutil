@@ -6,7 +6,12 @@ from typing import Any, Self
 import prairielearn as pl
 from lxml import html
 
-from plutil.lenses import BaseQuestion, Question, SympyQuestion
+from plutil.lenses import (
+    BaseQuestion,
+    MultipleChoiceQuestion,
+    Question,
+    SympyQuestion,
+)
 
 type HtmlTag = str
 type DataFactory = Callable[[html.HtmlElement], PlElementData]
@@ -60,6 +65,17 @@ class PlSymbolicInputData(PlElementData):
         )
 
 
+@dataclass(slots=True, frozen=True)
+class PlMultipleChoiceData(PlElementData):
+    """Describe a ``pl-multiple-choice`` element."""
+
+    def build_lens(
+        self, data: pl.QuestionData, answers_name: str
+    ) -> MultipleChoiceQuestion:
+        """Build a multiple-choice question lens for this element."""
+        return MultipleChoiceQuestion(data, answers_name)
+
+
 html_tag_to_data_factory_registry: dict[HtmlTag, DataFactory] = defaultdict(
     lambda: PlElementData.from_element
 )
@@ -76,3 +92,4 @@ def get_data_factory(tag: HtmlTag) -> DataFactory:
 
 
 register_data_factory("pl-symbolic-input", PlSymbolicInputData.from_element)
+register_data_factory("pl-multiple-choice", PlMultipleChoiceData.from_element)

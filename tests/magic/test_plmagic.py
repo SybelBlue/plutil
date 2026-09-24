@@ -8,7 +8,7 @@ from types import ModuleType
 import pytest
 from pyfakefs.fake_filesystem import FakeFilesystem
 
-from plutil.lenses import Data, Question, SympyQuestion
+from plutil.lenses import Data, MultipleChoiceQuestion, Question, SympyQuestion
 from plutil.magic.decorator import (
     _snakecase,
     clip_plmagic_tracebacks,
@@ -74,7 +74,7 @@ def test_plmagic_injects_lenses_from_question_html(fs: FakeFilesystem) -> None:
         f"""
         from __future__ import annotations
 
-        from plutil.lenses import {Data.__name__}, {Question.__name__}, {SympyQuestion.__name__}
+        from plutil.lenses import {Data.__name__}, {MultipleChoiceQuestion.__name__}, {Question.__name__}, {SympyQuestion.__name__}
         from plutil.magic import {plmagic.__name__}
 
         @{plmagic.__name__}
@@ -83,30 +83,45 @@ def test_plmagic_injects_lenses_from_question_html(fs: FakeFilesystem) -> None:
             *,
             number: {Question.__name__},
             expression: {SympyQuestion.__name__},
+            choice: {MultipleChoiceQuestion.__name__},
         ) -> None:
             data.params["called"] = True
             number.correct_answer = 7
             expression.data["correct_answers"]["expression"] = "x + y"
+            data.params["choice"] = [
+                {{"key": "a", "html": "A"}},
+                {{"key": "b", "html": "B"}},
+            ]
+            choice.correct_answer = "a"
             data.params["expression_lens_type"] = type(expression).__name__
             data.params["expression_variables"] = expression.variables
+            data.params["choice_lens_type"] = type(choice).__name__
         """,
         """
         <pl-question-panel>
           <pl-number-input answers-name="number"></pl-number-input>
           <pl-symbolic-input answers-name="expression" variables="x, y">
           </pl-symbolic-input>
+          <pl-multiple-choice answers-name="choice">
+            <pl-answer correct="true">A</pl-answer>
+            <pl-answer>B</pl-answer>
+          </pl-multiple-choice>
         </pl-question-panel>
         """,
     )
-    data = question_data(answers_names={"number": True, "expression": True})
+    data = question_data(
+        answers_names={"number": True, "expression": True, "choice": True}
+    )
 
     server.generate(data)
 
     assert data["params"]["called"] is True
     assert data["params"]["expression_lens_type"] == "SympyQuestion"
     assert data["params"]["expression_variables"] == ("x", "y")
+    assert data["params"]["choice_lens_type"] == "MultipleChoiceQuestion"
     assert data["correct_answers"]["number"] == 7
     assert data["correct_answers"]["expression"] == "x + y"
+    assert data["correct_answers"]["choice"]["key"] == "a"
 
 
 def test_plmagic_clips_internal_frames_from_traceback(fs: FakeFilesystem) -> None:
