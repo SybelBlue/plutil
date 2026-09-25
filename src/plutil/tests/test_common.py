@@ -405,6 +405,19 @@ def test_lim_latex_renders_two_sided_limit():
     assert rendered == r"\displaystyle \lim_{x \to 3} {x^{2}}"
 
 
+@pytest.mark.parametrize(
+    ("body", "body_latex"),
+    [
+        (x**2 + 1, r"x^{2} + 1"),
+        (x**2 - x + 1, r"x^{2} - x + 1"),
+    ],
+)
+def test_lim_latex_wraps_multiterm_body(body, body_latex):
+    rendered = lim_latex(var=x, val=3, body=body)
+
+    assert rendered == rf"\displaystyle \lim_{{x \to 3}} {{\left({body_latex}\right)}}"
+
+
 @pytest.mark.parametrize("direction", ["+", "-"])
 def test_lim_latex_renders_one_sided_limit(direction):
     rendered = lim_latex(var=x, val=sympy.Symbol("a"), dir=direction, body=1 / x)
