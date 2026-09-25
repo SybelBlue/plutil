@@ -451,12 +451,15 @@ def lim_latex(
         reparse=reparse,
         displaystyle=displaystyle,
     )
+    body_expr = _to_expr_input(body)
     body_tex = latex(
-        _to_expr_input(body),
+        body_expr,
         log_base=log_base,
         reparse=reparse,
         displaystyle=displaystyle,
     )
+    if len(sympy.Add.make_args(body_expr)) > 1:
+        body_tex = rf"\left({body_tex}\right)"
     disp_prefix = r"\displaystyle " if displaystyle else ""
     return rf"{disp_prefix}\lim_{{{var_tex} \to {val_tex}{direction}}} {{{body_tex}}}"
 
