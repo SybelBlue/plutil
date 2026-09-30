@@ -1,4 +1,5 @@
 import prairielearn as pl
+import prairielearn.big_operator_utils as pbo
 import prairielearn.sympy_utils as psu
 import pytest
 import sympy as sp
@@ -7,6 +8,7 @@ import plutil.lenses as lenses_mod
 from plutil.common import eq
 from plutil.lenses import (
     BaseQuestion,
+    BigOperatorQuestion,
     JsonValue,
     MultipleChoiceOption,
     MultipleChoiceQuestion,
@@ -322,6 +324,185 @@ def test_set_rich_score_preserves_higher_applies_explicit_weight_only_on_write(
     assert lens.set_rich_score(0.6, weight=7, preserve_higher=True) is True
     assert data["partial_scores"]["answer"] == {"score": 0.6, "weight": 7}
     assert calls == [data]
+
+
+@pytest.fixture
+def big_operator_answers() -> tuple[pbo.BigOperatorJson, pbo.BigOperatorJson]:
+    k = sp.Symbol("k", integer=True)
+    return (
+        pbo.big_operator_to_json(
+            operator="Sum",
+            indexing="bounds",
+            index=k,
+            lower=1,
+            upper=10,
+            body=k**2,
+        ),
+        pbo.big_operator_to_json(
+            operator="Sum",
+            indexing="bounds",
+            index=k,
+            lower=2,
+            upper=8,
+            body=k**3,
+        ),
+    )
+
+
+def test_big_operator_decodes_correct_and_submitted_answers(
+    big_operator_answers: tuple[pbo.BigOperatorJson, pbo.BigOperatorJson],
+) -> None:
+    correct, submitted = big_operator_answers
+    data = question_data(
+        correct_answers={"series": correct},
+        submitted_answers={"series": submitted},
+    )
+
+    question = BigOperatorQuestion[pbo.BigBoundsOperator](data, "series")
+
+    assert isinstance(question, BaseQuestion)
+    assert question.unparsed_correct_answer is correct
+    assert question.correct_answer == pbo.json_to_big_operator(correct)
+    assert question.submitted_answer == pbo.json_to_big_operator(submitted)
+    assert question.operator == "Sum"
+    assert question.indexing == "bounds"
+    assert question.index == sp.Symbol("k", integer=True)
+    assert question.body == sp.Symbol("k", integer=True) ** 2
+    assert question.lower == 1
+    assert question.upper == 10
+
+
+@pytest.mark.parametrize("submitted", [None, ""])
+def test_big_operator_returns_none_for_an_absent_or_blank_submission(
+    big_operator_answers: tuple[pbo.BigOperatorJson, pbo.BigOperatorJson],
+    submitted: object,
+) -> None:
+    correct, _ = big_operator_answers
+    data = question_data(
+        correct_answers={"series": correct},
+        submitted_answers={"series": submitted},
+    )
+
+    assert BigOperatorQuestion(data, "series").submitted_answer is None
+
+
+def test_big_operator_rejects_a_malformed_submission(
+    big_operator_answers: tuple[pbo.BigOperatorJson, pbo.BigOperatorJson],
+) -> None:
+    correct, _ = big_operator_answers
+    data = question_data(
+        correct_answers={"series": correct},
+        submitted_answers={"series": {}},
+    )
+
+    with pytest.raises(ValueError, match='must have _type "big_operator"'):
+        _ = BigOperatorQuestion(data, "series").submitted_answer
+
+
+def test_big_operator_correct_answer_accepts_a_decoded_answer(
+    big_operator_answers: tuple[pbo.BigOperatorJson, pbo.BigOperatorJson],
+) -> None:
+    original, replacement = big_operator_answers
+    data = question_data(correct_answers={"series": original})
+    question = BigOperatorQuestion(data, "series")
+
+    question.correct_answer = pbo.json_to_big_operator(replacement)
+
+    assert data["correct_answers"]["series"] == replacement
+    assert question.correct_answer == pbo.json_to_big_operator(replacement)
+
+
+def test_big_operator_correct_answer_accepts_and_canonicalizes_json(
+    big_operator_answers: tuple[pbo.BigOperatorJson, pbo.BigOperatorJson],
+) -> None:
+    original, replacement = big_operator_answers
+    data = question_data(correct_answers={"series": original})
+    question = BigOperatorQuestion(data, "series")
+
+    question.correct_answer = replacement
+
+    assert data["correct_answers"]["series"] == replacement
+    assert data["correct_answers"]["series"] is not replacement
+
+
+def test_big_operator_updates_shared_and_bounds_components() -> None:
+    answer = pbo.big_operator_to_json(
+        operator="Sum",
+        indexing="bounds",
+        index="k",
+        lower=1,
+        upper=10,
+        body="k**2",
+    )
+    data = question_data(correct_answers={"series": answer})
+    question = BigOperatorQuestion[pbo.BigBoundsOperator](data, "series")
+
+    question.operator = "Product"
+    question.index = "j"
+    question.lower = 0
+    question.upper = 8
+    question.body = "j + 1"
+
+    assert question.operator == "Product"
+    assert question.index == sp.Symbol("j")
+    assert question.lower == 0
+    assert question.upper == 8
+    assert question.body == sp.Symbol("j") + 1
+    assert pbo.is_big_operator_json(data["correct_answers"]["series"])
+
+
+def test_big_operator_updates_domain_component() -> None:
+    answer = pbo.big_operator_to_json(
+        operator="Union",
+        indexing="domain",
+        index="k",
+        domain={1, 2},
+        body="{k}",
+    )
+    data = question_data(correct_answers={"sets": answer})
+    question = BigOperatorQuestion[pbo.BigDomainOperator](data, "sets")
+
+    question.domain = {2, 3}
+
+    assert question.domain == sp.FiniteSet(2, 3)
+    assert question.body == sp.FiniteSet(sp.Symbol("k"))
+
+
+def test_big_operator_updates_approaches_components() -> None:
+    answer = pbo.big_operator_to_json(
+        operator="Limit",
+        indexing="approaches",
+        index="x",
+        target=0,
+        direction="two-sided",
+        body="sin(x) / x",
+    )
+    data = question_data(correct_answers={"limit": answer})
+    question = BigOperatorQuestion[pbo.BigApproachesOperator](data, "limit")
+
+    question.target = 1
+    question.direction = "from-left"
+
+    assert question.target == 1
+    assert question.direction == "from-left"
+
+
+def test_big_operator_component_update_is_transactional_when_invalid() -> None:
+    answer = pbo.big_operator_to_json(
+        operator="Sum",
+        indexing="bounds",
+        index="k",
+        lower=1,
+        upper=10,
+        body="k**2",
+    )
+    data = question_data(correct_answers={"series": answer})
+    question = BigOperatorQuestion[pbo.BigBoundsOperator](data, "series")
+
+    with pytest.raises(ValueError, match="does not support"):
+        question.operator = "Limit"
+
+    assert data["correct_answers"]["series"] is answer
 
 
 def _multiple_choice_data(

@@ -48,6 +48,7 @@ from .functions import (
     rearrange_eqn,
 )
 from .lenses import (
+    BigOperatorQuestion,
     CheckboxQuestion,
     Data,
     MultipleChoiceOption,
@@ -73,6 +74,7 @@ from .symbolic_decimals import parse_symbolic_decimals
 
 __all__: Final[tuple[str, ...]] = (
     "AssumptionsTypedDict",
+    "BigOperatorQuestion",
     "CheckboxQuestion",
     "Choice",
     "ChoiceParams",

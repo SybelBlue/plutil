@@ -27,6 +27,7 @@ from typing import (
 )
 
 import prairielearn as pl
+import prairielearn.big_operator_utils as pbo
 import prairielearn.sympy_utils as psu
 import sympy as sp
 
@@ -555,6 +556,191 @@ class BaseQuestion[AnswerT](PartialScoreProxy):
 @dataclass(slots=True)
 class Question(BaseQuestion[object]):
     """A question lens whose parsed answers are arbitrary Python objects."""
+
+
+@dataclass(slots=True)
+class BigOperatorQuestion[
+    BigOperatorT: pbo.BigOperator = pbo.BigOperator,
+](BaseQuestion[BigOperatorT]):
+    """A typed lens for PrairieLearn's ``pl-big-operator-input`` answers.
+
+    Correct and submitted answers are decoded to dictionaries whose
+    mathematical fields are SymPy objects. Correct-answer assignments accept
+    either that decoded representation or its persisted JSON representation.
+    Specializing the lens with ``BigBoundsOperator``, ``BigDomainOperator``, or
+    ``BigApproachesOperator`` makes the corresponding component properties
+    available to static type checkers.
+    """
+
+    @property
+    def unparsed_correct_answer(self) -> pbo.BigOperatorJson:
+        """Return the stored, JSON-encoded correct answer."""
+        return cast(
+            pbo.BigOperatorJson,
+            self.data.setdefault("correct_answers", {})[self.answers_name],
+        )
+
+    @unparsed_correct_answer.setter
+    def unparsed_correct_answer(self, value: pbo.BigOperatorJson) -> None:
+        """Store a JSON-encoded correct answer without converting it."""
+        self.data.setdefault("correct_answers", {})[self.answers_name] = value
+
+    @property
+    def correct_answer(self) -> BigOperatorT:
+        """Return the correct answer with mathematical fields decoded."""
+        return cast(
+            BigOperatorT,
+            pbo.json_to_big_operator(self.unparsed_correct_answer),
+        )
+
+    @correct_answer.setter
+    def correct_answer(self, value: BigOperatorT | pbo.BigOperatorJson) -> None:
+        """Validate and store a decoded or JSON-encoded big operator."""
+        if pbo.is_big_operator_json(value):
+            decoded = pbo.json_to_big_operator(value)
+        else:
+            decoded = cast(pbo.BigOperator, value)
+        self.unparsed_correct_answer = pbo.big_operator_to_json(decoded)
+
+    @property
+    def submitted_answer(self) -> BigOperatorT | None:
+        """Return the submitted answer with mathematical fields decoded."""
+        value = self.data.setdefault("submitted_answers", {}).get(self.answers_name)
+        if value is None or value == "":
+            return None
+        return cast(BigOperatorT, pbo.json_to_big_operator(value))
+
+    def _correct_component(self, name: str) -> object:
+        """Return a component from the decoded correct answer."""
+        answer = self.correct_answer
+        if name not in answer:
+            raise AttributeError(
+                f"{name!r} is not a component of a big operator with "
+                f"indexing={answer['indexing']!r}"
+            )
+        return answer[name]
+
+    def _set_correct_component(self, name: str, value: object) -> None:
+        """Replace one correct-answer component and canonicalize the result."""
+        answer = self.correct_answer
+        if name not in answer:
+            raise AttributeError(
+                f"{name!r} is not a component of a big operator with "
+                f"indexing={answer['indexing']!r}"
+            )
+        updated = dict(answer)
+        updated[name] = value
+        self.correct_answer = cast(BigOperatorT, updated)
+
+    @property
+    def operator(self) -> pbo.BigOperatorName:
+        """Return the correct answer's operator name."""
+        return self.correct_answer["operator"]
+
+    @operator.setter
+    def operator(self, value: pbo.BigOperatorName) -> None:
+        """Set the correct answer's operator name."""
+        self._set_correct_component("operator", value)
+
+    @property
+    def indexing(self) -> pbo.BigOperatorIndexing:
+        """Return the correct answer's indexing variant."""
+        return self.correct_answer["indexing"]
+
+    @property
+    def index(self) -> sp.Symbol:
+        """Return the correct answer's index symbol."""
+        return self.correct_answer["index"]
+
+    @index.setter
+    def index(self, value: sp.Symbol | str) -> None:
+        """Set the correct answer's index symbol."""
+        self._set_correct_component("index", value)
+
+    @property
+    def body(self) -> sp.Basic:
+        """Return the correct answer's operator body."""
+        return self.correct_answer["body"]
+
+    @body.setter
+    def body(self, value: pbo.BigOperatorValue) -> None:
+        """Set the correct answer's operator body."""
+        self._set_correct_component("body", value)
+
+    @property
+    def lower(
+        self: "BigOperatorQuestion[pbo.BigBoundsOperator]",
+    ) -> sp.Basic:
+        """Return the correct answer's lower bound."""
+        return cast(sp.Basic, self._correct_component("lower"))
+
+    @lower.setter
+    def lower(
+        self: "BigOperatorQuestion[pbo.BigBoundsOperator]",
+        value: pbo.BigOperatorValue,
+    ) -> None:
+        """Set the correct answer's lower bound."""
+        self._set_correct_component("lower", value)
+
+    @property
+    def upper(
+        self: "BigOperatorQuestion[pbo.BigBoundsOperator]",
+    ) -> sp.Basic:
+        """Return the correct answer's upper bound."""
+        return cast(sp.Basic, self._correct_component("upper"))
+
+    @upper.setter
+    def upper(
+        self: "BigOperatorQuestion[pbo.BigBoundsOperator]",
+        value: pbo.BigOperatorValue,
+    ) -> None:
+        """Set the correct answer's upper bound."""
+        self._set_correct_component("upper", value)
+
+    @property
+    def domain(
+        self: "BigOperatorQuestion[pbo.BigDomainOperator]",
+    ) -> sp.Basic:
+        """Return the correct answer's domain."""
+        return cast(sp.Basic, self._correct_component("domain"))
+
+    @domain.setter
+    def domain(
+        self: "BigOperatorQuestion[pbo.BigDomainOperator]",
+        value: pbo.BigOperatorValue,
+    ) -> None:
+        """Set the correct answer's domain."""
+        self._set_correct_component("domain", value)
+
+    @property
+    def target(
+        self: "BigOperatorQuestion[pbo.BigApproachesOperator]",
+    ) -> sp.Basic:
+        """Return the correct answer's approach target."""
+        return cast(sp.Basic, self._correct_component("target"))
+
+    @target.setter
+    def target(
+        self: "BigOperatorQuestion[pbo.BigApproachesOperator]",
+        value: pbo.BigOperatorValue,
+    ) -> None:
+        """Set the correct answer's approach target."""
+        self._set_correct_component("target", value)
+
+    @property
+    def direction(
+        self: "BigOperatorQuestion[pbo.BigApproachesOperator]",
+    ) -> pbo.BigOperatorDirection:
+        """Return the correct answer's approach direction."""
+        return cast(pbo.BigOperatorDirection, self._correct_component("direction"))
+
+    @direction.setter
+    def direction(
+        self: "BigOperatorQuestion[pbo.BigApproachesOperator]",
+        value: pbo.BigOperatorDirection,
+    ) -> None:
+        """Set the correct answer's approach direction."""
+        self._set_correct_component("direction", value)
 
 
 def _normalize_choice_html(value: str) -> str:

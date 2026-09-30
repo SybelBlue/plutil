@@ -8,7 +8,13 @@ from types import ModuleType
 import pytest
 from pyfakefs.fake_filesystem import FakeFilesystem
 
-from plutil.lenses import Data, MultipleChoiceQuestion, Question, SympyQuestion
+from plutil.lenses import (
+    BigOperatorQuestion,
+    Data,
+    MultipleChoiceQuestion,
+    Question,
+    SympyQuestion,
+)
 from plutil.magic.decorator import (
     _snakecase,
     clip_plmagic_tracebacks,
@@ -122,6 +128,41 @@ def test_plmagic_injects_lenses_from_question_html(fs: FakeFilesystem) -> None:
     assert data["correct_answers"]["number"] == 7
     assert data["correct_answers"]["expression"] == "x + y"
     assert data["correct_answers"]["choice"]["key"] == "a"
+
+
+def test_plmagic_injects_big_operator_lens(fs: FakeFilesystem) -> None:
+    server = load_server(
+        fs,
+        f"""
+        import prairielearn.big_operator_utils as pbo
+        import sympy
+
+        from plutil.lenses import {BigOperatorQuestion.__name__}
+        from plutil.magic import {plmagic.__name__}
+
+        @{plmagic.__name__}
+        def generate(
+            *, series: {BigOperatorQuestion.__name__}[pbo.BigBoundsOperator]
+        ) -> None:
+            k = sympy.Symbol("k", integer=True)
+            series.correct_answer = pbo.big_operator_to_json(
+                operator="Sum",
+                indexing="bounds",
+                index=k,
+                lower=1,
+                upper=10,
+                body=k**2,
+            )
+            series.data["params"]["lens_type"] = type(series).__name__
+        """,
+        '<pl-big-operator-input answers-name="series"></pl-big-operator-input>',
+    )
+    data = question_data(answers_names={"series": True})
+
+    server.generate(data)
+
+    assert data["params"]["lens_type"] == "BigOperatorQuestion"
+    assert data["correct_answers"]["series"]["_type"] == "big_operator"
 
 
 def test_plmagic_clips_internal_frames_from_traceback(fs: FakeFilesystem) -> None:

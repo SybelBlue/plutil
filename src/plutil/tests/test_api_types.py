@@ -1,12 +1,14 @@
 from typing import Literal, assert_type
 
 import prairielearn as pl
+import prairielearn.big_operator_utils as pbo
 import prairielearn.sympy_utils as psu
 import pytest
 import sympy
 from sympy.abc import x
 
 from plutil import (
+    BigOperatorQuestion,
     CheckboxQuestion,
     Choice,
     ChoiceSet,
@@ -85,6 +87,73 @@ def test_multiple_choice_lens_has_a_typed_boolean_award() -> None:
     assert_type(question.submitted_choice, MultipleChoiceOption | None)
     assert_type(question.award_credit_for(), bool)
     assert_type(question.award_credit_for(("a", {"key": "b"})), bool)
+
+
+def test_big_operator_lens_has_typed_decoded_answers() -> None:
+    answer = pbo.big_operator_to_json(
+        operator="Sum",
+        indexing="bounds",
+        index="k",
+        lower=1,
+        upper=10,
+        body="k**2",
+    )
+    data: pl.QuestionData
+    data = {  # pyright: ignore[reportAssignmentType]
+        "correct_answers": {"answer": answer},
+        "submitted_answers": {"answer": answer},
+    }
+    question = BigOperatorQuestion[pbo.BigBoundsOperator](data, "answer")
+
+    assert_type(question.unparsed_correct_answer, pbo.BigOperatorJson)
+    assert_type(question.correct_answer, pbo.BigBoundsOperator)
+    assert_type(question.submitted_answer, pbo.BigBoundsOperator | None)
+    assert_type(question.operator, pbo.BigOperatorName)
+    assert_type(question.indexing, pbo.BigOperatorIndexing)
+    assert_type(question.index, sympy.Symbol)
+    assert_type(question.body, sympy.Basic)
+    assert_type(question.lower, sympy.Basic)
+    assert_type(question.upper, sympy.Basic)
+
+    question.operator = "Product"
+    question.index = "j"
+    question.body = "j + 1"
+    question.lower = 0
+    question.upper = 8
+
+
+def test_big_operator_lens_components_are_typed_by_variant() -> None:
+    domain_answer = pbo.big_operator_to_json(
+        operator="Union",
+        indexing="domain",
+        index="k",
+        domain={1, 2},
+        body="{k}",
+    )
+    approaches_answer = pbo.big_operator_to_json(
+        operator="Limit",
+        indexing="approaches",
+        index="x",
+        target=0,
+        direction="two-sided",
+        body="sin(x) / x",
+    )
+    data: pl.QuestionData
+    data = {  # pyright: ignore[reportAssignmentType]
+        "correct_answers": {
+            "domain": domain_answer,
+            "approaches": approaches_answer,
+        },
+        "submitted_answers": {},
+    }
+    domain = BigOperatorQuestion[pbo.BigDomainOperator](data, "domain")
+    approaches = BigOperatorQuestion[pbo.BigApproachesOperator](data, "approaches")
+
+    assert_type(domain.indexing, pbo.BigOperatorIndexing)
+    assert_type(domain.domain, sympy.Basic)
+    assert_type(approaches.indexing, pbo.BigOperatorIndexing)
+    assert_type(approaches.target, sympy.Basic)
+    assert_type(approaches.direction, pbo.BigOperatorDirection)
 
 
 def test_text_parsers_preserve_the_expression_or_set_possibility() -> None:

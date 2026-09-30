@@ -8,6 +8,7 @@ from lxml import html
 from plutil.choices import checkbox, multiple_choice
 from plutil.lenses import (
     BaseQuestion,
+    BigOperatorQuestion,
     CheckboxQuestion,
     MultipleChoiceQuestion,
     Question,
@@ -88,6 +89,17 @@ class PlCheckboxData(PlElementData):
     choice_builder: ClassVar[str | None] = checkbox.__name__
 
 
+@dataclass(slots=True, frozen=True)
+class PlBigOperatorInputData(PlElementData):
+    """Describe a ``pl-big-operator-input`` element."""
+
+    def build_lens(
+        self, data: pl.QuestionData, answers_name: str
+    ) -> BigOperatorQuestion:
+        """Build a big-operator question lens for this element."""
+        return BigOperatorQuestion(data, answers_name)
+
+
 element_data_registry: dict[HtmlTag, type[PlElementData]] = {}
 
 
@@ -118,3 +130,4 @@ def choice_builder_lenses() -> dict[str, type[BaseQuestion[Any]]]:
 register_element_data("pl-symbolic-input", PlSymbolicInputData)
 register_element_data("pl-multiple-choice", PlMultipleChoiceData)
 register_element_data("pl-checkbox", PlCheckboxData)
+register_element_data("pl-big-operator-input", PlBigOperatorInputData)
