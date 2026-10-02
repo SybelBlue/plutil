@@ -380,8 +380,13 @@ def latex(
     log_base: ExprInput | None = None,
     reparse: bool = False,
     displaystyle: bool = True,
+    simplifyRatioPowers: bool = True,
 ) -> str:
-    """Render an expression as display-style LaTeX suitable for PrairieLearn."""
+    """Render an expression as display-style LaTeX suitable for PrairieLearn.
+
+    With ``simplifyRatioPowers``, rational powers like ``n**(3/2)`` render as
+    radicals (``\\sqrt{n^{3}}``) instead of placing a fraction in the exponent.
+    """
     if isinstance(expr, sympy.Limit):
         e, z, z0, direction = expr.args
         if not isinstance(z, sympy.Symbol):
@@ -398,6 +403,7 @@ def latex(
             log_base=log_base,
             reparse=reparse,
             displaystyle=displaystyle,
+            simplifyRatioPowers=simplifyRatioPowers,
         )
 
     global DISPLAY_OPERATOR_RE, INV_TRIG_OPERATOR_RE
@@ -408,6 +414,8 @@ def latex(
         parsed = to_expr(expr)
     else:
         parsed = sympy.sympify(expr) if reparse else expr
+    if simplifyRatioPowers and isinstance(parsed, sympy.Basic):
+        parsed = parsed.replace(_is_ratio_power, _display_ratio_power)
     unparsed = str(sympy.latex(parsed))
     rendered = INV_TRIG_OPERATOR_RE.sub(r"\\operatorname{\1}^{-1}", unparsed).replace(
         r"\int\limits", r"\int"
@@ -427,6 +435,24 @@ def latex(
     return rendered.replace(r"\log", rf"\log_{{{sympy.latex(parsed_log_base)}}}")
 
 
+def _is_ratio_power(value: sympy.Basic) -> bool:
+    if not isinstance(value, sympy.Pow) or not isinstance(value.exp, sympy.Rational):
+        return False
+    return value.exp.q != 1 and abs(value.exp.p) != 1
+
+
+def _display_ratio_power(value: sympy.Pow) -> sympy.Expr:
+    """Rewrite ``b**(p/q)`` as an unevaluated ``(b**|p|)**(1/q)``, inverted if ``p < 0``.
+
+    The result is display-only: the radical form is not equivalent to the
+    original power on every domain.
+    """
+    exponent = cast(sympy.Rational, value.exp)
+    radicand = sympy.Pow(value.base, abs(exponent.p), evaluate=False)
+    root = sympy.Pow(radicand, sympy.Rational(1, exponent.q), evaluate=False)
+    return sympy.Pow(root, -1, evaluate=False) if exponent.p < 0 else root
+
+
 def lim_latex(
     *,
     var: Variable,
@@ -436,6 +462,7 @@ def lim_latex(
     log_base: ExprInput | None = None,
     reparse: bool = False,
     displaystyle: bool = True,
+    simplifyRatioPowers: bool = True,
 ) -> str:
     """Render a display-style limit expression as a LaTeX fragment."""
     direction = rf"^{{{dir}}}" if dir and dir not in ("+-", "-+") else ""
@@ -444,12 +471,14 @@ def lim_latex(
         log_base=log_base,
         reparse=reparse,
         displaystyle=displaystyle,
+        simplifyRatioPowers=simplifyRatioPowers,
     )
     val_tex = latex(
         _to_expr_input(val),
         log_base=log_base,
         reparse=reparse,
         displaystyle=displaystyle,
+        simplifyRatioPowers=simplifyRatioPowers,
     )
     body_expr = _to_expr_input(body)
     body_tex = latex(
@@ -457,6 +486,7 @@ def lim_latex(
         log_base=log_base,
         reparse=reparse,
         displaystyle=displaystyle,
+        simplifyRatioPowers=simplifyRatioPowers,
     )
     if len(sympy.Add.make_args(body_expr)) > 1:
         body_tex = rf"\left({body_tex}\right)"
@@ -471,7 +501,7 @@ def count_in_latex(
     """Count occurrences of LaTeX fragments in a submitted symbolic answer."""
     if value is None:
         return 0
-    l = latex(value, reparse=False)
+    l = latex(value, reparse=False, simplifyRatioPowers=False)
     return sum(l.count(s) for s in substrings)
 
 
