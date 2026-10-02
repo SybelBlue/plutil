@@ -395,8 +395,38 @@ def test_latex_dispatches_limits_to_lim_latex(monkeypatch: pytest.MonkeyPatch):
             "log_base": 2,
             "reparse": True,
             "displaystyle": False,
+            "simplifyRatioPowers": True,
         }
     ]
+
+
+@pytest.mark.parametrize(
+    ("expr", "rendered"),
+    [
+        (n ** sympy.Rational(3, 2), r"\sqrt{n^{3}}"),
+        (x ** sympy.Rational(2, 3), r"\sqrt[3]{x^{2}}"),
+        (n ** sympy.Rational(-3, 2), r"\dfrac{1}{\sqrt{n^{3}}}"),
+        ((x + 1) ** sympy.Rational(5, 2), r"\sqrt{\left(x + 1\right)^{5}}"),
+        (sympy.sqrt(x), r"\sqrt{x}"),
+        (1 / sympy.sqrt(x), r"\dfrac{1}{\sqrt{x}}"),
+        (x**3, r"x^{3}"),
+    ],
+)
+def test_latex_simplifies_ratio_powers_by_default(expr, rendered):
+    assert latex(expr) == rendered
+
+
+def test_latex_can_keep_ratio_powers():
+    assert (
+        latex(n ** sympy.Rational(3, 2), simplifyRatioPowers=False)
+        == r"n^{\dfrac{3}{2}}"
+    )
+
+
+def test_lim_latex_simplifies_ratio_powers():
+    rendered = lim_latex(var=n, val=sympy.oo, body=1 / n ** sympy.Rational(3, 2))
+
+    assert rendered == r"\displaystyle \lim_{n \to \infty} {\dfrac{1}{\sqrt{n^{3}}}}"
 
 
 def test_lim_latex_renders_two_sided_limit():
