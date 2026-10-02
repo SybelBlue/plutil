@@ -26,7 +26,7 @@ check-format:
 	uv run --active ruff format --check .
 
 check-prairielearn-dependencies:
-	uv run --active python scripts/check-prairielearn-dependencies.py
+	uv run --active pl-vendor check prairielearn python
 
 ci-dryrun:
 	@./scripts/ci-dryrun.sh \
