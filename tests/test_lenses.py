@@ -4,6 +4,7 @@ import pytest
 import sympy as sp
 
 import plutil.lenses as lenses_mod
+from plutil.common import eq
 from plutil.lenses import (
     BaseQuestion,
     JsonValue,
@@ -11,6 +12,7 @@ from plutil.lenses import (
     MultipleChoiceQuestion,
     Params,
     Question,
+    SympyQuestion,
 )
 from plutil.tests.helpers import question_data
 
@@ -724,3 +726,22 @@ def test_multiple_choice_preserves_equal_or_higher_scores(
         "Follow-through" if expected_changed else "Native feedback"
     )
     assert calls == ([data] if expected_changed else [])
+
+
+@pytest.mark.parametrize("value", [0, 0.0, pl.to_json(sp.Integer(0))])
+def test_sympy_question_submitted_answer_keeps_zero(value: object):
+    data = question_data(submitted_answers={"answer": value})
+
+    submitted = SympyQuestion(data, "answer").submitted_answer
+
+    assert submitted is not None
+    assert eq(submitted, 0)
+
+
+@pytest.mark.parametrize("submitted", [{}, {"answer": None}, {"answer": ""}])
+def test_sympy_question_submitted_answer_is_none_when_blank(
+    submitted: dict[str, object],
+):
+    data = question_data(submitted_answers=submitted)
+
+    assert SympyQuestion(data, "answer").submitted_answer is None
