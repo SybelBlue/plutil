@@ -8,6 +8,8 @@ import sympy
 from sympy.abc import s, t, x, y
 
 from plutil import (
+    Question,
+    SympyQuestion,
     evalf_at,
     grade_answer_based_on_another,
     rearrange_eqn,
@@ -166,9 +168,8 @@ def test_translate_through__requires_output_binding():
 
 def _set_derived(data: pl.QuestionData, transformation: Any = lambda v: v**2):
     return set_answer_based_on_another(
-        data,
-        src_names="source",
-        dest_name="destination",
+        Question(data, "destination"),
+        src=SympyQuestion(data, "source", variables="x"),
         transformation=transformation,
     )
 
@@ -179,9 +180,8 @@ def _grade_derived(
     **kwargs: Any,
 ) -> bool:
     return grade_answer_based_on_another(
-        data,
-        src_names="source",
-        dest_name="destination",
+        SympyQuestion(data, "destination", variables="x"),
+        src=SympyQuestion(data, "source", variables="x"),
         transformation=transformation,
         **kwargs,
     )
@@ -197,14 +197,30 @@ def test_set_answer_based_on_another_uses_parsed_source():
     assert data["correct_answers"]["destination"] == str((x + 1) ** 2)
 
 
-def test_set_answer_based_on_another_falls_back_to_raw_source():
-    data = question_data(raw_submitted_answers={"source": pl.to_json(x + 1)})
+@pytest.mark.parametrize("raw", ["x + 1", "1 + x"])
+def test_set_answer_based_on_another_parses_raw_source_with_lens_variables(
+    raw: str,
+):
+    data = question_data(raw_submitted_answers={"source": raw})
 
     derived = _set_derived(data)
 
     assert derived is not None
     assert eq(derived, (x + 1) ** 2)
     assert data["correct_answers"]["destination"] == "(x + 1)**2"
+
+
+def test_set_answer_based_on_another_stores_string_for_sympy_destination():
+    data = question_data(submitted_answers={"source": pl.to_json(x)})
+
+    derived = set_answer_based_on_another(
+        SympyQuestion(data, "destination"),
+        src=SympyQuestion(data, "source"),
+        transformation=lambda v: v / 2,
+    )
+
+    assert derived is not None
+    assert data["correct_answers"]["destination"] == "x/2"
 
 
 def test_set_answer_based_on_another_passes_sources_in_declared_order():
@@ -219,9 +235,12 @@ def test_set_answer_based_on_another_passes_sources_in_declared_order():
         return values[0] - values[1] * values[2]
 
     derived = set_answer_based_on_another(
-        data,
-        src_names=("b", "c", "a"),
-        dest_name="destination",
+        Question(data, "destination"),
+        src=(
+            SympyQuestion(data, "b"),
+            SympyQuestion(data, "c"),
+            SympyQuestion(data, "a"),
+        ),
         transformation=transformation,
     )
 
@@ -234,9 +253,8 @@ def test_set_answer_based_on_another_accepts_one_element_tuple():
     data = question_data(submitted_answers={"source": pl.to_json(x)})
 
     derived = set_answer_based_on_another(
-        data,
-        src_names=("source",),
-        dest_name="destination",
+        Question(data, "destination"),
+        src=(SympyQuestion(data, "source"),),
         transformation=lambda v: v + 1,
     )
 
@@ -249,6 +267,7 @@ def test_set_answer_based_on_another_accepts_one_element_tuple():
     [
         pytest.param({}, {}, id="missing"),
         pytest.param({}, {"source": "x +"}, id="unparsable-raw"),
+        pytest.param({}, {"source": "t + 1"}, id="undeclared-variable"),
         pytest.param({"source": None}, {"source": "(("}, id="format-error"),
         pytest.param(
             {"source": pl.sympy_to_json(sympy.FiniteSet(1, 2), allow_sets=True)},
@@ -284,9 +303,8 @@ def test_transformation_waits_for_every_source():
     data = question_data(submitted_answers={"a": pl.to_json(x)})
 
     derived = set_answer_based_on_another(
-        data,
-        src_names=("a", "missing"),
-        dest_name="destination",
+        Question(data, "destination"),
+        src=(SympyQuestion(data, "a"), SympyQuestion(data, "missing")),
         transformation=lambda *values: calls.append(values) or x,
     )
 
