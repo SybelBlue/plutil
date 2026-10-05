@@ -555,7 +555,7 @@ s = integrate(v, d=t, known_antideriv_point=(0, 0))
 distance = eval_at(s, t=8) - eval_at(s, t=0)  # -> 1792/15
 ```
 
-### `award_missing_constant_credit(lens, C="C", partial_score=0.8, feedback=DEFAULT_FEEDBACK) -> bool`
+### `award_missing_constant_credit(lens, C="C", partial_score=0.8, feedback=None) -> bool`
 
 Grant partial credit when the student’s antiderivative is correct up to a missing
 `+ C`. Uses the lens-based `award_partial_credit` API.
@@ -569,7 +569,40 @@ def grade(data):
     award_missing_constant_credit(SympyQuestion(data, "answer1", variables="x"))
 ```
 
-Use `C="K"` if the question expects `+ K` instead of `+ C`.
+Use `C="K"` if the question expects `+ K` instead of `+ C`. The default
+feedback is `feedback.missing_constant(C)`, so it names the same constant; pass
+`feedback=""` to award the score without feedback.
+
+---
+
+## `feedback.py`
+
+Stock feedback text for common partial-credit situations. Import it as a module
+and pass the result anywhere a `feedback` argument is accepted:
+
+```python
+from plutil import feedback
+```
+
+### `feedback.missing_constant(C="C") -> str`
+
+"Your answer is correct up to an additive constant. Include C for full
+credit.", naming the given constant.
+
+### `feedback.derived_answer(*sources) -> str`
+
+Explains that the correct answer was computed from the student's other answers.
+`sources` are student-facing names for those parts; without them, the text
+refers to "the other answers in this question".
+
+```python
+feedback.derived_answer()
+# -> "The correct answer was computed based on the other answers in this question."
+feedback.derived_answer("(a)", "(b)")
+# -> "The correct answer was computed based on your answers to (a) and (b)."
+
+award_partial_credit(lens, ..., feedback=feedback.derived_answer("(a)"))
+```
 
 ---
 

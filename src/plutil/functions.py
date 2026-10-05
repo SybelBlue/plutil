@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import Final
 
 import sympy
 
@@ -13,10 +12,6 @@ from .common import (
     _to_expr_input,
     require_expr,
     var_to_symbol,
-)
-
-DEFAULT_FEEDBACK: Final[str] = (
-    "The correct answer was computed based on the other answers in this question."
 )
 
 

@@ -1,6 +1,6 @@
 from typing import Final
 
-from . import fabc, rand
+from . import fabc, feedback, rand
 from .assumptions import (
     AssumptionsTypedDict,
     check,
@@ -90,6 +90,7 @@ __all__: Final[tuple[str, ...]] = (
     "evalf_at",
     "evalf_at_",
     "fabc",
+    "feedback",
     "getrec",
     "grade_sympy_set",
     "is_finite_integer",

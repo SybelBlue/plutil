@@ -7,7 +7,6 @@ from sympy.abc import x
 
 import plutil.lenses as lenses_mod
 from plutil.calculus import (
-    DEFAULT_FEEDBACK,
     approximate_area,
     award_missing_constant_credit,
     integrate,
@@ -15,6 +14,7 @@ from plutil.calculus import (
     tangent_line_of,
 )
 from plutil.common import eq
+from plutil.feedback import missing_constant
 from plutil.lenses import SympyQuestion
 from plutil.tests.helpers import question_data
 
@@ -190,7 +190,7 @@ def test_award_missing_constant_credit_grants_partial_credit(monkeypatch):
 
     assert awarded is True
     assert data["partial_scores"]["answer"]["score"] == 0.8
-    assert data["partial_scores"]["answer"].get("feedback") == DEFAULT_FEEDBACK
+    assert data["partial_scores"]["answer"].get("feedback") == missing_constant()
     assert len(calls) == 1
 
 
@@ -215,6 +215,7 @@ def test_award_missing_constant_credit_accepts_custom_constant_name(monkeypatch)
 
     assert awarded is True
     assert data["partial_scores"]["answer"]["score"] == 0.8
+    assert data["partial_scores"]["answer"].get("feedback") == missing_constant("K")
     assert len(calls) == 1
 
 
