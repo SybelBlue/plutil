@@ -804,9 +804,10 @@ class SympyQuestion(BaseQuestion[SympyValue]):
     @property
     def submitted_answer(self) -> SympyValue | None:
         """Return the submitted answer as a SymPy expression."""
-        if raw := self.data["submitted_answers"].get(self.answers_name):
-            return self.to_expr(raw)
-        return None
+        raw = self.data["submitted_answers"].get(self.answers_name)
+        if raw is None or raw == "":
+            return None
+        return self.to_expr(raw)
 
     @property
     def unparsed_raw_submitted_answer(self):
