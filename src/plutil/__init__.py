@@ -37,7 +37,9 @@ from .functions import (
     eval_at_,
     evalf_at,
     evalf_at_,
+    grade_answer_based_on_another,
     rearrange_eqn,
+    set_answer_based_on_another,
 )
 from .lenses import (
     Data,
@@ -91,6 +93,7 @@ __all__: Final[tuple[str, ...]] = (
     "evalf_at_",
     "fabc",
     "getrec",
+    "grade_answer_based_on_another",
     "grade_sympy_set",
     "is_finite_integer",
     "is_finite_real_number",
@@ -106,6 +109,7 @@ __all__: Final[tuple[str, ...]] = (
     "reject_non_sympy_set_input",
     "require_expr",
     "rule",
+    "set_answer_based_on_another",
     "setrec",
     "sign",
     "spint",

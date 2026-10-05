@@ -3,21 +3,32 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import Final
+from typing import Final, Literal, overload
 
+import prairielearn as pl
+import prairielearn.sympy_utils as psu
 import sympy
 
 from .common import (
     ExprInput,
+    ExprLike,
     Variable,
     _to_expr_input,
+    eq,
     require_expr,
     var_to_symbol,
 )
+from .lenses import SympyQuestion
 
 DEFAULT_FEEDBACK: Final[str] = (
     "The correct answer was computed based on the other answers in this question."
 )
+
+type _TransformOne = Callable[[sympy.Expr], Literal[False] | ExprLike]
+type _TransformMany = Callable[..., Literal[False] | ExprLike]
+type _OneAnswerName = str | tuple[str]
+type _ManyAnswerNames = tuple[str, str, *tuple[str, ...]]
+type _AnswerNames = _OneAnswerName | _ManyAnswerNames
 
 
 def rearrange_eqn(
@@ -218,3 +229,147 @@ def scale_through_(
             f"`{y0_name}` not found in bindings. Set the output variable in bindings or change y0_name."
         )
     return lambda f: scale_through(f, y0_name=y0_name, **bindings)
+
+
+def _submitted_expression(data: pl.QuestionData, answer_name: str) -> sympy.Expr | None:
+    """Return a submission as an expression, falling back to its raw text."""
+    lens = SympyQuestion(data, answer_name)
+    parsed = lens.submitted_answer
+    if parsed is not None:
+        return parsed if isinstance(parsed, sympy.Expr) else None
+    raw = lens.unparsed_raw_submitted_answer
+    if raw is None:
+        return None
+    try:
+        value = lens.to_expr(raw)
+    except (psu.BaseSympyError, psu.TokenError, TypeError):
+        return None
+    return value if isinstance(value, sympy.Expr) else None
+
+
+def _derive_answer(
+    data: pl.QuestionData,
+    src_names: _AnswerNames,
+    transformation: _TransformMany,
+) -> ExprLike | None:
+    """Apply ``transformation`` once every source submission is available."""
+    names = (src_names,) if isinstance(src_names, str) else src_names
+    expressions: list[sympy.Expr] = []
+    for name in names:
+        expression = _submitted_expression(data, name)
+        if expression is None:
+            return None
+        expressions.append(expression)
+
+    derived = transformation(*expressions)
+    return None if derived is False else derived
+
+
+@overload
+def set_answer_based_on_another(
+    data: pl.QuestionData,
+    *,
+    src_names: _OneAnswerName,
+    dest_name: str,
+    transformation: _TransformOne,
+) -> ExprLike | None: ...
+
+
+@overload
+def set_answer_based_on_another(
+    data: pl.QuestionData,
+    *,
+    src_names: _ManyAnswerNames,
+    dest_name: str,
+    transformation: _TransformMany,
+) -> ExprLike | None: ...
+
+
+def set_answer_based_on_another(
+    data: pl.QuestionData,
+    *,
+    src_names: _AnswerNames,
+    dest_name: str,
+    transformation: _TransformMany,
+) -> ExprLike | None:
+    """Set ``dest_name``'s correct answer from other submitted answers.
+
+    Each source is read from its parsed submission, falling back to its raw
+    submission. Once every source parses to an expression, ``transformation``
+    is called with them in ``src_names`` order. Returning ``False`` from the
+    transformation rejects the sources; numeric zero is a valid answer.
+
+    The derived value is stored as ``str(derived)`` so that number inputs can
+    grade it with their own significant-figure rules.
+
+    Returns:
+        The derived value, or ``None`` when no answer was set.
+    """
+    derived = _derive_answer(data, src_names, transformation)
+    if derived is None:
+        return None
+    SympyQuestion(data, dest_name).unparsed_correct_answer = str(derived)
+    return derived
+
+
+@overload
+def grade_answer_based_on_another(
+    data: pl.QuestionData,
+    *,
+    src_names: _OneAnswerName,
+    dest_name: str,
+    transformation: _TransformOne,
+    feedback: str | None = DEFAULT_FEEDBACK,
+) -> bool: ...
+
+
+@overload
+def grade_answer_based_on_another(
+    data: pl.QuestionData,
+    *,
+    src_names: _ManyAnswerNames,
+    dest_name: str,
+    transformation: _TransformMany,
+    feedback: str | None = DEFAULT_FEEDBACK,
+) -> bool: ...
+
+
+def grade_answer_based_on_another(
+    data: pl.QuestionData,
+    *,
+    src_names: _AnswerNames,
+    dest_name: str,
+    transformation: _TransformMany,
+    feedback: str | None = DEFAULT_FEEDBACK,
+) -> bool:
+    """Grade ``dest_name`` against a value derived from other submissions.
+
+    Sources are derived as in :func:`set_answer_based_on_another`. A match
+    proposes full credit and a mismatch proposes zero; the score is written
+    with ``preserve_higher=True``, so an equal or higher existing score keeps
+    its complete record. After a write, ``str(derived)`` becomes the displayed
+    correct answer only if none already exists.
+
+    Returns:
+        Whether a score was written.
+    """
+    destination = SympyQuestion(data, dest_name)
+    submitted = destination.submitted_answer
+    if submitted is None:
+        return False
+
+    derived = _derive_answer(data, src_names, transformation)
+    if derived is None:
+        return False
+
+    score = 1.0 if eq(derived, submitted) else 0.0
+    if not destination.set_rich_score(
+        score,
+        feedback=feedback,
+        preserve_higher=True,
+    ):
+        return False
+
+    if dest_name not in data.setdefault("correct_answers", {}):
+        destination.unparsed_correct_answer = str(derived)
+    return True

@@ -495,6 +495,47 @@ Linear equations use SymPy's dedicated linear solver.
 Other equations fall back to the general solver.
 The function raises `ValueError` rather than choosing a branch when an equation has zero or multiple solutions.
 
+### `set_answer_based_on_another(data, *, src_names, dest_name, transformation) -> ExprLike | None`
+
+Derive an answer from earlier submissions and store it as `dest_name`'s
+correct answer. `src_names` is one answer name or a tuple of names. Each
+source is read from its parsed submission, falling back to its raw submission
+parsed with a `SympyQuestion` lens. Once every source is a SymPy expression,
+`transformation` is called with them in `src_names` order.
+
+If any source is missing, unparsable, or not an expression, nothing is changed
+and `None` is returned. The transformation can also return the literal `False`
+to reject the sources; numeric and SymPy zero are valid derived answers. The
+derived value is stored as `str(derived)`, so number inputs can grade it with
+their own significant-figure rules.
+
+### `grade_answer_based_on_another(data, *, src_names, dest_name, transformation, feedback=DEFAULT_FEEDBACK) -> bool`
+
+Grade follow-through work: compare `dest_name`'s submission with a value
+derived from other submissions as above, using `eq`. A match proposes full
+credit and a mismatch proposes zero, written with
+`set_rich_score(..., preserve_higher=True)` and `feedback`. An equal or higher
+existing score, including native grading, keeps its complete record; a winning
+score keeps any existing weight. After a write, `str(derived)` is shown as the
+correct answer only if `dest_name` has none. Returns whether a score was
+written.
+
+```python
+from plutil import grade_answer_based_on_another
+
+
+def grade(data):
+    # Give credit for a slope that is consistent with the student's points.
+    grade_answer_based_on_another(
+        data,
+        src_names=("x1", "y1", "x2", "y2"),
+        dest_name="slope",
+        transformation=lambda x1, y1, x2, y2: (
+            False if x1 == x2 else (y2 - y1) / (x2 - x1)
+        ),
+    )
+```
+
 ---
 
 ## `calculus.py`
