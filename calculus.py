@@ -7,7 +7,7 @@ import operator
 from collections.abc import Callable, Sequence
 from functools import reduce
 from itertools import pairwise
-from typing import Any, Final, Literal, overload
+from typing import Any, Literal, overload
 
 import prairielearn.sympy_utils as psu
 import sympy
@@ -23,13 +23,10 @@ from .common import (
     var_name,
     var_to_symbol,
 )
+from .feedback import missing_constant
 from .functions import eval_at, eval_at_, translate_through
 from .lenses import SympyQuestion
 from .partial_credit import rule
-
-DEFAULT_FEEDBACK: Final[str] = (
-    "Your answer is correct up to an additive constant. Include + C for full credit."
-)
 
 
 # NOTE: partial_score default chosen according to Serena's memory of AP scoring
@@ -37,12 +34,17 @@ def award_missing_constant_credit(
     lens: SympyQuestion,
     C: Variable = "C",
     partial_score: float = 0.8,
-    feedback: str = DEFAULT_FEEDBACK,
+    feedback: str | None = None,
 ) -> bool:
     """Award partial credit when an antiderivative is missing its constant.
 
+    ``feedback`` defaults to :func:`plutil.feedback.missing_constant` for ``C``;
+    pass ``""`` to award the score without feedback.
+
     Returns True when partial credit was applied, False otherwise.
     """
+    if feedback is None:
+        feedback = missing_constant(C)
     return lens.as_sympy_lens(
         (C, *_normalize_one_or_more(lens.variables))
     ).award_partial_credit(
