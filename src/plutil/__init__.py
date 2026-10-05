@@ -39,7 +39,6 @@ from .functions import (
     evalf_at_,
     grade_answer_based_on_another,
     rearrange_eqn,
-    set_answer_based_on_another,
 )
 from .lenses import (
     Data,
@@ -109,7 +108,6 @@ __all__: Final[tuple[str, ...]] = (
     "reject_non_sympy_set_input",
     "require_expr",
     "rule",
-    "set_answer_based_on_another",
     "setrec",
     "sign",
     "spint",

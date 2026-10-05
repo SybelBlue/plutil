@@ -8,12 +8,10 @@ import sympy
 from sympy.abc import s, t, x, y
 
 from plutil import (
-    Question,
     SympyQuestion,
     evalf_at,
     grade_answer_based_on_another,
     rearrange_eqn,
-    set_answer_based_on_another,
 )
 from plutil.common import eq
 from plutil.functions import DEFAULT_FEEDBACK, eval_at, translate_through_
@@ -166,14 +164,6 @@ def test_translate_through__requires_output_binding():
         translate_through_(x=0)
 
 
-def _set_derived(data: pl.QuestionData, transformation: Any = lambda v: v**2):
-    return set_answer_based_on_another(
-        Question(data, "destination"),
-        src=SympyQuestion(data, "source", variables="x"),
-        transformation=transformation,
-    )
-
-
 def _grade_derived(
     data: pl.QuestionData,
     transformation: Any = lambda v: v + 1,
@@ -187,45 +177,44 @@ def _grade_derived(
     )
 
 
-def test_set_answer_based_on_another_uses_parsed_source():
-    data = question_data(submitted_answers={"source": pl.to_json(x + 1)})
+def test_grade_answer_based_on_another_match_writes_full_credit():
+    data = question_data(
+        submitted_answers={
+            "source": pl.to_json(x),
+            "destination": pl.to_json(x + 1),
+        },
+        partial_scores={"other": {"score": 0.0}},
+    )
 
-    derived = _set_derived(data)
-
-    assert derived is not None
-    assert eq(derived, (x + 1) ** 2)
-    assert data["correct_answers"]["destination"] == str((x + 1) ** 2)
+    assert _grade_derived(data)
+    assert data["partial_scores"]["destination"] == {
+        "score": 1.0,
+        "feedback": DEFAULT_FEEDBACK,
+    }
+    assert data["score"] == pytest.approx(0.5)
+    assert data["correct_answers"] == {}
 
 
 @pytest.mark.parametrize("raw", ["x + 1", "1 + x"])
-def test_set_answer_based_on_another_parses_raw_source_with_lens_variables(
+def test_grade_answer_based_on_another_parses_raw_source_with_lens_variables(
     raw: str,
 ):
-    data = question_data(raw_submitted_answers={"source": raw})
-
-    derived = _set_derived(data)
-
-    assert derived is not None
-    assert eq(derived, (x + 1) ** 2)
-    assert data["correct_answers"]["destination"] == "(x + 1)**2"
-
-
-def test_set_answer_based_on_another_stores_string_for_sympy_destination():
-    data = question_data(submitted_answers={"source": pl.to_json(x)})
-
-    derived = set_answer_based_on_another(
-        SympyQuestion(data, "destination"),
-        src=SympyQuestion(data, "source"),
-        transformation=lambda v: v / 2,
+    data = question_data(
+        submitted_answers={"destination": pl.to_json(x + 2)},
+        raw_submitted_answers={"source": raw},
     )
 
-    assert derived is not None
-    assert data["correct_answers"]["destination"] == "x/2"
+    assert _grade_derived(data)
+    assert data["partial_scores"]["destination"]["score"] == 1.0
 
 
-def test_set_answer_based_on_another_passes_sources_in_declared_order():
+def test_grade_answer_based_on_another_passes_sources_in_declared_order():
     data = question_data(
-        submitted_answers={"a": pl.to_json(x), "b": pl.to_json(y)},
+        submitted_answers={
+            "a": pl.to_json(x),
+            "b": pl.to_json(y),
+            "destination": pl.to_json(y - 3 * x),
+        },
         raw_submitted_answers={"c": "3"},
     )
     seen: list[tuple[sympy.Expr, ...]] = []
@@ -234,8 +223,8 @@ def test_set_answer_based_on_another_passes_sources_in_declared_order():
         seen.append(values)
         return values[0] - values[1] * values[2]
 
-    derived = set_answer_based_on_another(
-        Question(data, "destination"),
+    assert grade_answer_based_on_another(
+        SympyQuestion(data, "destination", variables=("x", "y")),
         src=(
             SympyQuestion(data, "b"),
             SympyQuestion(data, "c"),
@@ -243,23 +232,22 @@ def test_set_answer_based_on_another_passes_sources_in_declared_order():
         ),
         transformation=transformation,
     )
-
     assert seen == [(y, sympy.Integer(3), x)]
-    assert derived is not None
-    assert eq(derived, y - 3 * x)
 
 
-def test_set_answer_based_on_another_accepts_one_element_tuple():
-    data = question_data(submitted_answers={"source": pl.to_json(x)})
+def test_grade_answer_based_on_another_accepts_one_element_tuple():
+    data = question_data(
+        submitted_answers={
+            "source": pl.to_json(x),
+            "destination": pl.to_json(x + 1),
+        }
+    )
 
-    derived = set_answer_based_on_another(
-        Question(data, "destination"),
+    assert grade_answer_based_on_another(
+        SympyQuestion(data, "destination"),
         src=(SympyQuestion(data, "source"),),
         transformation=lambda v: v + 1,
     )
-
-    assert derived is not None
-    assert eq(derived, x + 1)
 
 
 @pytest.mark.parametrize(
@@ -291,25 +279,24 @@ def test_unavailable_source_leaves_data_unchanged(
         raw_submitted_answers=raw,
     )
 
-    assert _set_derived(data, transformation) is None
     assert not _grade_derived(data, transformation)
     assert calls == []
-    assert data["correct_answers"] == {}
     assert data["partial_scores"] == {}
 
 
 def test_transformation_waits_for_every_source():
     calls: list[object] = []
-    data = question_data(submitted_answers={"a": pl.to_json(x)})
+    data = question_data(
+        submitted_answers={"a": pl.to_json(x), "destination": pl.to_json(x)}
+    )
 
-    derived = set_answer_based_on_another(
-        Question(data, "destination"),
+    assert not grade_answer_based_on_another(
+        SympyQuestion(data, "destination"),
         src=(SympyQuestion(data, "a"), SympyQuestion(data, "missing")),
         transformation=lambda *values: calls.append(values) or x,
     )
-
-    assert derived is None
     assert calls == []
+    assert data["partial_scores"] == {}
 
 
 def test_false_transformation_rejects_sources():
@@ -317,32 +304,18 @@ def test_false_transformation_rejects_sources():
         submitted_answers={"source": pl.to_json(x), "destination": pl.to_json(x)}
     )
 
-    assert _set_derived(data, lambda _: False) is None
     assert not _grade_derived(data, lambda _: False)
-    assert data["correct_answers"] == {}
     assert data["partial_scores"] == {}
 
 
-@pytest.mark.parametrize(
-    ("zero", "serialized"),
-    [(0, "0"), (sympy.Integer(0), "0"), (0.0, "0.0"), (sympy.Float(0), "0.0")],
-)
-def test_zero_is_a_valid_derived_answer(zero: Any, serialized: str):
-    data = question_data(submitted_answers={"source": pl.to_json(x)})
-
-    assert _set_derived(data, lambda _: zero) is zero
-    assert data["correct_answers"]["destination"] == serialized
-
-
-def test_zero_derived_answer_can_be_graded_correct():
+@pytest.mark.parametrize("zero", [0, sympy.Integer(0), 0.0, sympy.Float(0)])
+@pytest.mark.parametrize("submitted", [0, 0.0, pl.to_json(sympy.Integer(0))])
+def test_zero_derived_answer_can_be_graded_correct(zero: Any, submitted: Any):
     data = question_data(
-        submitted_answers={
-            "source": pl.to_json(x),
-            "destination": pl.to_json(sympy.Integer(0)),
-        }
+        submitted_answers={"source": pl.to_json(x), "destination": submitted}
     )
 
-    assert _grade_derived(data, lambda _: 0)
+    assert _grade_derived(data, lambda _: zero)
     assert data["partial_scores"]["destination"]["score"] == 1.0
 
 
@@ -353,25 +326,6 @@ def test_grade_answer_based_on_another_requires_destination_submission():
     assert not _grade_derived(data, lambda v: calls.append(v) or v)
     assert calls == []
     assert data["partial_scores"] == {}
-    assert data["correct_answers"] == {}
-
-
-def test_grade_answer_based_on_another_match_writes_full_credit():
-    data = question_data(
-        submitted_answers={
-            "source": pl.to_json(x),
-            "destination": pl.to_json(x + 1),
-        },
-        partial_scores={"other": {"score": 0.0}},
-    )
-
-    assert _grade_derived(data)
-    assert data["partial_scores"]["destination"] == {
-        "score": 1.0,
-        "feedback": DEFAULT_FEEDBACK,
-    }
-    assert data["score"] == pytest.approx(0.5)
-    assert data["correct_answers"]["destination"] == "x + 1"
 
 
 def test_grade_answer_based_on_another_uses_custom_feedback():
@@ -386,23 +340,7 @@ def test_grade_answer_based_on_another_uses_custom_feedback():
     assert data["partial_scores"]["destination"] == {"score": 1.0}
 
 
-def test_grade_answer_based_on_another_mismatch_writes_zero_when_unscored():
-    data = question_data(
-        submitted_answers={
-            "source": pl.to_json(x),
-            "destination": pl.to_json(x + 2),
-        }
-    )
-
-    assert _grade_derived(data)
-    assert data["partial_scores"]["destination"] == {
-        "score": 0.0,
-        "feedback": DEFAULT_FEEDBACK,
-    }
-    assert data["correct_answers"]["destination"] == "x + 1"
-
-
-def test_grade_answer_based_on_another_mismatch_preserves_existing_zero():
+def test_grade_answer_based_on_another_mismatch_writes_nothing():
     native: pl.PartialScore = {"score": 0.0, "weight": 2, "feedback": "native"}
     data = question_data(
         submitted_answers={
@@ -414,7 +352,19 @@ def test_grade_answer_based_on_another_mismatch_preserves_existing_zero():
 
     assert not _grade_derived(data)
     assert data["partial_scores"]["destination"] == native
-    assert data["correct_answers"] == {}
+
+
+def test_grade_answer_based_on_another_ignores_canonical_answer():
+    data = question_data(
+        submitted_answers={
+            "source": pl.to_json(x),
+            "destination": pl.to_json(x**2),
+        },
+        correct_answers={"destination": pl.to_json(x**2)},
+    )
+
+    assert not _grade_derived(data)
+    assert data["partial_scores"] == {}
 
 
 @pytest.mark.parametrize("existing", [0.5, 1.0])
@@ -434,7 +384,6 @@ def test_grade_answer_based_on_another_preserves_higher_or_equal_score(
     assert not _grade_derived(data)
     assert data["partial_scores"]["destination"] == native
     assert data["score"] == 0.25
-    assert data["correct_answers"] == {}
 
 
 def test_grade_answer_based_on_another_winning_score_keeps_weight():
@@ -456,18 +405,3 @@ def test_grade_answer_based_on_another_winning_score_keeps_weight():
         "feedback": DEFAULT_FEEDBACK,
     }
     assert data["score"] == pytest.approx(0.75)
-
-
-def test_grade_answer_based_on_another_keeps_canonical_correct_answer():
-    canonical = pl.to_json(x + 1)
-    data = question_data(
-        submitted_answers={
-            "source": pl.to_json(y),
-            "destination": pl.to_json(y + 1),
-        },
-        correct_answers={"destination": canonical},
-    )
-
-    assert _grade_derived(data)
-    assert data["partial_scores"]["destination"]["score"] == 1.0
-    assert data["correct_answers"]["destination"] == canonical

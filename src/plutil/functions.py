@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import Any, Final, Literal, overload
+from typing import Final, Literal, overload
 
 import prairielearn.sympy_utils as psu
 import sympy
@@ -13,11 +13,10 @@ from .common import (
     ExprLike,
     Variable,
     _to_expr_input,
-    eq,
     require_expr,
     var_to_symbol,
 )
-from .lenses import BaseQuestion, SympyQuestion
+from .lenses import SympyQuestion
 
 DEFAULT_FEEDBACK: Final[str] = (
     "The correct answer was computed based on the other answers in this question."
@@ -259,57 +258,6 @@ def _derive_answer(src: _Sources, transformation: _TransformMany) -> ExprLike | 
     return None if derived is False else derived
 
 
-def _store_correct_answer(dest: BaseQuestion[Any], derived: ExprLike) -> None:
-    # Bypass typed setters: number inputs need the unparsed string.
-    dest.data.setdefault("correct_answers", {})[dest.answers_name] = str(derived)
-
-
-@overload
-def set_answer_based_on_another(
-    dest: BaseQuestion[Any],
-    *,
-    src: _OneSource,
-    transformation: _TransformOne,
-) -> ExprLike | None: ...
-
-
-@overload
-def set_answer_based_on_another(
-    dest: BaseQuestion[Any],
-    *,
-    src: _ManySources,
-    transformation: _TransformMany,
-) -> ExprLike | None: ...
-
-
-def set_answer_based_on_another(
-    dest: BaseQuestion[Any],
-    *,
-    src: _Sources,
-    transformation: _TransformMany,
-) -> ExprLike | None:
-    """Set ``dest``'s correct answer from other submitted answers.
-
-    ``src`` is one source lens or a tuple of them. Each source is read from
-    its parsed submission, falling back to its raw submission parsed with the
-    source lens's variables. Once every source parses to an expression,
-    ``transformation`` is called with them in ``src`` order. Returning
-    ``False`` from the transformation rejects the sources; numeric zero is a
-    valid answer.
-
-    The derived value is stored as ``str(derived)`` so that number inputs can
-    grade it with their own significant-figure rules.
-
-    Returns:
-        The derived value, or ``None`` when no answer was set.
-    """
-    derived = _derive_answer(src, transformation)
-    if derived is None:
-        return None
-    _store_correct_answer(dest, derived)
-    return derived
-
-
 @overload
 def grade_answer_based_on_another(
     dest: SympyQuestion,
@@ -339,27 +287,30 @@ def grade_answer_based_on_another(
 ) -> bool:
     """Grade ``dest`` against a value derived from other submissions.
 
-    Sources are derived as in :func:`set_answer_based_on_another`. A match
-    proposes full credit and a mismatch proposes zero; the score is written
-    with ``preserve_higher=True``, so an equal or higher existing score keeps
-    its complete record. After a write, ``str(derived)`` becomes the displayed
-    correct answer only if none already exists.
+    ``src`` is one source lens or a tuple of them. Each source is read from
+    its parsed submission, falling back to its raw submission parsed with the
+    source lens's variables. Once every source parses to an expression,
+    ``transformation`` is called with them in ``src`` order. Returning
+    ``False`` from the transformation rejects the sources; numeric zero is a
+    valid derived answer.
+
+    A submission equal to the derived value is awarded full credit with
+    ``feedback``, unless an equal or higher score is already stored, in which
+    case the existing score, weight, and feedback are preserved.
 
     Returns:
         Whether a score was written.
     """
-    submitted = dest.submitted_answer
-    if submitted is None:
+    if dest.submitted_answer is None:
         return False
 
     derived = _derive_answer(src, transformation)
     if derived is None:
         return False
 
-    score = 1.0 if eq(derived, submitted) else 0.0
-    if not dest.set_rich_score(score, feedback=feedback, preserve_higher=True):
-        return False
-
-    if dest.answers_name not in dest.data.setdefault("correct_answers", {}):
-        _store_correct_answer(dest, derived)
-    return True
+    return dest.award_partial_credit(
+        addl_correct_ans=derived,
+        feedback=feedback,
+        include_display_ans=False,
+        preserve_higher=True,
+    )

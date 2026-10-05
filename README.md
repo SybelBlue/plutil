@@ -32,15 +32,15 @@ For a question containing these answer elements:
 ```
 
 ```python
-from plutil import Data, Question, SympyQuestion, plmagic
-from sympy.abc import x
+import sympy
+from plutil import Question, SympyQuestion
 
 
-@plmagic
-def generate(data: Data, *, number: Question, expression: SympyQuestion):
-    data.params["prompt"] = "Enter the meaning of life."
-    number.correct_answer = 42
-    expression.correct_answer = x**2 + 1
+def parse(data):
+    approximation = SympyQuestion(data, "approximation")
+    if isinstance(value := approximation.submitted_answer, sympy.Expr):
+        actual = float(data["params"]["actual"])
+        Question(data, "error").correct_answer = str(abs(value - actual))
 ```
 
 Generate `__plmagic_types__.py` beside every Python file using `@plmagic`
@@ -495,29 +495,22 @@ Linear equations use SymPy's dedicated linear solver.
 Other equations fall back to the general solver.
 The function raises `ValueError` rather than choosing a branch when an equation has zero or multiple solutions.
 
-### `set_answer_based_on_another(dest, *, src, transformation) -> ExprLike | None`
-
-Derive an answer from earlier submissions and store it as `dest`'s correct
-answer. `src` is one `SympyQuestion` lens or a tuple of them; `dest` can be any
-answer lens. Each source is read from its parsed submission, falling back to
-its raw submission parsed with that lens's `variables`. Once every source is a
-SymPy expression, `transformation` is called with them in `src` order.
-
-If any source is missing, unparsable, or not an expression, nothing is changed
-and `None` is returned. The transformation can also return the literal `False`
-to reject the sources; numeric and SymPy zero are valid derived answers. The
-derived value is stored as `str(derived)`, so number inputs can grade it with
-their own significant-figure rules.
-
 ### `grade_answer_based_on_another(dest, *, src, transformation, feedback=DEFAULT_FEEDBACK) -> bool`
 
-Grade follow-through work: compare `dest`'s submission with a value derived
-from other submissions as above, using `eq`. A match proposes full credit and a
-mismatch proposes zero, written with `set_rich_score(..., preserve_higher=True)`
-and `feedback`. An equal or higher existing score, including native grading,
-keeps its complete record; a winning score keeps any existing weight. After a
-write, `str(derived)` is shown as the correct answer only if `dest` has none.
-Returns whether a score was written.
+Give follow-through credit when `dest`'s submission matches a value derived
+from earlier submissions. `src` is one `SympyQuestion` lens or a tuple of them.
+Each source is read from its parsed submission, falling back to its raw
+submission parsed with that lens's `variables`. Once every source is a SymPy
+expression, `transformation` is called with them in `src` order.
+
+If any source is missing, unparsable, or not an expression, or `dest` has no
+submission, nothing is changed. The transformation can also return the literal
+`False` to reject the sources; numeric and SymPy zero are valid derived
+answers. A match is awarded full credit with `feedback` through
+`award_partial_credit(..., preserve_higher=True)`, so an equal or higher
+existing score keeps its complete record and a winning score keeps any existing
+weight. A mismatch writes nothing, and the canonical correct answer is neither
+used nor changed. Returns whether a score was written.
 
 ```python
 from plutil import Data, SympyQuestion, grade_answer_based_on_another, plmagic
@@ -541,6 +534,20 @@ def grade(
             False if x1 == x2 else (y2 - y1) / (x2 - x1)
         ),
     )
+```
+
+To make a number input's correct answer depend on an earlier submission
+instead, set it in `parse` as a string so the element still applies its own
+significant-figure grading:
+
+```python
+from plutil import Data, Question, SympyQuestion, plmagic
+
+
+@plmagic
+def parse(data: Data, *, approximation: SympyQuestion, error: Question):
+    if (value := approximation.submitted_answer) is not None:
+        error.correct_answer = str(abs(value - data.params["actual"]))
 ```
 
 ---
