@@ -6,10 +6,24 @@ import math
 import re
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
-from typing import Any, Final, Literal, Protocol, Self, cast, overload
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Final,
+    Literal,
+    Protocol,
+    Self,
+    cast,
+    overload,
+)
 
 import prairielearn.sympy_utils as psu
 import sympy
+
+from .feedback import UNUSED_ANSWER
+
+if TYPE_CHECKING:
+    from .lenses import BaseQuestion
 
 type ExprLike = sympy.Expr | int | float
 """A SymPy expression or a native number that can be converted to one."""
@@ -559,3 +573,30 @@ def is_trivial(
     return (
         constant_in is not None and _is_trivial_constant_in(parsed, constant_in)
     ) or (min_terms is not None and _is_trivial_min_terms(parsed, min_terms))
+
+
+def give_triviality_feedback(
+    lens: BaseQuestion[Any],
+    value: ExprInput,
+    *,
+    constant_in: OneOrMore[Variable] | None = None,
+    min_terms: int | None = None,
+    simplify: bool = False,
+    feedback: str | None = UNUSED_ANSWER,
+) -> bool:
+    """Set ``feedback`` on ``lens`` when :func:`is_trivial` matches ``value``.
+
+    Takes the same arguments as :func:`is_trivial`, plus the lens to receive
+    the feedback. ``feedback`` defaults to
+    :data:`plutil.feedback.UNUSED_ANSWER`; pass ``None`` to leave the
+    feedback unchanged.
+
+    Returns:
+        Whether ``value`` is trivial.
+    """
+    trivial = is_trivial(
+        value, constant_in=constant_in, min_terms=min_terms, simplify=simplify
+    )
+    if trivial and feedback is not None:
+        lens.feedback = feedback
+    return trivial
