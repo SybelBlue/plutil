@@ -470,3 +470,70 @@ def test_plmagic_rejects_variadic_parameters(fs: FakeFilesystem) -> None:
             """,
             '<pl-number-input answers-name="answer"></pl-number-input>',
         )
+
+
+def test_plmagic_injects_a_checkbox_lens(fs: FakeFilesystem) -> None:
+    server = load_server(
+        fs,
+        """
+        from __future__ import annotations
+
+        from plutil.lenses import CheckboxQuestion, Data
+        from plutil.magic import plmagic
+
+        @plmagic
+        def generate(data: Data, *, boxes: CheckboxQuestion) -> None:
+            data.params["boxes"] = [{"key": "a", "html": "A"}, {"key": "b", "html": "B"}]
+            boxes.correct_answer = ["a"]
+            data.params["boxes_lens_type"] = type(boxes).__name__
+        """,
+        """
+        <pl-checkbox answers-name="boxes">
+          <pl-answer correct="true">A</pl-answer>
+          <pl-answer>B</pl-answer>
+        </pl-checkbox>
+        """,
+    )
+    data = question_data(answers_names={"boxes": True})
+
+    server.generate(data)
+
+    assert data["params"]["boxes_lens_type"] == "CheckboxQuestion"
+    assert data["correct_answers"]["boxes"] == [{"key": "a", "html": "A"}]
+
+
+def test_plmagic_accepts_tag_typed_choice_lenses(fs: FakeFilesystem) -> None:
+    server = load_server(
+        fs,
+        """
+        from typing import Literal
+
+        from plutil.lenses import MultipleChoiceQuestion
+        from plutil.magic import plmagic
+
+        @plmagic
+        def grade(*, choice: MultipleChoiceQuestion[Literal["yes", "no"]]) -> None:
+            choice.data["params"]["chosen"] = choice["yes"]["key"]
+        """,
+        """
+        <pl-multiple-choice answers-name="choice">
+          <pl-answer correct="true">A</pl-answer>
+          <pl-answer>B</pl-answer>
+        </pl-multiple-choice>
+        """,
+    )
+    data = question_data(
+        params={
+            "choice": [{"key": "a", "html": "B"}, {"key": "b", "html": "A"}],
+            "choice_options": [
+                {"text": "A", "tag": "yes"},
+                {"text": "B", "tag": "no"},
+            ],
+        },
+        correct_answers={"choice": {"key": "b"}},
+        answers_names={"choice": True},
+    )
+
+    server.grade(data)
+
+    assert data["params"]["chosen"] == "b"

@@ -1,11 +1,27 @@
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, ClassVar
 
 import pytest
 
+from plutil.lenses import (
+    BaseQuestion,
+    CheckboxQuestion,
+    MultipleChoiceQuestion,
+    Question,
+)
 from plutil.magic.cli import generate_plmagic_type_files, main
+from plutil.magic.element_data import (
+    PlElementData,
+    element_data_registry,
+    get_element_data_type,
+)
 from plutil.magic.type_gen import (
+    AliasSourceBuilder,
+    ChoiceTags,
     DataclassSourceBuilder,
     TypeSourceBuilder,
+    collect_choice_tags,
     write_plmagic_types_file,
 )
 
@@ -141,3 +157,155 @@ def test_write_plmagic_types_file_overwrites_stale_file_with_empty_builders(
     assert "class Preferences(TypedDict):\n    pass" in output_path.read_text(
         encoding="utf-8"
     )
+
+
+CHOICE_SERVER = """
+from plutil import plmagic
+from plutil.choices import Choice, checkbox, multiple_choice
+
+
+@plmagic
+def generate(data):
+    multiple_choice(
+        Choice("proves convergence", tag="converges"),
+        Choice[Outcome]("proves divergence", tag="diverges", feedback="f"),
+        "is inconclusive",
+        correct="converges",
+    ).store(data, "conclusion")
+    boxes = checkbox(Choice("a", tag="p2"), Choice("b", tag="p1"), correct="p2")
+    boxes.store(data, answers_name="p-values")
+    multiple_choice(*[Choice(t, tag=t) for t in "xy"], correct="x").store(data, "dyn")
+    multiple_choice(Choice("a", tag=TAG), "b", correct="b").store(data, "named")
+    multiple_choice(Choice("a", **extra), "b", correct="b").store(data, "splat")
+    multiple_choice("a", "b", correct="a").store(data, "untagged")
+    other.store(data, "unrelated")
+    if flag:
+        multiple_choice(Choice("a", tag="t"), "b", correct="a").store(data, "mixed")
+    else:
+        checkbox(Choice("a", tag="t"), "b", correct="a").store(data, "mixed")
+"""
+
+
+def test_collect_choice_tags_reads_static_store_calls(tmp_path: Path) -> None:
+    source = tmp_path / "server.py"
+    source.write_text(CHOICE_SERVER, encoding="utf-8")
+
+    found = collect_choice_tags([source])
+
+    assert found["conclusion"] == ChoiceTags(
+        MultipleChoiceQuestion, {"converges": None, "diverges": None}
+    )
+    assert found["p-values"] == ChoiceTags(CheckboxQuestion, {"p2": None, "p1": None})
+    assert found["untagged"] == ChoiceTags(MultipleChoiceQuestion)
+    for dynamic in ("dyn", "named", "splat", "mixed"):
+        assert not found[dynamic].complete
+    assert "unrelated" not in found
+
+
+def test_collect_choice_tags_skips_unparsable_sources(tmp_path: Path) -> None:
+    source = tmp_path / "legacy.py"
+    source.write_text("x.store(data, 'a'\n", encoding="utf-8")
+
+    assert collect_choice_tags([source]) == {}
+
+
+def test_write_plmagic_types_file_pipes_tags_to_choice_lenses(tmp_path: Path) -> None:
+    info_json_path = tmp_path / "info.json"
+    info_json_path.write_text("{}", encoding="utf-8")
+    (tmp_path / "server.py").write_text(CHOICE_SERVER, encoding="utf-8")
+
+    assert write_plmagic_types_file(info_json_path)
+    source = (tmp_path / "__plmagic_types__.py").read_text(encoding="utf-8")
+
+    assert (
+        "from plutil.lenses import BaseData, CheckboxQuestion, MultipleChoiceQuestion"
+        in source
+    )
+    assert "ConclusionTag = Literal['converges', 'diverges']" in source
+    assert "ConclusionQuestion = MultipleChoiceQuestion[ConclusionTag]" in source
+    assert "PValuesTag = Literal['p2', 'p1']" in source
+    assert "PValuesQuestion = CheckboxQuestion[PValuesTag]" in source
+    for skipped in ("Dyn", "Named", "Splat", "Mixed", "Untagged"):
+        assert f"{skipped}Tag" not in source
+
+    namespace: dict[str, object] = {}
+    exec(compile(source, "__plmagic_types__.py", "exec"), namespace)  # noqa: S102
+    conclusion_question = namespace["ConclusionQuestion"]
+    assert callable(conclusion_question)
+
+
+def test_choice_alias_names_are_valid_and_distinct(
+    tmp_path: Path,
+) -> None:
+    info_json_path = tmp_path / "info.json"
+    info_json_path.write_text("{}", encoding="utf-8")
+    (tmp_path / "server.py").write_text(
+        "from plutil.choices import Choice, multiple_choice\n"
+        "multiple_choice(Choice('a', tag='a'), 'b', correct='a').store(d, '1st')\n"
+        "multiple_choice(Choice('a', tag='b'), 'b', correct='a').store(d, 'p-values')\n"
+        "multiple_choice(Choice('a', tag='c'), 'b', correct='a').store(d, 'p_values')\n",
+        encoding="utf-8",
+    )
+
+    assert write_plmagic_types_file(info_json_path)
+    source = (tmp_path / "__plmagic_types__.py").read_text(encoding="utf-8")
+
+    assert "Answer1stTag = Literal['a']" in source
+    assert "PValuesTag = Literal['b']" in source
+    assert "PValues2Tag = Literal['c']" in source
+    assert "PValues2Question = MultipleChoiceQuestion[PValues2Tag]" in source
+
+
+def test_preferences_with_non_identifier_keys_use_functional_typed_dict(
+    tmp_path: Path,
+) -> None:
+    info_json_path = tmp_path / "info.json"
+    info_json_path.write_text(
+        '{"preferences": {"my-pref": {"type": "number"}, "class": {"type": "string"}}}',
+        encoding="utf-8",
+    )
+
+    assert write_plmagic_types_file(info_json_path)
+    source = (tmp_path / "__plmagic_types__.py").read_text(encoding="utf-8")
+
+    assert (
+        "Preferences = TypedDict('Preferences', {'my-pref': float, 'class': str})"
+        in source
+    )
+    namespace: dict[str, object] = {}
+    exec(compile(source, "__plmagic_types__.py", "exec"), namespace)  # noqa: S102
+    assert "Data" in namespace
+
+
+def test_non_typed_dict_classes_require_identifier_fields() -> None:
+    builder = DataclassSourceBuilder("Example")
+    builder.add_field("not-valid", "int")
+
+    with pytest.raises(ValueError, match="must be identifiers"):
+        builder.build()
+
+
+def test_alias_source_builder_builds_assignment() -> None:
+    assert AliasSourceBuilder("Tag", "Literal['a']").build() == "Tag = Literal['a']"
+
+
+def test_choice_builders_come_from_the_element_registry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    @dataclass(slots=True, frozen=True)
+    class PlCustomChoiceData(PlElementData):
+        lens_type: ClassVar[type[BaseQuestion[Any]]] = Question
+        choice_builder: ClassVar[str | None] = "custom_choice"
+
+    monkeypatch.setitem(element_data_registry, "pl-custom-choice", PlCustomChoiceData)
+    source = tmp_path / "server.py"
+    source.write_text(
+        "custom_choice(Choice('a', tag='x'), 'b').store(data, 'custom')\n",
+        encoding="utf-8",
+    )
+
+    assert collect_choice_tags([source]) == {
+        "custom": ChoiceTags(Question, {"x": None})
+    }
+    assert get_element_data_type("pl-custom-choice") is PlCustomChoiceData
+    assert get_element_data_type("pl-unknown") is PlElementData

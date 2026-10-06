@@ -1,3 +1,4 @@
+import html
 from collections.abc import (
     Callable,
     ItemsView,
@@ -29,6 +30,7 @@ import prairielearn as pl
 import prairielearn.sympy_utils as psu
 import sympy as sp
 
+from .choices import ChoiceParams, options_param_name
 from .common import (
     LatexableValue,
     OneOrMore,
@@ -555,9 +557,23 @@ class Question(BaseQuestion[object]):
     """A question lens whose parsed answers are arbitrary Python objects."""
 
 
-@dataclass(slots=True)
-class MultipleChoiceQuestion(BaseQuestion[str]):
-    """A typed lens for PrairieLearn's prepared ``pl-multiple-choice`` data."""
+def _normalize_choice_html(value: str) -> str:
+    return html.unescape(value).strip()
+
+
+class _PreparedChoicesMixin[TagT: str = str]:
+    """Shared access to PrairieLearn's prepared, keyed choice options.
+
+    ``pl-multiple-choice`` and ``pl-checkbox`` both replace
+    ``params[answers_name]`` with shuffled ``{key, html, feedback}`` options.
+    ``TagT`` types the semantic tags stored by :mod:`plutil.choices`, so
+    ``question["converges"]`` resolves a tag to its prepared option.
+    """
+
+    __slots__ = ()
+
+    data: pl.QuestionData
+    answers_name: str
 
     @property
     def answer_choices(self) -> tuple[MultipleChoiceOption, ...]:
@@ -580,18 +596,14 @@ class MultipleChoiceQuestion(BaseQuestion[str]):
         keys: set[str] = set()
         for option in options:
             if not isinstance(option, dict):
-                raise TypeError(
-                    "each prepared multiple-choice option must be a mapping"
-                )
+                raise TypeError("each prepared choice option must be a mapping")
             key = option.get("key")
             if not isinstance(key, str) or not key:
                 raise ValueError(
-                    "each prepared multiple-choice option must have a nonempty string key"
+                    "each prepared choice option must have a nonempty string key"
                 )
             if key in keys:
-                raise ValueError(
-                    "prepared multiple-choice option keys must be distinct"
-                )
+                raise ValueError("prepared choice option keys must be distinct")
             keys.add(key)
             choices.append(cast(MultipleChoiceOption, option))
 
@@ -608,6 +620,91 @@ class MultipleChoiceQuestion(BaseQuestion[str]):
             (choice for choice in self.answer_choices if choice["key"] == key),
             None,
         )
+
+    def _authored_options(self, options_param: str | None) -> list[ChoiceParams]:
+        param = (
+            options_param_name(self.answers_name)
+            if options_param is None
+            else options_param
+        )
+        options = self.data.setdefault("params", {}).get(param)
+        if not isinstance(options, list) or not all(
+            isinstance(option, dict) and isinstance(option.get("text"), str)
+            for option in options
+        ):
+            raise TypeError(f"params[{param!r}] must be a stored choice option list")
+        return cast(list[ChoiceParams], options)
+
+    def __getitem__(self, tag: TagT) -> MultipleChoiceOption:
+        """Return the prepared option authored with ``tag``.
+
+        Equivalent to :meth:`choice_for_tag` with the default options param.
+        """
+        return self.choice_for_tag(tag)
+
+    def choice_for_tag(
+        self, tag: TagT, *, options_param: str | None = None
+    ) -> MultipleChoiceOption:
+        """Return the prepared option authored with ``tag``.
+
+        Tags are resolved through the entries stored by
+        :meth:`plutil.choices.ChoiceSet.store`, matching option text against
+        the prepared HTML.
+
+        Raises:
+            TypeError: If the stored or prepared options are malformed.
+            KeyError: If no stored option carries ``tag``.
+            LookupError: If PrairieLearn did not display the tagged option.
+            ValueError: If several prepared options match the tagged text.
+        """
+        text = next(
+            (
+                option["text"]
+                for option in self._authored_options(options_param)
+                if option.get("tag") == tag
+            ),
+            None,
+        )
+        if text is None:
+            raise KeyError(f"no stored choice option has tag {tag!r}")
+        target = _normalize_choice_html(text)
+        matches = [
+            choice
+            for choice in self.answer_choices
+            if _normalize_choice_html(choice.get("html", "")) == target
+        ]
+        if not matches:
+            raise LookupError(f"the option tagged {tag!r} was not displayed")
+        if len(matches) > 1:
+            raise ValueError(f"several prepared options match the tag {tag!r}")
+        return matches[0]
+
+    def tag_of(
+        self,
+        choice: str | MultipleChoiceOption,
+        *,
+        options_param: str | None = None,
+    ) -> TagT | None:
+        """Return the tag authored for a prepared option key or mapping."""
+        option = self.get_choice(choice) if isinstance(choice, str) else choice
+        if option is None:
+            return None
+        rendered = _normalize_choice_html(option.get("html", ""))
+        return next(
+            (
+                cast(TagT | None, authored.get("tag"))
+                for authored in self._authored_options(options_param)
+                if _normalize_choice_html(authored["text"]) == rendered
+            ),
+            None,
+        )
+
+
+@dataclass(slots=True)
+class MultipleChoiceQuestion[TagT: str = str](
+    _PreparedChoicesMixin[TagT], BaseQuestion[str]
+):
+    """A typed lens for PrairieLearn's prepared ``pl-multiple-choice`` data."""
 
     @property
     def correct_choice(self) -> MultipleChoiceOption:
@@ -659,6 +756,15 @@ class MultipleChoiceQuestion(BaseQuestion[str]):
         """Return the submitted prepared option, if its key is valid."""
         submitted = self.submitted_answer
         return self.get_choice(submitted) if submitted else None
+
+    def submitted_tag(self, *, options_param: str | None = None) -> TagT | None:
+        """Return the tag authored for the submitted option, if any."""
+        submitted = self.submitted_choice
+        return (
+            None
+            if submitted is None
+            else self.tag_of(submitted, options_param=options_param)
+        )
 
     def award_credit_for(
         self,
@@ -743,6 +849,76 @@ class MultipleChoiceQuestion(BaseQuestion[str]):
             credited_keys.add(key)
 
         return frozenset(credited_keys)
+
+
+@dataclass(slots=True)
+class CheckboxQuestion[TagT: str = str](
+    _PreparedChoicesMixin[TagT], BaseQuestion[list[str]]
+):
+    """A typed lens for PrairieLearn's prepared ``pl-checkbox`` data."""
+
+    @property
+    def correct_choices(self) -> tuple[MultipleChoiceOption, ...]:
+        """Return the prepared correct options.
+
+        Raises:
+            TypeError: If the correct answers are not a list of option mappings.
+            ValueError: If a correct key does not identify an option.
+        """
+        correct = self.data.setdefault("correct_answers", {}).get(self.answers_name)
+        if not isinstance(correct, list):
+            raise TypeError(
+                f"correct_answers[{self.answers_name!r}] must be a keyed-answer list"
+            )
+        choices: list[MultipleChoiceOption] = []
+        for answer in correct:
+            key = answer.get("key") if isinstance(answer, dict) else None
+            if not isinstance(key, str) or (choice := self.get_choice(key)) is None:
+                raise ValueError(
+                    f"correct_answers[{self.answers_name!r}] keys must match option keys"
+                )
+            choices.append(choice)
+        return tuple(choices)
+
+    @property
+    def correct_answer(self) -> list[str]:
+        """Return the correct option keys."""
+        return [choice["key"] for choice in self.correct_choices]
+
+    @correct_answer.setter
+    def correct_answer(self, value: list[str]) -> None:
+        """Select existing prepared options as the correct answers."""
+        choices = [self.get_choice(key) for key in value]
+        if any(choice is None for choice in choices):
+            raise ValueError("every correct answer key must match an option key")
+        self.data.setdefault("correct_answers", {})[self.answers_name] = choices
+
+    @property
+    def submitted_answer(self) -> list[str] | None:
+        """Return the submitted option keys, or ``None`` for a non-list value."""
+        submitted = self.data.setdefault("submitted_answers", {}).get(self.answers_name)
+        if not isinstance(submitted, list) or not all(
+            isinstance(key, str) for key in submitted
+        ):
+            return None
+        return submitted
+
+    @property
+    def submitted_choices(self) -> tuple[MultipleChoiceOption, ...]:
+        """Return the valid submitted prepared options in submission order."""
+        return tuple(
+            choice
+            for key in self.submitted_answer or ()
+            if (choice := self.get_choice(key)) is not None
+        )
+
+    def submitted_tags(self, *, options_param: str | None = None) -> tuple[TagT, ...]:
+        """Return the tags authored for the submitted options, skipping untagged ones."""
+        return tuple(
+            tag
+            for choice in self.submitted_choices
+            if (tag := self.tag_of(choice, options_param=options_param)) is not None
+        )
 
 
 @dataclass(slots=True)
