@@ -9,6 +9,7 @@ from sympy.abc import n, t, x, y
 
 import plutil.common as common_mod
 from plutil.common import (
+    give_triviality_feedback,
     eq,
     getrec,
     is_trivial,
@@ -77,6 +78,26 @@ def test_is_trivial(checks, expected):
 )
 def test_is_trivial_constant_in_multiple_variables(value, expected):
     assert is_trivial(value, constant_in=(x, y)) is expected
+
+
+def test_give_triviality_feedback_sets_feedback_only_when_trivial():
+    lens = Question(question_data(), "answer")
+
+    assert give_triviality_feedback(lens, x**2 + 1, constant_in=x) is False
+    assert lens.feedback is None
+
+    assert give_triviality_feedback(lens, x**2 + 1, constant_in=y) is True
+    assert lens.feedback == (
+        "Your answer was not used in the calculation of later values."
+    )
+
+    assert (
+        give_triviality_feedback(lens, x, min_terms=2, feedback="Too simple.") is True
+    )
+    assert lens.feedback == "Too simple."
+
+    assert give_triviality_feedback(lens, x, min_terms=2, feedback=None) is True
+    assert lens.feedback == "Too simple."
 
 
 def test_is_trivial_can_simplify_before_checking():

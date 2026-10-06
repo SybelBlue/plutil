@@ -9,11 +9,19 @@ Import as a module and pass the result anywhere ``feedback`` is accepted::
 
 from __future__ import annotations
 
-from .common import Variable, var_name
+from typing import TYPE_CHECKING, Final
+
+if TYPE_CHECKING:
+    from .common import Variable
+
+UNUSED_ANSWER: Final = "Your answer was not used in the calculation of later values."
+"""Feedback for a trivial answer that later parts did not build on."""
 
 
 def missing_constant(C: Variable = "C") -> str:
     """Feedback for an antiderivative that is correct except for its constant."""
+    from .common import var_name  # common imports this module
+
     return (
         "Your answer is correct up to an additive constant. "
         f"Include {var_name(C)} for full credit."
