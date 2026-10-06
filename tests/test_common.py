@@ -9,9 +9,9 @@ from sympy.abc import n, t, x, y
 
 import plutil.common as common_mod
 from plutil.common import (
-    give_triviality_feedback,
     eq,
     getrec,
+    give_triviality_feedback,
     is_trivial,
     json_to_sympy,
     latex,
