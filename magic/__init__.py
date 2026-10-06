@@ -6,7 +6,8 @@ from .decorator import (
 )
 from .element_data import (
     get_data_factory,
-    register_data_factory,
+    get_element_data_type,
+    register_element_data,
 )
 from .errors import (
     PlMagicError,
@@ -18,8 +19,9 @@ from .type_gen import (
 __all__ = [
     "PlMagicError",
     "get_data_factory",
+    "get_element_data_type",
     "main",
     "plmagic",
-    "register_data_factory",
+    "register_element_data",
     "write_plmagic_types_file",
 ]

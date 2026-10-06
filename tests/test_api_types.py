@@ -1,4 +1,4 @@
-from typing import assert_type
+from typing import Literal, assert_type
 
 import prairielearn as pl
 import prairielearn.sympy_utils as psu
@@ -7,6 +7,9 @@ import sympy
 from sympy.abc import x
 
 from plutil import (
+    CheckboxQuestion,
+    Choice,
+    ChoiceSet,
     ExprInput,
     ExprLike,
     MultipleChoiceOption,
@@ -23,6 +26,7 @@ from plutil import (
     to_expr,
 )
 from plutil.calculus import approximate_area, derivative, integrate
+from plutil.choices import checkbox, multiple_choice
 from plutil.common import _to_expr_input, _to_set_input, eq, str_to_sympy
 from plutil.functions import eval_at, evalf_at
 
@@ -135,3 +139,57 @@ def test_input_types_reject_sympy_json_with_the_wrong_value_kind() -> None:
 
     with pytest.raises(TypeError, match="Expected a set"):
         _to_set_input(expr_json)
+
+
+type Outcome = Literal["converges", "diverges"]
+
+
+def test_choice_sets_keep_their_tag_type() -> None:
+    tagged = multiple_choice(
+        Choice[Outcome]("proves convergence", tag="converges"),
+        Choice[Outcome]("proves divergence", tag="diverges"),
+        correct="converges",
+    )
+
+    assert_type(tagged, ChoiceSet[Outcome])
+    assert_type(tagged.get_tag("diverges").tag, Outcome | None)
+    assert_type(multiple_choice("a", "b", correct="a"), ChoiceSet[str])
+    assert_type(checkbox("a", "b", correct=["a"]), ChoiceSet[str])
+
+
+def test_checkbox_lens_has_typed_answers() -> None:
+    data: pl.QuestionData
+    data = {  # pyright: ignore[reportAssignmentType]
+        "params": {"answer": [{"key": "a"}, {"key": "b"}]},
+        "correct_answers": {"answer": [{"key": "a"}]},
+        "submitted_answers": {"answer": ["b"]},
+    }
+
+    question = CheckboxQuestion(data, "answer")
+
+    assert_type(question.correct_answer, list[str])
+    assert_type(question.correct_choices, tuple[MultipleChoiceOption, ...])
+    assert_type(question.submitted_answer, list[str] | None)
+    assert_type(question.submitted_choices, tuple[MultipleChoiceOption, ...])
+
+
+def test_choice_lenses_type_their_tags() -> None:
+    data: pl.QuestionData
+    data = {  # pyright: ignore[reportAssignmentType]
+        "params": {
+            "answer": [{"key": "a", "html": "yes"}],
+            "answer_options": [{"text": "yes", "tag": "converges"}],
+        },
+        "submitted_answers": {"answer": "a"},
+    }
+
+    question = MultipleChoiceQuestion[Outcome](data, "answer")
+    boxes = CheckboxQuestion[Outcome](data, "answer")
+
+    assert_type(question["converges"], MultipleChoiceOption)
+    assert_type(question.submitted_tag(), Outcome | None)
+    assert_type(question.tag_of("a"), Outcome | None)
+    assert_type(boxes.submitted_tags(), tuple[Outcome, ...])
+    assert_type(MultipleChoiceQuestion(data, "answer").submitted_tag(), str | None)
+    with pytest.raises(KeyError):
+        _ = question["oscillates"]  # pyright: ignore[reportArgumentType]

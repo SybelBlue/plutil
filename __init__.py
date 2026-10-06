@@ -1,11 +1,16 @@
 from typing import Final
 
-from . import fabc, feedback, rand
+from . import choices, fabc, feedback, rand
 from .assumptions import (
     AssumptionsTypedDict,
     check,
     is_finite_integer,
     is_finite_real_number,
+)
+from .choices import (
+    Choice,
+    ChoiceParams,
+    ChoiceSet,
 )
 from .common import (
     ExprInput,
@@ -41,6 +46,7 @@ from .functions import (
     rearrange_eqn,
 )
 from .lenses import (
+    CheckboxQuestion,
     Data,
     MultipleChoiceOption,
     MultipleChoiceQuestion,
@@ -65,6 +71,10 @@ from .symbolic_decimals import parse_symbolic_decimals
 
 __all__: Final[tuple[str, ...]] = (
     "AssumptionsTypedDict",
+    "CheckboxQuestion",
+    "Choice",
+    "ChoiceParams",
+    "ChoiceSet",
     "Data",
     "ExprInput",
     "ExprLike",
@@ -82,6 +92,7 @@ __all__: Final[tuple[str, ...]] = (
     "SympyValue",
     "award_partial_credit",
     "check",
+    "choices",
     "give_triviality_feedback",
     "clamp",
     "count_in_latex",
