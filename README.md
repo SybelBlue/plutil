@@ -68,7 +68,7 @@ multiple_choice(
 ).store(data, "conclusion")
 
 # __plmagic_types__.py (generated)
-ConclusionTag = Literal['converges', 'diverges']
+ConclusionTag = Literal["converges", "diverges"]
 ConclusionQuestion = MultipleChoiceQuestion[ConclusionTag]
 ```
 
