@@ -270,7 +270,7 @@ def to_expr(expr: ParsableValue, variables: OneOrMore[Variable] = ()) -> SympyVa
         >>> to_expr("2*x + 1", variables="x")
         2*x + 1
         >>> type(to_expr(0.5))
-        <class sympy.Float>
+        <class 'sympy.core.numbers.Float'>
 
     Args:
         expr: A string, number, SymPy expression or set, or PrairieLearn
