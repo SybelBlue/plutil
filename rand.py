@@ -5,9 +5,18 @@ import random as base
 from collections.abc import Callable, Sequence
 from functools import wraps
 from math import prod
-from typing import Literal
+from typing import Any, Literal
 
+import numpy as np
 import sympy
+from sympy.sets.fancysets import (
+    Complexes,
+    Integers,
+    Naturals,
+    Naturals0,
+    Rationals,
+    Reals,
+)
 
 from .common import (
     ExprLike,
@@ -529,5 +538,140 @@ def coprimes_[T: ExprLike](
 
     def generate() -> tuple[ExprLike, ...]:
         return coprimes(primes, samples=samples)
+
+    return generate
+
+
+type Domain = (
+    sympy.Interval | Complexes | Reals | Integers | Naturals | Naturals0 | Rationals
+)
+
+# The larger this is, the closer to +/-inf random samples of Reals will go.
+# (roughly interpretable as the variance around 0)
+_SAMPLE_DIST_SCALE = 16.0
+
+
+def in_domain(
+    domain: Domain,
+    *,
+    k: py.int = 1,
+    rng: np.random.Generator | None = None,
+) -> np.ndarray[Any, Any]:
+    """Return ``k`` random samples from ``domain`` as a NumPy array.
+
+    Unbounded sets are sampled from distributions centered on ``0`` whose
+    spread is controlled by ``_SAMPLE_DIST_SCALE``; half-unbounded intervals
+    are sampled exponentially away from their finite endpoint; bounded
+    intervals are sampled uniformly. Open endpoints are never returned.
+
+    Args:
+        domain: SymPy set or interval to sample from.
+        k: Number of samples.
+        rng: NumPy generator to draw from. Defaults to a generator seeded from
+            :mod:`random`, so seeding it also makes samples reproducible.
+
+    Raises:
+        TypeError: If ``domain`` is not a supported set.
+
+    Examples:
+        Sample values from an open interval using a seeded generator:
+
+        >>> import numpy as np
+        >>> import sympy as sp
+        >>> from plutil.rand import in_domain
+        >>> samples = in_domain(
+        ...     sp.Interval.open(-1, 1),
+        ...     k=4,
+        ...     rng=np.random.default_rng(42),
+        ... )
+        >>> samples.shape
+        (4,)
+        >>> np.all((-1 < samples) & (samples < 1)).item()
+        True
+    """
+    if rng is None:
+        rng = np.random.default_rng(base.getrandbits(128))
+    geometric_probability = 1 / (_SAMPLE_DIST_SCALE + 1)
+
+    if domain is sympy.Naturals:
+        return rng.geometric(geometric_probability, k)
+
+    if domain is sympy.Naturals0:
+        return rng.geometric(geometric_probability, k) - 1
+
+    if domain is sympy.Integers:
+        return np.floor(rng.normal(0, _SAMPLE_DIST_SCALE, k)).astype(np.int64)
+
+    if domain is sympy.Rationals:
+        return in_domain(sympy.Integers, k=k, rng=rng) / in_domain(
+            sympy.Naturals, k=k, rng=rng
+        )
+
+    if domain is sympy.Complexes:
+        return rng.normal(0, _SAMPLE_DIST_SCALE, k) + 1j * rng.normal(
+            0, _SAMPLE_DIST_SCALE, k
+        )
+
+    if domain is sympy.Reals:
+        return rng.normal(0, _SAMPLE_DIST_SCALE, k)
+
+    if not isinstance(domain, sympy.Interval):
+        raise TypeError(f"Unsupported domain type {type(domain)}")
+
+    a, b = domain.start, domain.end
+    if a == -sympy.oo and b == sympy.oo:
+        return rng.normal(0, _SAMPLE_DIST_SCALE, k)
+
+    if a == -sympy.oo:
+        b_float = float(b)  # type: ignore
+        samples = b_float - rng.exponential(_SAMPLE_DIST_SCALE, k)
+        if domain.right_open:
+            np.minimum(samples, np.nextafter(b_float, -np.inf), out=samples)
+        return samples
+
+    if b == sympy.oo:
+        a_float = float(a)  # type: ignore
+        samples = a_float + rng.exponential(_SAMPLE_DIST_SCALE, k)
+        if domain.left_open:
+            np.maximum(samples, np.nextafter(a_float, np.inf), out=samples)
+        return samples
+
+    a_float = float(a)  # type: ignore
+    b_float = float(b)  # type: ignore
+    t = rng.random(k)
+    samples = (1 - t) * a_float + t * b_float
+    if domain.left_open:
+        np.maximum(samples, np.nextafter(a_float, b_float), out=samples)
+    if domain.right_open:
+        np.minimum(samples, np.nextafter(b_float, a_float), out=samples)
+    return samples
+
+
+def in_domain_(
+    domain: Domain,
+    k: py.int = 1,
+    *,
+    rng: np.random.Generator | None = None,
+) -> Callable[[], np.ndarray[Any, Any]]:
+    """Return a zero-argument callable that evaluates :func:`in_domain`.
+
+    No samples are drawn until the returned callable is invoked. Each
+    invocation draws ``k`` new samples using the supplied arguments.
+
+    Examples:
+        >>> import numpy as np
+        >>> import sympy as sp
+        >>> from plutil.rand import in_domain_
+        >>> sample_integers = in_domain_(
+        ...     sp.Integers,
+        ...     3,
+        ...     rng=np.random.default_rng(42),
+        ... )
+        >>> sample_integers().shape
+        (3,)
+    """
+
+    def generate() -> np.ndarray[Any, Any]:
+        return in_domain(domain, k=k, rng=rng)
 
     return generate
