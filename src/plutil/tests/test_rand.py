@@ -1,5 +1,6 @@
 from typing import Any
 
+import numpy as np
 import pytest
 import sympy
 
@@ -526,4 +527,136 @@ def test_randcoprimes_factory_delays_and_repeats_evaluation(
     assert calls == [
         ((2, 3, 5), (1, 2)),
         ((2, 3, 5), (1, 2)),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("domain", "kind", "minimum"),
+    [
+        (sympy.Naturals, "integer", 1),
+        (sympy.Naturals0, "integer", 0),
+        (sympy.Integers, "integer", None),
+        (sympy.Rationals, "real", None),
+        (sympy.Reals, "real", None),
+        (sympy.Complexes, "complex", None),
+    ],
+)
+def test_in_domain_samples_supported_number_sets(
+    domain: rand.Domain,
+    kind: str,
+    minimum: int | None,
+) -> None:
+    samples = rand.in_domain(domain, k=100, rng=np.random.default_rng(1234))
+
+    assert samples.shape == (100,)
+    assert np.all(np.isfinite(samples))
+    if kind == "integer":
+        assert np.issubdtype(samples.dtype, np.integer)
+    elif kind == "real":
+        assert np.isrealobj(samples)
+    else:
+        assert np.iscomplexobj(samples)
+    if minimum is not None:
+        assert np.all(samples >= minimum)
+
+
+@pytest.mark.parametrize(
+    "domain",
+    [
+        sympy.Interval(-sympy.oo, 3),
+        sympy.Interval(-sympy.oo, 3, right_open=True),
+        sympy.Interval(-2, sympy.oo),
+        sympy.Interval(-2, sympy.oo, left_open=True),
+        sympy.Interval(-2, 3),
+        sympy.Interval.open(-2, 3),
+    ],
+)
+def test_in_domain_samples_stay_in_intervals(domain: sympy.Interval) -> None:
+    samples = rand.in_domain(domain, k=100, rng=np.random.default_rng(1234))
+
+    assert samples.shape == (100,)
+    assert all(value in domain for value in samples)
+
+
+class _EndpointRng:
+    def random(self, size: int) -> np.ndarray[Any, Any]:
+        assert size == 2
+        return np.array([0.0, 1.0])
+
+    def exponential(self, scale: float, size: int) -> np.ndarray[Any, Any]:
+        assert scale == rand._SAMPLE_DIST_SCALE
+        return np.zeros(size)
+
+
+def test_in_domain_excludes_open_finite_endpoints() -> None:
+    samples = rand.in_domain(
+        sympy.Interval.open(-2, 3),
+        k=2,
+        rng=_EndpointRng(),  # type: ignore[arg-type]
+    )
+
+    assert np.array_equal(
+        samples,
+        np.array([np.nextafter(-2.0, 3.0), np.nextafter(3.0, -2.0)]),
+    )
+
+
+@pytest.mark.parametrize(
+    ("domain", "expected"),
+    [
+        (sympy.Interval(-sympy.oo, 3, right_open=True), np.nextafter(3.0, -np.inf)),
+        (sympy.Interval(-2, sympy.oo, left_open=True), np.nextafter(-2.0, np.inf)),
+    ],
+)
+def test_in_domain_excludes_open_half_bounded_endpoint(
+    domain: sympy.Interval,
+    expected: float,
+) -> None:
+    samples = rand.in_domain(domain, k=1, rng=_EndpointRng())  # type: ignore[arg-type]
+
+    assert samples == pytest.approx([expected])
+
+
+def test_in_domain_seeds_default_generator_from_random_module(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        rand.base, "getrandbits", lambda bits: 1234 if bits == 128 else 0
+    )
+
+    actual = rand.in_domain(sympy.Reals, k=4)
+    expected = rand.in_domain(sympy.Reals, k=4, rng=np.random.default_rng(1234))
+
+    assert np.array_equal(actual, expected)
+
+
+def test_in_domain_rejects_unsupported_sets() -> None:
+    with pytest.raises(TypeError, match="Unsupported domain type"):
+        rand.in_domain(sympy.FiniteSet(1, 2), rng=np.random.default_rng(1234))  # type: ignore[arg-type]
+
+
+def test_in_domain_factory_delays_and_repeats_evaluation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[object, int, object]] = []
+    rng = np.random.default_rng(1234)
+
+    def fake_in_domain(
+        domain: object,
+        *,
+        k: int,
+        rng: object,
+    ) -> np.ndarray[Any, Any]:
+        calls.append((domain, k, rng))
+        return np.array([len(calls)])
+
+    monkeypatch.setattr(rand, "in_domain", fake_in_domain)
+    generate = rand.in_domain_(sympy.Integers, 3, rng=rng)
+
+    assert calls == []
+    assert np.array_equal(generate(), np.array([1]))
+    assert np.array_equal(generate(), np.array([2]))
+    assert calls == [
+        (sympy.Integers, 3, rng),
+        (sympy.Integers, 3, rng),
     ]
