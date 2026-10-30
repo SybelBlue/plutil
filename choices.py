@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict
 
 import prairielearn as pl
 
-from .common import OneOrMore, _normalize_one_or_more
+from .common import OneOrMore, _normalize_one_or_more, mbool
 
 if TYPE_CHECKING:
     from .lenses import BaseData
@@ -151,7 +151,7 @@ def _attr(name: str, value: str) -> str:
 
 
 def _choice_params(choice: Choice[Any]) -> ChoiceParams:
-    correct: Literal["true", "false"] = "true" if choice.correct else "false"
+    correct = mbool(choice.correct)
     attrs = [_attr("correct", correct)]
     entry: ChoiceParams = {"text": choice.text, "correct": correct, "attrs": ""}
     if choice.feedback is not None:

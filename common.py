@@ -54,6 +54,11 @@ spint: Final[type[sympy.Integer]] = sympy.Integer
 """Ergonomics type. Alias for :class:`sympy.Integer`"""
 
 
+def mbool(value: Any) -> Literal["true", "false"]:
+    """Return a mustache boolean string from the truthiness of ``value``."""
+    return "true" if value else "false"
+
+
 def truncate_to_significant_digits(value: NumberLike, digits: int) -> float:
     """Truncate a real number toward zero to ``digits`` significant digits."""
     if digits < 1:

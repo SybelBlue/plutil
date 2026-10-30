@@ -16,6 +16,7 @@ from plutil.common import (
     json_to_sympy,
     latex,
     lim_latex,
+    mbool,
     setrec,
     sign,
     spint,
@@ -31,6 +32,22 @@ def test_spint_constructs_an_exact_sympy_integer():
 
     assert isinstance(value, sympy.Integer)
     assert value / 2 == sympy.Rational(3, 2)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (True, "true"),
+        (1, "true"),
+        ("false", "true"),
+        (False, "false"),
+        (0, "false"),
+        ("", "false"),
+        (None, "false"),
+    ],
+)
+def test_mustache_bool_uses_python_truthiness(value: object, expected: str):
+    assert mbool(value) == expected
 
 
 @pytest.mark.parametrize(("value", "expected"), [(3.9, 3), (-3.9, -3)])
