@@ -223,6 +223,58 @@ lens.set_rich_score(
 )
 ```
 
+### `BigOperatorQuestion`
+
+`BigOperatorQuestion` is the typed lens for `pl-big-operator-input`. Its
+`correct_answer` and `submitted_answer` properties decode PrairieLearn's
+versioned JSON representation into dictionaries whose mathematical fields are
+SymPy objects. Assigning `correct_answer` accepts either a decoded big operator
+or the JSON returned by `prairielearn.big_operator_utils.big_operator_to_json`.
+A `pl-big-operator-input` parameter injected by `@plmagic` automatically
+receives this lens.
+
+The lens can be specialized with the decoded answer variant. This makes
+variant-specific component properties visible to static type checkers:
+
+- `BigOperatorQuestion[pbo.BigBoundsOperator]` has `lower` and `upper`;
+- `BigOperatorQuestion[pbo.BigDomainOperator]` has `domain`; and
+- `BigOperatorQuestion[pbo.BigApproachesOperator]` has `target` and
+  `direction`.
+
+Every variant also has writable `operator`, `index`, and `body` properties and
+a read-only `indexing` property. Component setters validate and re-encode the
+complete correct answer, leaving the stored answer unchanged if the new
+component would make it invalid. Use `submitted_answer` to read submitted
+components.
+
+```python
+import prairielearn.big_operator_utils as pbo
+import sympy
+
+from plutil import BigOperatorQuestion
+
+k = sympy.Symbol("k", integer=True)
+series = BigOperatorQuestion[pbo.BigBoundsOperator](data, "series")
+series.correct_answer = pbo.big_operator_to_json(
+    operator="Sum",
+    indexing="bounds",
+    index=k,
+    lower=1,
+    upper=10,
+    body=k**2,
+)
+series.upper = 12
+series.body = k**3
+
+submitted = series.submitted_answer
+if submitted is not None:
+    submitted_body = submitted["body"]
+```
+
+Use `unparsed_correct_answer` when the persisted JSON representation is
+needed directly. The standard score, weight, feedback, and format-error APIs
+remain available through `BaseQuestion`.
+
 ### `MultipleChoiceQuestion`
 
 `MultipleChoiceQuestion` extends the standard `BaseQuestion[str]` lens for
