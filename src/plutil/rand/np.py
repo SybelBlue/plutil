@@ -2,6 +2,8 @@
 
 import builtins as py
 from collections.abc import Callable, Iterable, Sequence
+from functools import wraps
+from inspect import signature
 from math import prod
 from typing import cast
 
@@ -15,6 +17,24 @@ type Shape = py.int | tuple[py.int, ...]
 """Shape accepted by the array-valued random generators."""
 
 _MBOOL_DTYPE: _np.dtype[_np.str_] = _np.dtype("<U5")
+
+
+def _wraps_scalar[**P, R](
+    scalar_generator: Callable[..., object],
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    """Link an array generator to its scalar source without hiding ``size``."""
+
+    def decorate(array_generator: Callable[P, R]) -> Callable[P, R]:
+        array_signature = signature(array_generator)
+        wrapped = wraps(
+            scalar_generator,
+            assigned=("__name__", "__qualname__"),
+            updated=(),
+        )(array_generator)
+        wrapped.__signature__ = array_signature  # type: ignore[attr-defined]
+        return wrapped
+
+    return decorate
 
 
 def _array[DType: _np.generic](
@@ -41,6 +61,7 @@ def _rng(rng: _np.random.Generator | None) -> _np.random.Generator:
     return _np.random.default_rng(_core.base.getrandbits(128))
 
 
+@_wraps_scalar(_core.bool)
 def bool(
     odds: py.float = 50.0,
     *,
@@ -50,6 +71,7 @@ def bool(
     return _array(factory(_core.bool, odds), size=size, dtype=_np.bool_)
 
 
+@_wraps_scalar(_core.mbool)
 def mbool(
     odds: py.float = 50.0,
     *,
@@ -59,6 +81,7 @@ def mbool(
     return _array(factory(_core.mbool, odds), size=size, dtype=_MBOOL_DTYPE)
 
 
+@_wraps_scalar(_core.sign)
 def sign(
     odds: py.float = 50.0,
     *,
@@ -68,6 +91,7 @@ def sign(
     return _array(factory(_core.sign, odds), size=size, dtype=_np.int8)
 
 
+@_wraps_scalar(_core.int)
 def int(
     low: py.int,
     high: py.int,
@@ -91,6 +115,7 @@ def int(
     return _array(generate, size=size, dtype=_np.int64)
 
 
+@_wraps_scalar(_core.float)
 def float(
     low: py.float,
     high: py.float,
@@ -114,6 +139,7 @@ def float(
     return _array(generate, size=size, dtype=_np.float64)
 
 
+@_wraps_scalar(_core.complex)
 def complex(
     low: py.complex,
     high: py.complex,

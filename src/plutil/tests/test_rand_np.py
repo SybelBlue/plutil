@@ -1,3 +1,4 @@
+import inspect
 from collections.abc import Callable
 from typing import Any
 
@@ -143,3 +144,13 @@ def test_array_size_rejects_negative_dimensions(size: rand.np.Shape) -> None:
 def test_generic_and_structured_generators_are_not_mirrored_yet() -> None:
     assert not hasattr(rand.np, "choice")
     assert not hasattr(rand.np, "coprimes")
+
+
+def test_scalar_mirrors_preserve_source_metadata_and_array_signatures() -> None:
+    assert inspect.unwrap(rand.np.int) is rand.int
+    assert rand.np.int.__module__ == "plutil.rand.np"
+    assert (
+        inspect.signature(rand.np.int).parameters["size"].kind
+        is inspect.Parameter.KEYWORD_ONLY
+    )
+    assert inspect.unwrap(rand.np.normal) is rand.np.normal
