@@ -719,6 +719,10 @@ Import the random helpers as a module and call them through the `rand`
 namespace:
 
 ```python
+from fractions import Fraction
+
+import sympy
+
 from plutil import rand
 ```
 
@@ -779,6 +783,36 @@ Choose an integer from an inclusive arithmetic progression. Use `exclude` or
 a = rand.int(2, 12, exclude=(4, 8), step=2)
 ```
 
+### `rand.float(low, high, *, exclude=(), exclude_if=None, step=1.0, randsign=False) -> float`
+
+Choose a float using the same inclusive arithmetic-progression rules as
+`rand.int`. A fractional `step` provides evenly spaced decimal candidates.
+
+```python
+measurement = rand.float(0.5, 2.0, step=0.25, exclude=(1.0,))
+```
+
+### `rand.complex(low, high, *, exclude=(), exclude_if=None, step=1, randsign=False) -> complex`
+
+Choose a complex value from a straight-line arithmetic progression. The
+values must satisfy `(high - low) / step >= 0` with a real quotient.
+
+```python
+z = rand.complex(0j, 3 + 6j, step=1 + 2j)
+```
+
+### `rand.rational(low, high, *, exclude=(), exclude_if=None, step=1, randsign=False) -> Fraction`
+
+Choose an exact `fractions.Fraction` using the same progression rules.
+
+```python
+ratio = rand.rational(
+    Fraction(1, 4),
+    Fraction(3, 4),
+    step=Fraction(1, 4),
+)
+```
+
 ### `rand.spint(low, high, *, exclude=(), exclude_if=None, step=1, randsign=False) -> sympy.Integer`
 
 Choose a value using the same rules as `rand.int`, but return it as an exact
@@ -786,6 +820,18 @@ SymPy `Integer` for use in symbolic expressions.
 
 ```python
 coefficient = rand.spint(-5, 5, exclude=(0,))
+```
+
+### `rand.sprational(low, high, *, exclude=(), exclude_if=None, step=1, randsign=False) -> sympy.Rational`
+
+Choose an exact SymPy `Rational` using the same progression rules.
+
+```python
+ratio = rand.sprational(
+    sympy.Rational(1, 4),
+    sympy.Rational(3, 4),
+    step=sympy.Rational(1, 4),
+)
 ```
 
 ### `rand.poly(...) -> Expr`
@@ -840,7 +886,19 @@ next_choices = rand.choices_(
     k=2,
 )
 next_integer = rand.int_(1, 10)
+next_float = rand.float_(0.0, 1.0, step=0.1)
+next_complex = rand.complex_(0j, 3 + 6j, step=1 + 2j)
+next_rational = rand.rational_(
+    Fraction(1, 4),
+    Fraction(3, 4),
+    step=Fraction(1, 4),
+)
 next_sympy_integer = rand.spint_(1, 10)
+next_sympy_rational = rand.sprational_(
+    sympy.Rational(1, 4),
+    sympy.Rational(3, 4),
+    step=sympy.Rational(1, 4),
+)
 next_polynomial = rand.poly_(of="x", degree=3)
 next_root_polynomial = rand.poly_roots_(
     of="x",

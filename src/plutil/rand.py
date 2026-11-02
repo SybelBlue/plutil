@@ -1,11 +1,13 @@
 """Random-value helpers for building parameterized math questions. Meant to be imported as a module."""
 
 import builtins as py
+import math
 import random as base
 from collections.abc import Callable, Sequence
+from fractions import Fraction
 from functools import wraps
 from math import prod
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import numpy as np
 import sympy
@@ -28,12 +30,12 @@ from .common import spint as _spint
 from .functions import scale_through, translate_through
 
 
-def bool(odds: float = 50.0) -> py.bool:
+def bool(odds: py.float = 50.0) -> py.bool:
     """Returns True with ``odds``% chance"""
     return base.random() * 100.0 < clamp(odds, min=0.0, max=100.0)
 
 
-def bool_(odds: float = 50.0) -> Callable[[], py.bool]:
+def bool_(odds: py.float = 50.0) -> Callable[[], py.bool]:
     """Return a zero-argument callable that evaluates :func:`bool`."""
 
     def generate() -> py.bool:
@@ -42,12 +44,12 @@ def bool_(odds: float = 50.0) -> Callable[[], py.bool]:
     return generate
 
 
-def sign(odds: float = 50.0) -> Literal[-1, 1]:
+def sign(odds: py.float = 50.0) -> Literal[-1, 1]:
     """Return ``1`` with ``odds``% probability and ``-1`` otherwise."""
     return 1 if bool(odds) else -1
 
 
-def sign_(odds: float = 50.0) -> Callable[[], Literal[-1, 1]]:
+def sign_(odds: py.float = 50.0) -> Callable[[], Literal[-1, 1]]:
     """Return a zero-argument callable that evaluates :func:`sign`."""
 
     def generate() -> Literal[-1, 1]:
@@ -56,12 +58,12 @@ def sign_(odds: float = 50.0) -> Callable[[], Literal[-1, 1]]:
     return generate
 
 
-def spsign(odds: float = 50.0) -> sympy.Integer:
+def spsign(odds: py.float = 50.0) -> sympy.Integer:
     """Return a random sign as a SymPy ``Integer``."""
     return _spint(sign(odds))
 
 
-def spsign_(odds: float = 50.0) -> Callable[[], sympy.Integer]:
+def spsign_(odds: py.float = 50.0) -> Callable[[], sympy.Integer]:
     """Return a zero-argument callable that evaluates :func:`spsign`."""
 
     def generate() -> sympy.Integer:
@@ -82,9 +84,9 @@ def choices[T](pop: Sequence[T], *args, **kwargs) -> Sequence[T]:
 
 def choices_[T](
     pop: Sequence[T],
-    weights: Sequence[float] | None = None,
+    weights: Sequence[py.float] | None = None,
     *,
-    cum_weights: Sequence[float] | None = None,
+    cum_weights: Sequence[py.float] | None = None,
     k: py.int = 1,
 ) -> Callable[[], Sequence[T]]:
     """Return a zero-argument callable that evaluates :func:`choices`."""
@@ -174,6 +176,224 @@ def int_(
     return generate
 
 
+def _progression_limit(low: Any, high: Any, step: Any) -> py.int:
+    """Return the largest valid index in an arithmetic progression."""
+    assert step != 0
+    quotient = (high - low) / step
+
+    if isinstance(quotient, py.complex):
+        assert math.isclose(quotient.imag, 0.0, rel_tol=1e-12, abs_tol=1e-12)
+        quotient = quotient.real
+
+    if isinstance(quotient, sympy.Expr):
+        assert quotient.is_real is True
+        assert quotient.is_nonnegative is True
+        return py.int(sympy.floor(quotient))
+
+    if isinstance(quotient, Fraction):
+        assert quotient >= 0
+        return quotient.numerator // quotient.denominator
+
+    quotient_float = py.float(quotient)
+    assert math.isfinite(quotient_float)
+    assert quotient_float >= 0
+    nearest_integer = round(quotient_float)
+    if math.isclose(
+        quotient_float,
+        nearest_integer,
+        rel_tol=1e-12,
+        abs_tol=1e-12,
+    ):
+        return nearest_integer
+    return math.floor(quotient_float)
+
+
+def _number[T](
+    low: T,
+    high: T,
+    *,
+    exclude: Sequence[T],
+    exclude_if: Callable[[T], py.bool] | None,
+    step: T,
+    randsign: py.bool,
+) -> T:
+    """Sample a typed value from an inclusive arithmetic progression."""
+    limit = _progression_limit(low, high, step)
+    selected_sign = choice((-1, 1)) if randsign else 1
+
+    if exclude_if or exclude:
+        candidates: list[T] = []
+        for index in range(limit + 1):
+            candidate = low + index * step  # type: ignore[operator]
+            if candidate not in exclude and not (exclude_if and exclude_if(candidate)):
+                candidates.append(candidate)
+        options = tuple(candidates)
+        return selected_sign * choice(options)  # type: ignore[operator]
+
+    selected = low + base.randint(0, limit) * step if limit else low  # type: ignore[operator]
+    return selected_sign * selected  # type: ignore[return-value]
+
+
+def float(
+    low: py.float,
+    high: py.float,
+    *,
+    exclude: Sequence[py.float] = (),
+    exclude_if: Callable[[py.float], py.bool] | None = None,
+    step: py.float = 1.0,
+    randsign: py.bool = False,
+) -> py.float:
+    """Return a random float from an inclusive arithmetic progression."""
+    low_value = py.float(low)
+    high_value = py.float(high)
+    step_value = py.float(step)
+    if step_value < 0:
+        return float(
+            high_value,
+            low_value,
+            exclude=exclude,
+            exclude_if=exclude_if,
+            step=-step_value,
+            randsign=randsign,
+        )
+    return _number(
+        low_value,
+        high_value,
+        exclude=exclude,
+        exclude_if=exclude_if,
+        step=step_value,
+        randsign=randsign,
+    )
+
+
+def float_(
+    low: py.float,
+    high: py.float,
+    *,
+    exclude: Sequence[py.float] = (),
+    exclude_if: Callable[[py.float], py.bool] | None = None,
+    step: py.float = 1.0,
+    randsign: py.bool = False,
+) -> Callable[[], py.float]:
+    """Return a zero-argument callable that evaluates :func:`float`."""
+
+    def generate() -> py.float:
+        return float(
+            low,
+            high,
+            exclude=exclude,
+            exclude_if=exclude_if,
+            step=step,
+            randsign=randsign,
+        )
+
+    return generate
+
+
+def complex(
+    low: py.complex,
+    high: py.complex,
+    *,
+    exclude: Sequence[py.complex] = (),
+    exclude_if: Callable[[py.complex], py.bool] | None = None,
+    step: py.complex = 1,
+    randsign: py.bool = False,
+) -> py.complex:
+    """Return a random complex number from an arithmetic progression.
+
+    ``low``, ``high``, and ``step`` must describe a straight-line progression:
+    ``(high - low) / step`` must be a nonnegative real number.
+    """
+    return _number(
+        py.complex(low),
+        py.complex(high),
+        exclude=exclude,
+        exclude_if=exclude_if,
+        step=py.complex(step),
+        randsign=randsign,
+    )
+
+
+def complex_(
+    low: py.complex,
+    high: py.complex,
+    *,
+    exclude: Sequence[py.complex] = (),
+    exclude_if: Callable[[py.complex], py.bool] | None = None,
+    step: py.complex = 1,
+    randsign: py.bool = False,
+) -> Callable[[], py.complex]:
+    """Return a zero-argument callable that evaluates :func:`complex`."""
+
+    def generate() -> py.complex:
+        return complex(
+            low,
+            high,
+            exclude=exclude,
+            exclude_if=exclude_if,
+            step=step,
+            randsign=randsign,
+        )
+
+    return generate
+
+
+def rational(
+    low: Fraction | py.int,
+    high: Fraction | py.int,
+    *,
+    exclude: Sequence[Fraction | py.int] = (),
+    exclude_if: Callable[[Fraction], py.bool] | None = None,
+    step: Fraction | py.int = 1,
+    randsign: py.bool = False,
+) -> Fraction:
+    """Return a random exact :class:`fractions.Fraction` from a progression."""
+    low_value = Fraction(low)
+    high_value = Fraction(high)
+    step_value = Fraction(step)
+    if step_value < 0:
+        return rational(
+            high_value,
+            low_value,
+            exclude=exclude,
+            exclude_if=exclude_if,
+            step=-step_value,
+            randsign=randsign,
+        )
+    return _number(
+        low_value,
+        high_value,
+        exclude=tuple(Fraction(value) for value in exclude),
+        exclude_if=exclude_if,
+        step=step_value,
+        randsign=randsign,
+    )
+
+
+def rational_(
+    low: Fraction | py.int,
+    high: Fraction | py.int,
+    *,
+    exclude: Sequence[Fraction | py.int] = (),
+    exclude_if: Callable[[Fraction], py.bool] | None = None,
+    step: Fraction | py.int = 1,
+    randsign: py.bool = False,
+) -> Callable[[], Fraction]:
+    """Return a zero-argument callable that evaluates :func:`rational`."""
+
+    def generate() -> Fraction:
+        return rational(
+            low,
+            high,
+            exclude=exclude,
+            exclude_if=exclude_if,
+            step=step,
+            randsign=randsign,
+        )
+
+    return generate
+
+
 def spint(
     low: py.int,
     high: py.int,
@@ -214,6 +434,65 @@ def spint_(
 
     def generate() -> sympy.Integer:
         return spint(
+            low,
+            high,
+            exclude=exclude,
+            exclude_if=exclude_if,
+            step=step,
+            randsign=randsign,
+        )
+
+    return generate
+
+
+def sprational(
+    low: sympy.Rational | py.int,
+    high: sympy.Rational | py.int,
+    *,
+    exclude: Sequence[sympy.Rational | py.int] = (),
+    exclude_if: Callable[[sympy.Rational], py.bool] | None = None,
+    step: sympy.Rational | py.int = 1,
+    randsign: py.bool = False,
+) -> sympy.Rational:
+    """Return a random exact SymPy ``Rational`` from a progression."""
+    low_value = cast(sympy.Rational, sympy.Rational(low))
+    high_value = cast(sympy.Rational, sympy.Rational(high))
+    step_value = cast(sympy.Rational, sympy.Rational(step))
+    if step_value < 0:
+        return sprational(
+            high_value,
+            low_value,
+            exclude=exclude,
+            exclude_if=exclude_if,
+            step=cast(sympy.Rational, -step_value),
+            randsign=randsign,
+        )
+    excluded_values = tuple(
+        cast(sympy.Rational, sympy.Rational(value)) for value in exclude
+    )
+    return _number(
+        low_value,
+        high_value,
+        exclude=excluded_values,
+        exclude_if=exclude_if,
+        step=step_value,
+        randsign=randsign,
+    )
+
+
+def sprational_(
+    low: sympy.Rational | py.int,
+    high: sympy.Rational | py.int,
+    *,
+    exclude: Sequence[sympy.Rational | py.int] = (),
+    exclude_if: Callable[[sympy.Rational], py.bool] | None = None,
+    step: sympy.Rational | py.int = 1,
+    randsign: py.bool = False,
+) -> Callable[[], sympy.Rational]:
+    """Return a zero-argument callable that evaluates :func:`sprational`."""
+
+    def generate() -> sympy.Rational:
+        return sprational(
             low,
             high,
             exclude=exclude,
@@ -338,7 +617,7 @@ def poly_roots(
     of: Variable,
     degree: py.int | None = None,
     root_factory: Callable[[], py.int] | None = None,
-    y_intercept: float | None = None,
+    y_intercept: py.float | None = None,
     expand: py.bool = False,
 ) -> sympy.Expr:
     """Build a polynomial from known and randomly generated integer roots.
@@ -399,7 +678,7 @@ def poly_roots_(
     of: Variable,
     degree: py.int | None = None,
     root_factory: Callable[[], py.int] | None = None,
-    y_intercept: float | None = None,
+    y_intercept: py.float | None = None,
     expand: py.bool = False,
 ) -> Callable[[], sympy.Expr]:
     """Return a zero-argument callable that evaluates :func:`poly_roots`.
@@ -623,21 +902,21 @@ def in_domain(
         return rng.normal(0, _SAMPLE_DIST_SCALE, k)
 
     if a == -sympy.oo:
-        b_float = float(b)  # type: ignore
+        b_float = py.float(b)  # type: ignore
         samples = b_float - rng.exponential(_SAMPLE_DIST_SCALE, k)
         if domain.right_open:
             np.minimum(samples, np.nextafter(b_float, -np.inf), out=samples)
         return samples
 
     if b == sympy.oo:
-        a_float = float(a)  # type: ignore
+        a_float = py.float(a)  # type: ignore
         samples = a_float + rng.exponential(_SAMPLE_DIST_SCALE, k)
         if domain.left_open:
             np.maximum(samples, np.nextafter(a_float, np.inf), out=samples)
         return samples
 
-    a_float = float(a)  # type: ignore
-    b_float = float(b)  # type: ignore
+    a_float = py.float(a)  # type: ignore
+    b_float = py.float(b)  # type: ignore
     t = rng.random(k)
     samples = (1 - t) * a_float + t * b_float
     if domain.left_open:

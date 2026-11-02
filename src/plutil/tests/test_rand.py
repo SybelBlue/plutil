@@ -1,3 +1,4 @@
+from fractions import Fraction
 from typing import Any
 
 import numpy as np
@@ -226,6 +227,234 @@ def test_randint_factory_delays_and_repeats_evaluation(
     assert calls == [
         ((1, 9), {"exclude": (3,), "exclude_if": None, "step": 2, "randsign": True}),
         ((1, 9), {"exclude": (3,), "exclude_if": None, "step": 2, "randsign": True}),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("generator", "low", "high", "step", "expected", "expected_type"),
+    [
+        (rand.float, 0.25, 1.0, 0.25, 1.0, float),
+        (rand.complex, 1 + 1j, 3 + 3j, 1 + 1j, 3 + 3j, complex),
+        (
+            rand.rational,
+            Fraction(1, 4),
+            Fraction(1),
+            Fraction(1, 4),
+            Fraction(1),
+            Fraction,
+        ),
+        (
+            rand.sprational,
+            sympy.Rational(1, 4),
+            sympy.Rational(1),
+            sympy.Rational(1, 4),
+            sympy.Rational(1),
+            sympy.Rational,
+        ),
+    ],
+)
+def test_rand_numeric_progressions_include_bounds_and_return_named_type(
+    monkeypatch: pytest.MonkeyPatch,
+    generator: Any,
+    low: Any,
+    high: Any,
+    step: Any,
+    expected: Any,
+    expected_type: type[Any],
+) -> None:
+    randint_calls: list[tuple[int, int]] = []
+
+    def choose_upper_bound(low: int, high: int) -> int:
+        randint_calls.append((low, high))
+        return high
+
+    monkeypatch.setattr(rand.base, "randint", choose_upper_bound)
+
+    result = generator(low, high, step=step)
+
+    assert result == expected
+    assert isinstance(result, expected_type)
+    assert randint_calls == [(0, 3 if generator is not rand.complex else 2)]
+
+
+@pytest.mark.parametrize(
+    ("generator", "low", "high", "step", "exclude", "excluded_by_predicate"),
+    [
+        (rand.float, 0.0, 1.0, 0.25, 0.25, 1.0),
+        (rand.complex, 0j, 4 + 4j, 1 + 1j, 1 + 1j, 4 + 4j),
+        (
+            rand.rational,
+            Fraction(0),
+            Fraction(1),
+            Fraction(1, 4),
+            Fraction(1, 4),
+            Fraction(1),
+        ),
+        (
+            rand.sprational,
+            sympy.Rational(0),
+            sympy.Rational(1),
+            sympy.Rational(1, 4),
+            sympy.Rational(1, 4),
+            sympy.Rational(1),
+        ),
+    ],
+)
+def test_rand_numeric_progressions_filter_exclusions(
+    monkeypatch: pytest.MonkeyPatch,
+    generator: Any,
+    low: Any,
+    high: Any,
+    step: Any,
+    exclude: Any,
+    excluded_by_predicate: Any,
+) -> None:
+    choices: list[tuple[Any, ...]] = []
+
+    def choose_last(options: tuple[Any, ...]) -> Any:
+        choices.append(tuple(options))
+        return options[-1]
+
+    monkeypatch.setattr(rand.base, "choice", choose_last)
+
+    result = generator(
+        low,
+        high,
+        step=step,
+        exclude=(exclude,),
+        exclude_if=lambda value: value == excluded_by_predicate,
+    )
+
+    assert result == choices[0][-1]
+    assert exclude not in choices[0]
+    assert excluded_by_predicate not in choices[0]
+
+
+@pytest.mark.parametrize(
+    ("generator", "low", "high", "step"),
+    [
+        (rand.float, 1.0, 0.0, -0.25),
+        (rand.complex, 3 + 3j, 1 + 1j, -1 - 1j),
+        (rand.rational, Fraction(1), Fraction(0), Fraction(-1, 4)),
+        (
+            rand.sprational,
+            sympy.Rational(1),
+            sympy.Rational(0),
+            sympy.Rational(-1, 4),
+        ),
+    ],
+)
+def test_rand_numeric_progressions_accept_descending_bounds(
+    monkeypatch: pytest.MonkeyPatch,
+    generator: Any,
+    low: Any,
+    high: Any,
+    step: Any,
+) -> None:
+    monkeypatch.setattr(rand.base, "randint", lambda low, high: high)
+
+    expected = high if generator is rand.complex else low
+    assert generator(low, high, step=step) == expected
+
+
+@pytest.mark.parametrize(
+    ("generator", "low", "high", "step"),
+    [
+        (rand.float, 0.0, 1.0, 0.0),
+        (rand.complex, 0j, 1 + 1j, 0j),
+        (rand.complex, 0j, 1 + 1j, 1 + 0j),
+        (rand.rational, Fraction(0), Fraction(1), Fraction(0)),
+        (
+            rand.sprational,
+            sympy.Rational(0),
+            sympy.Rational(1),
+            sympy.Rational(0),
+        ),
+    ],
+)
+def test_rand_numeric_progressions_reject_invalid_ranges(
+    generator: Any,
+    low: Any,
+    high: Any,
+    step: Any,
+) -> None:
+    with pytest.raises(AssertionError):
+        generator(low, high, step=step)
+
+
+def test_randfloat_applies_random_sign_after_sampling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(rand.base, "choice", lambda options: options[0])
+    monkeypatch.setattr(rand.base, "randint", lambda low, high: high)
+
+    assert rand.float(0.5, 1.0, step=0.25, randsign=True) == -1.0
+
+
+@pytest.mark.parametrize(
+    ("name", "factory_name", "low", "high", "step", "results"),
+    [
+        ("float", "float_", 0.0, 1.0, 0.25, (0.25, 0.5)),
+        ("complex", "complex_", 0j, 1 + 1j, 1 + 1j, (1 + 1j, 0j)),
+        (
+            "rational",
+            "rational_",
+            Fraction(0),
+            Fraction(1),
+            Fraction(1, 4),
+            (Fraction(1, 4), Fraction(1, 2)),
+        ),
+        (
+            "sprational",
+            "sprational_",
+            sympy.Rational(0),
+            sympy.Rational(1),
+            sympy.Rational(1, 4),
+            (sympy.Rational(1, 4), sympy.Rational(1, 2)),
+        ),
+    ],
+)
+def test_rand_numeric_factories_delay_and_repeat_evaluation(
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+    factory_name: str,
+    low: Any,
+    high: Any,
+    step: Any,
+    results: tuple[Any, Any],
+) -> None:
+    calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+    outcomes = iter(results)
+
+    def fake_generator(*args: Any, **kwargs: Any) -> Any:
+        calls.append((args, kwargs))
+        return next(outcomes)
+
+    monkeypatch.setattr(rand, name, fake_generator)
+    factory = getattr(rand, factory_name)
+    generate = factory(low, high, exclude=(low,), step=step, randsign=True)
+
+    assert calls == []
+    assert (generate(), generate()) == results
+    assert calls == [
+        (
+            (low, high),
+            {
+                "exclude": (low,),
+                "exclude_if": None,
+                "step": step,
+                "randsign": True,
+            },
+        ),
+        (
+            (low, high),
+            {
+                "exclude": (low,),
+                "exclude_if": None,
+                "step": step,
+                "randsign": True,
+            },
+        ),
     ]
 
 
