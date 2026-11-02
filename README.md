@@ -713,12 +713,18 @@ award_partial_credit(lens, ..., feedback=feedback.derived_answer("(a)"))
 
 ---
 
-## `rand.py`
+## `rand`
 
 Import the random helpers as a module and call them through the `rand`
-namespace:
+namespace. Core Python generators live directly under `rand`; SymPy-specific
+generators live under `rand.sp`:
 
 ```python
+from fractions import Fraction
+from itertools import islice
+
+import sympy
+
 from plutil import rand
 ```
 
@@ -743,13 +749,22 @@ below 0 or above 100 are clamped to the valid range.
 direction = rand.sign(70)  # 70% chance of 1, 30% chance of -1
 ```
 
-### `rand.spsign(odds=50.0) -> sympy.Integer`
+### `rand.mbool(odds=50.0) -> Literal["true", "false"]`
+
+Return `"true"` with an `odds` percent probability and `"false"` otherwise.
+This is the mustache-string form of `rand.bool`.
+
+```python
+show_hint = rand.mbool(25)
+```
+
+### `rand.sp.sign(odds=50.0) -> sympy.Integer`
 
 Choose a value using the same rules as `rand.sign`, but return it as an exact
 SymPy `Integer` for use in symbolic expressions.
 
 ```python
-direction = rand.spsign(70)
+direction = rand.sp.sign(70)
 ```
 
 ### `rand.choice(population) -> T`
@@ -779,16 +794,58 @@ Choose an integer from an inclusive arithmetic progression. Use `exclude` or
 a = rand.int(2, 12, exclude=(4, 8), step=2)
 ```
 
-### `rand.spint(low, high, *, exclude=(), exclude_if=None, step=1, randsign=False) -> sympy.Integer`
+### `rand.float(low, high, *, exclude=(), exclude_if=None, step=1.0, randsign=False) -> float`
+
+Choose a float using the same inclusive arithmetic-progression rules as
+`rand.int`. A fractional `step` provides evenly spaced decimal candidates.
+
+```python
+measurement = rand.float(0.5, 2.0, step=0.25, exclude=(1.0,))
+```
+
+### `rand.complex(low, high, *, exclude=(), exclude_if=None, step=1, randsign=False) -> complex`
+
+Choose a complex value from a straight-line arithmetic progression. The
+values must satisfy `(high - low) / step >= 0` with a real quotient.
+
+```python
+z = rand.complex(0j, 3 + 6j, step=1 + 2j)
+```
+
+### `rand.rational(low, high, *, exclude=(), exclude_if=None, step=1, randsign=False) -> Fraction`
+
+Choose an exact `fractions.Fraction` using the same progression rules.
+
+```python
+ratio = rand.rational(
+    Fraction(1, 4),
+    Fraction(3, 4),
+    step=Fraction(1, 4),
+)
+```
+
+### `rand.sp.int(low, high, *, exclude=(), exclude_if=None, step=1, randsign=False) -> sympy.Integer`
 
 Choose a value using the same rules as `rand.int`, but return it as an exact
 SymPy `Integer` for use in symbolic expressions.
 
 ```python
-coefficient = rand.spint(-5, 5, exclude=(0,))
+coefficient = rand.sp.int(-5, 5, exclude=(0,))
 ```
 
-### `rand.poly(...) -> Expr`
+### `rand.sp.rational(low, high, *, exclude=(), exclude_if=None, step=1, randsign=False) -> sympy.Rational`
+
+Choose an exact SymPy `Rational` using the same progression rules.
+
+```python
+ratio = rand.sp.rational(
+    sympy.Rational(1, 4),
+    sympy.Rational(3, 4),
+    step=sympy.Rational(1, 4),
+)
+```
+
+### `rand.sp.poly(...) -> Expr`
 
 Build a random sparse polynomial. Pass `degree` for an exact degree or
 `max_degree` to allow the degree to vary; `coeff_factory` is called once for
@@ -796,18 +853,18 @@ each selected term. `min_terms` and `max_terms` define an inclusive range; set
 them equal to require an exact number of terms.
 
 ```python
-coefficient = rand.int_(-5, 5, exclude=(0,))
-p = rand.poly(of="x", degree=3, min_terms=2, coeff_factory=coefficient)
+coefficient = rand.factory(rand.int, -5, 5, exclude=(0,))
+p = rand.sp.poly(of="x", degree=3, min_terms=2, coeff_factory=coefficient)
 ```
 
-### `rand.poly_roots(*known_roots, ...) -> Expr`
+### `rand.sp.poly_roots(*known_roots, ...) -> Expr`
 
 Build a polynomial from known roots and, when needed, roots supplied by
 `root_factory`.
 
 ```python
-root = rand.int_(-6, 6, exclude=(0,))
-p = rand.poly_roots(1, of="x", degree=3, root_factory=root, expand=True)
+root = rand.factory(rand.int, -6, 6, exclude=(0,))
+p = rand.sp.poly_roots(1, of="x", degree=3, root_factory=root, expand=True)
 ```
 
 ### `rand.partitions(values, *, samples) -> tuple[tuple, ...]`
@@ -827,33 +884,74 @@ Partition pairwise-coprime factors and return the product of each group.
 numerator, denominator = rand.coprimes((2, 3, 5, 7, 11))
 ```
 
-The random generators with trailing-underscore forms delay evaluation until the
-returned zero-argument callable is invoked. Each invocation makes a fresh
-random selection:
+### `rand.sp.in_domain(domain, *, k=1, rng=None) -> np.ndarray`
+
+Sample a SymPy number set or interval. Pass a NumPy generator for independent,
+reproducible samples; without one, the generator is seeded from `rand.base`.
 
 ```python
-next_sign = rand.sign_(75)
-next_sympy_sign = rand.spsign_(75)
-next_choices = rand.choices_(
+samples = rand.sp.in_domain(
+    sympy.Interval.open(-1, 1),
+    k=4,
+)
+```
+
+### `rand.factory(generator, /, *args, **kwargs) -> Factory[T]`
+
+Bind a generator's arguments without selecting a value yet. The resulting
+frozen, slotted object is both a zero-argument callable and an infinite
+iterable. Each call or iteration produces a fresh random selection:
+
+```python
+next_sign = rand.factory(rand.sign, 75)
+next_sympy_sign = rand.factory(rand.sp.sign, 75)
+next_choices = rand.factory(
+    rand.choices,
     ("red", "green", "blue"),
     weights=(1, 1, 3),
     k=2,
 )
-next_integer = rand.int_(1, 10)
-next_sympy_integer = rand.spint_(1, 10)
-next_polynomial = rand.poly_(of="x", degree=3)
-next_root_polynomial = rand.poly_roots_(
+next_integer = rand.factory(rand.int, 1, 10)
+next_float = rand.factory(rand.float, 0.0, 1.0, step=0.1)
+next_complex = rand.factory(rand.complex, 0j, 3 + 6j, step=1 + 2j)
+next_rational = rand.factory(
+    rand.rational,
+    Fraction(1, 4),
+    Fraction(3, 4),
+    step=Fraction(1, 4),
+)
+next_sympy_integer = rand.factory(rand.sp.int, 1, 10)
+next_sympy_rational = rand.factory(
+    rand.sp.rational,
+    sympy.Rational(1, 4),
+    sympy.Rational(3, 4),
+    step=sympy.Rational(1, 4),
+)
+next_polynomial = rand.factory(rand.sp.poly, of="x", degree=3)
+next_root_polynomial = rand.factory(
+    rand.sp.poly_roots,
     of="x",
     degree=3,
-    root_factory=rand.int_(-5, 5),
+    root_factory=rand.factory(rand.int, -5, 5),
 )
-next_partitions = rand.partitions_(range(10), samples=(None, None))
-next_coprimes = rand.coprimes_((2, 3, 5, 7, 11))
+next_partitions = rand.factory(
+    rand.partitions,
+    range(10),
+    samples=(None, None),
+)
+next_coprimes = rand.factory(rand.coprimes, (2, 3, 5, 7, 11))
 
 a = next_integer()
 colors = next_choices()
 p = next_polynomial()
+three_more_integers = list(islice(next_integer, 3))
 ```
+
+The former flat SymPy names (`rand.spsign`, `rand.spint`, `rand.sprational`,
+`rand.poly`, `rand.poly_roots`, and `rand.in_domain`) remain available with
+deprecation warnings. The trailing-underscore factory helpers are also
+deprecated in favor of `rand.factory`. The deprecated `rand.Domain` type alias
+remains available for annotations that have not yet migrated to `rand.sp.Domain`.
 
 ## `fabc.py`
 

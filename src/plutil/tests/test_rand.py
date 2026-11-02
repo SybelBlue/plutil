@@ -1,3 +1,6 @@
+from dataclasses import FrozenInstanceError, is_dataclass
+from fractions import Fraction
+from itertools import islice
 from typing import Any
 
 import numpy as np
@@ -13,16 +16,23 @@ def test_randsign_converts_random_boolean_to_sign(
     outcome: bool,
     expected: int,
 ) -> None:
-    odds_seen: list[float] = []
-
-    def fake_randbool(odds: float) -> bool:
-        odds_seen.append(odds)
-        return outcome
-
-    monkeypatch.setattr(rand, "bool", fake_randbool)
+    monkeypatch.setattr(rand.base, "random", lambda: 0.0 if outcome else 1.0)
 
     assert rand.sign(37.5) == expected
-    assert odds_seen == [37.5]
+
+
+@pytest.mark.parametrize(
+    ("outcome", "expected"),
+    [(True, "true"), (False, "false")],
+)
+def test_rand_mustache_bool_returns_random_boolean_string(
+    monkeypatch: pytest.MonkeyPatch,
+    outcome: bool,
+    expected: str,
+) -> None:
+    monkeypatch.setattr(rand.base, "random", lambda: 0.0 if outcome else 1.0)
+
+    assert rand.mbool(37.5) == expected
 
 
 def test_randsign_factory_delays_and_repeats_evaluation(
@@ -36,7 +46,7 @@ def test_randsign_factory_delays_and_repeats_evaluation(
         return next(results)
 
     monkeypatch.setattr(rand, "sign", fake_randsign)
-    generate = rand.sign_(62.5)
+    generate = rand.factory(rand.sign, 62.5)
 
     assert calls == []
     assert (generate(), generate()) == (1, -1)
@@ -52,9 +62,9 @@ def test_randspsign_delegates_to_randsign_and_returns_sympy_integer(
         calls.append(odds)
         return -1
 
-    monkeypatch.setattr(rand, "sign", fake_randsign)
+    monkeypatch.setattr(rand.sp, "_sign", fake_randsign)
 
-    result = rand.spsign(37.5)
+    result = rand.sp.sign(37.5)
 
     assert result == sympy.Integer(-1)
     assert isinstance(result, sympy.Integer)
@@ -71,8 +81,8 @@ def test_randspsign_factory_delays_and_repeats_evaluation(
         calls.append(odds)
         return next(results)
 
-    monkeypatch.setattr(rand, "spsign", fake_randspsign)
-    generate = rand.spsign_(62.5)
+    monkeypatch.setattr(rand.sp, "sign", fake_randspsign)
+    generate = rand.factory(rand.sp.sign, 62.5)
 
     assert calls == []
     assert (generate(), generate()) == (sympy.Integer(1), sympy.Integer(-1))
@@ -129,7 +139,13 @@ def test_randchoices_factory_delays_and_repeats_evaluation(
 
     monkeypatch.setattr(rand, "choices", fake_randchoices)
     population = ("red", "green")
-    generate = rand.choices_(population, cum_weights=(1.0, 3.0), k=2)
+    generate = rand.factory(
+        rand.choices,
+        population,
+        None,
+        cum_weights=(1.0, 3.0),
+        k=2,
+    )
 
     assert calls == []
     assert generate() == [population]
@@ -219,7 +235,15 @@ def test_randint_factory_delays_and_repeats_evaluation(
         return len(calls)
 
     monkeypatch.setattr(rand, "int", fake_randint)
-    generate = rand.int_(1, 9, exclude=(3,), step=2, randsign=True)
+    generate = rand.factory(
+        rand.int,
+        1,
+        9,
+        exclude=(3,),
+        exclude_if=None,
+        step=2,
+        randsign=True,
+    )
 
     assert calls == []
     assert (generate(), generate()) == (1, 2)
@@ -227,6 +251,246 @@ def test_randint_factory_delays_and_repeats_evaluation(
         ((1, 9), {"exclude": (3,), "exclude_if": None, "step": 2, "randsign": True}),
         ((1, 9), {"exclude": (3,), "exclude_if": None, "step": 2, "randsign": True}),
     ]
+
+
+@pytest.mark.parametrize(
+    ("generator", "low", "high", "step", "expected", "expected_type"),
+    [
+        (rand.float, 0.25, 1.0, 0.25, 1.0, float),
+        (rand.complex, 1 + 1j, 3 + 3j, 1 + 1j, 3 + 3j, complex),
+        (
+            rand.rational,
+            Fraction(1, 4),
+            Fraction(1),
+            Fraction(1, 4),
+            Fraction(1),
+            Fraction,
+        ),
+        (
+            rand.sp.rational,
+            sympy.Rational(1, 4),
+            sympy.Rational(1),
+            sympy.Rational(1, 4),
+            sympy.Rational(1),
+            sympy.Rational,
+        ),
+    ],
+)
+def test_rand_numeric_progressions_include_bounds_and_return_named_type(
+    monkeypatch: pytest.MonkeyPatch,
+    generator: Any,
+    low: Any,
+    high: Any,
+    step: Any,
+    expected: Any,
+    expected_type: type[Any],
+) -> None:
+    randint_calls: list[tuple[int, int]] = []
+
+    def choose_upper_bound(low: int, high: int) -> int:
+        randint_calls.append((low, high))
+        return high
+
+    monkeypatch.setattr(rand.base, "randint", choose_upper_bound)
+
+    result = generator(low, high, step=step)
+
+    assert result == expected
+    assert isinstance(result, expected_type)
+    assert randint_calls == [(0, 3 if generator is not rand.complex else 2)]
+
+
+@pytest.mark.parametrize(
+    ("generator", "low", "high", "step", "exclude", "excluded_by_predicate"),
+    [
+        (rand.float, 0.0, 1.0, 0.25, 0.25, 1.0),
+        (rand.complex, 0j, 4 + 4j, 1 + 1j, 1 + 1j, 4 + 4j),
+        (
+            rand.rational,
+            Fraction(0),
+            Fraction(1),
+            Fraction(1, 4),
+            Fraction(1, 4),
+            Fraction(1),
+        ),
+        (
+            rand.sp.rational,
+            sympy.Rational(0),
+            sympy.Rational(1),
+            sympy.Rational(1, 4),
+            sympy.Rational(1, 4),
+            sympy.Rational(1),
+        ),
+    ],
+)
+def test_rand_numeric_progressions_filter_exclusions(
+    monkeypatch: pytest.MonkeyPatch,
+    generator: Any,
+    low: Any,
+    high: Any,
+    step: Any,
+    exclude: Any,
+    excluded_by_predicate: Any,
+) -> None:
+    choices: list[tuple[Any, ...]] = []
+
+    def choose_last(options: tuple[Any, ...]) -> Any:
+        choices.append(tuple(options))
+        return options[-1]
+
+    monkeypatch.setattr(rand.base, "choice", choose_last)
+
+    result = generator(
+        low,
+        high,
+        step=step,
+        exclude=(exclude,),
+        exclude_if=lambda value: value == excluded_by_predicate,
+    )
+
+    assert result == choices[0][-1]
+    assert exclude not in choices[0]
+    assert excluded_by_predicate not in choices[0]
+
+
+@pytest.mark.parametrize(
+    ("generator", "low", "high", "step"),
+    [
+        (rand.float, 1.0, 0.0, -0.25),
+        (rand.complex, 3 + 3j, 1 + 1j, -1 - 1j),
+        (rand.rational, Fraction(1), Fraction(0), Fraction(-1, 4)),
+        (
+            rand.sp.rational,
+            sympy.Rational(1),
+            sympy.Rational(0),
+            sympy.Rational(-1, 4),
+        ),
+    ],
+)
+def test_rand_numeric_progressions_accept_descending_bounds(
+    monkeypatch: pytest.MonkeyPatch,
+    generator: Any,
+    low: Any,
+    high: Any,
+    step: Any,
+) -> None:
+    monkeypatch.setattr(rand.base, "randint", lambda low, high: high)
+
+    expected = high if generator is rand.complex else low
+    assert generator(low, high, step=step) == expected
+
+
+@pytest.mark.parametrize(
+    ("generator", "low", "high", "step"),
+    [
+        (rand.float, 0.0, 1.0, 0.0),
+        (rand.complex, 0j, 1 + 1j, 0j),
+        (rand.complex, 0j, 1 + 1j, 1 + 0j),
+        (rand.rational, Fraction(0), Fraction(1), Fraction(0)),
+        (
+            rand.sp.rational,
+            sympy.Rational(0),
+            sympy.Rational(1),
+            sympy.Rational(0),
+        ),
+    ],
+)
+def test_rand_numeric_progressions_reject_invalid_ranges(
+    generator: Any,
+    low: Any,
+    high: Any,
+    step: Any,
+) -> None:
+    with pytest.raises(AssertionError):
+        generator(low, high, step=step)
+
+
+def test_randfloat_applies_random_sign_after_sampling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(rand.base, "choice", lambda options: options[0])
+    monkeypatch.setattr(rand.base, "randint", lambda low, high: high)
+
+    assert rand.float(0.5, 1.0, step=0.25, randsign=True) == -1.0
+
+
+@pytest.mark.parametrize(
+    ("low", "high", "step", "results"),
+    [
+        (0.0, 1.0, 0.25, (0.25, 0.5)),
+        (0j, 1 + 1j, 1 + 1j, (1 + 1j, 0j)),
+        (
+            Fraction(0),
+            Fraction(1),
+            Fraction(1, 4),
+            (Fraction(1, 4), Fraction(1, 2)),
+        ),
+        (
+            sympy.Rational(0),
+            sympy.Rational(1),
+            sympy.Rational(1, 4),
+            (sympy.Rational(1, 4), sympy.Rational(1, 2)),
+        ),
+    ],
+)
+def test_rand_numeric_factories_delay_and_repeat_evaluation(
+    low: Any,
+    high: Any,
+    step: Any,
+    results: tuple[Any, Any],
+) -> None:
+    calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+    outcomes = iter(results)
+
+    def fake_generator(*args: Any, **kwargs: Any) -> Any:
+        calls.append((args, kwargs))
+        return next(outcomes)
+
+    generate = rand.factory(
+        fake_generator,
+        low,
+        high,
+        exclude=(low,),
+        exclude_if=None,
+        step=step,
+        randsign=True,
+    )
+
+    assert calls == []
+    assert (generate(), generate()) == results
+    assert calls == [
+        (
+            (low, high),
+            {
+                "exclude": (low,),
+                "exclude_if": None,
+                "step": step,
+                "randsign": True,
+            },
+        ),
+        (
+            (low, high),
+            {
+                "exclude": (low,),
+                "exclude_if": None,
+                "step": step,
+                "randsign": True,
+            },
+        ),
+    ]
+
+
+def test_rand_factory_is_final_frozen_slotted_and_iterable() -> None:
+    outcomes = iter((2, 3, 5))
+    generate = rand.factory(lambda: next(outcomes))
+
+    assert getattr(rand.Factory, "__final__") is True  # noqa: B009
+    assert rand.Factory.__slots__ == ("_generate",)
+    assert is_dataclass(generate)
+    assert not hasattr(generate, "__dict__")
+    assert list(islice(generate, 3)) == [2, 3, 5]
+    with pytest.raises(FrozenInstanceError):
+        setattr(generate, "_generate", lambda: 7)  # noqa: B010
 
 
 def test_randspint_delegates_to_randint_and_returns_sympy_integer(
@@ -239,9 +503,9 @@ def test_randspint_delegates_to_randint_and_returns_sympy_integer(
         calls.append((args, kwargs))
         return 5
 
-    monkeypatch.setattr(rand, "int", fake_randint)
+    monkeypatch.setattr(rand.sp, "_int", fake_randint)
 
-    result = rand.spint(
+    result = rand.sp.int(
         1,
         9,
         exclude=(3,),
@@ -274,8 +538,16 @@ def test_randspint_factory_delays_and_repeats_evaluation(
         calls.append((args, kwargs))
         return sympy.Integer(len(calls))
 
-    monkeypatch.setattr(rand, "spint", fake_randspint)
-    generate = rand.spint_(1, 9, exclude=(3,), step=2, randsign=True)
+    monkeypatch.setattr(rand.sp, "int", fake_randspint)
+    generate = rand.factory(
+        rand.sp.int,
+        1,
+        9,
+        exclude=(3,),
+        exclude_if=None,
+        step=2,
+        randsign=True,
+    )
 
     assert calls == []
     assert (generate(), generate()) == (sympy.Integer(1), sympy.Integer(2))
@@ -297,7 +569,7 @@ def test_randpoly_builds_requested_degree_and_terms(
         lambda population, *, k: [1, 3],
     )
 
-    polynomial = rand.poly(
+    polynomial = rand.sp.poly(
         of=x,
         degree=4,
         min_degree=1,
@@ -320,7 +592,7 @@ def test_randpoly_can_sample_degree_below_maximum(
         lambda population, *, k: [0, 2],
     )
 
-    polynomial = rand.poly(of="x", max_degree=5, min_terms=1, max_terms=2)
+    polynomial = rand.sp.poly(of="x", max_degree=5, min_terms=1, max_terms=2)
 
     assert polynomial == x**2 + 1
 
@@ -330,7 +602,7 @@ def test_randpoly_accepts_fixed_term_count(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(rand.base, "randint", lambda low, high: low)
     monkeypatch.setattr(rand.base, "sample", lambda population, *, k: [0])
 
-    polynomial = rand.poly(of=x, degree=2, min_terms=2, max_terms=2)
+    polynomial = rand.sp.poly(of=x, degree=2, min_terms=2, max_terms=2)
 
     assert polynomial == x**2 + 1
 
@@ -347,7 +619,7 @@ def test_randpoly_accepts_fixed_term_count(monkeypatch: pytest.MonkeyPatch) -> N
 )
 def test_randpoly_rejects_incompatible_limits(kwargs: dict[str, Any]) -> None:
     with pytest.raises(AssertionError):
-        rand.poly(of="x", **kwargs)
+        rand.sp.poly(of="x", **kwargs)
 
 
 def test_randpoly_factory_delays_and_repeats_evaluation(
@@ -360,8 +632,18 @@ def test_randpoly_factory_delays_and_repeats_evaluation(
         calls.append(kwargs)
         return x + len(calls)
 
-    monkeypatch.setattr(rand, "poly", fake_randpoly)
-    generate = rand.poly_(of=x, degree=3, min_terms=2, max_terms=4)
+    monkeypatch.setattr(rand.sp, "poly", fake_randpoly)
+    generate = rand.factory(
+        rand.sp.poly,
+        of=x,
+        degree=3,
+        max_degree=None,
+        min_degree=0,
+        min_terms=2,
+        max_terms=4,
+        coeff_factory=None,
+        y_intercept=None,
+    )
 
     assert calls == []
     assert (generate(), generate()) == (x + 1, x + 2)
@@ -377,6 +659,7 @@ def test_randpoly_factory_delays_and_repeats_evaluation(
             "min_terms": 2,
             "max_terms": 4,
             "coeff_factory": None,
+            "y_intercept": None,
         }
     )
 
@@ -385,7 +668,7 @@ def test_randpoly_roots_combines_known_and_generated_roots() -> None:
     x = sympy.Symbol("x")
     generated_roots = iter((2, 3))
 
-    polynomial = rand.poly_roots(
+    polynomial = rand.sp.poly_roots(
         -1,
         of=x,
         degree=3,
@@ -398,7 +681,7 @@ def test_randpoly_roots_combines_known_and_generated_roots() -> None:
 def test_randpoly_roots_truncates_known_roots_to_degree() -> None:
     x = sympy.Symbol("x")
 
-    polynomial = rand.poly_roots(1, 2, 3, of=x, degree=2)
+    polynomial = rand.sp.poly_roots(1, 2, 3, of=x, degree=2)
 
     assert sympy.expand(polynomial) == sympy.expand((x - 1) * (x - 2))
 
@@ -406,19 +689,19 @@ def test_randpoly_roots_truncates_known_roots_to_degree() -> None:
 def test_randpoly_roots_scales_to_y_intercept() -> None:
     x = sympy.Symbol("x")
 
-    polynomial = rand.poly_roots(2, 4, of=x, degree=2, y_intercept=12)
+    polynomial = rand.sp.poly_roots(2, 4, of=x, degree=2, y_intercept=12)
 
     assert float(polynomial.subs(x, 0)) == pytest.approx(12)
 
 
 def test_randpoly_roots_requires_factory_for_missing_roots() -> None:
     with pytest.raises(AssertionError):
-        rand.poly_roots(1, of="x", degree=2)
+        rand.sp.poly_roots(1, of="x", degree=2)
 
 
 def test_randpoly_roots_rejects_zero_root_with_y_intercept() -> None:
     with pytest.raises(ZeroDivisionError):
-        rand.poly_roots(0, 1, of="x", degree=2, y_intercept=3)
+        rand.sp.poly_roots(0, 1, of="x", degree=2, y_intercept=3)
 
 
 def test_randpoly_roots_factory_delays_and_repeats_evaluation(
@@ -431,8 +714,9 @@ def test_randpoly_roots_factory_delays_and_repeats_evaluation(
         calls.append((args, kwargs))
         return x - len(calls)
 
-    monkeypatch.setattr(rand, "poly_roots", fake_randpoly_roots)
-    generate = rand.poly_roots_(
+    monkeypatch.setattr(rand.sp, "poly_roots", fake_randpoly_roots)
+    generate = rand.factory(
+        rand.sp.poly_roots,
         1,
         2,
         of=x,
@@ -480,7 +764,7 @@ def test_randpartitions_factory_delays_and_repeats_evaluation(
         return ((len(calls),),)
 
     monkeypatch.setattr(rand, "partitions", fake_randpartitions)
-    generate = rand.partitions_((1, 2, 3), samples=(1, None))
+    generate = rand.factory(rand.partitions, (1, 2, 3), samples=(1, None))
 
     assert calls == []
     assert (generate(), generate()) == (((1,),), ((2,),))
@@ -520,7 +804,7 @@ def test_randcoprimes_factory_delays_and_repeats_evaluation(
         return (len(calls),)
 
     monkeypatch.setattr(rand, "coprimes", fake_randcoprimes)
-    generate = rand.coprimes_((2, 3, 5), samples=(1, 2))
+    generate = rand.factory(rand.coprimes, (2, 3, 5), samples=(1, 2))
 
     assert calls == []
     assert (generate(), generate()) == ((1,), (2,))
@@ -542,11 +826,11 @@ def test_randcoprimes_factory_delays_and_repeats_evaluation(
     ],
 )
 def test_in_domain_samples_supported_number_sets(
-    domain: rand.Domain,
+    domain: rand.sp.Domain,
     kind: str,
     minimum: int | None,
 ) -> None:
-    samples = rand.in_domain(domain, k=100, rng=np.random.default_rng(1234))
+    samples = rand.sp.in_domain(domain, k=100, rng=np.random.default_rng(1234))
 
     assert samples.shape == (100,)
     assert np.all(np.isfinite(samples))
@@ -572,7 +856,7 @@ def test_in_domain_samples_supported_number_sets(
     ],
 )
 def test_in_domain_samples_stay_in_intervals(domain: sympy.Interval) -> None:
-    samples = rand.in_domain(domain, k=100, rng=np.random.default_rng(1234))
+    samples = rand.sp.in_domain(domain, k=100, rng=np.random.default_rng(1234))
 
     assert samples.shape == (100,)
     assert all(value in domain for value in samples)
@@ -584,12 +868,12 @@ class _EndpointRng:
         return np.array([0.0, 1.0])
 
     def exponential(self, scale: float, size: int) -> np.ndarray[Any, Any]:
-        assert scale == rand._SAMPLE_DIST_SCALE
+        assert scale == rand.sp._SAMPLE_DIST_SCALE
         return np.zeros(size)
 
 
 def test_in_domain_excludes_open_finite_endpoints() -> None:
-    samples = rand.in_domain(
+    samples = rand.sp.in_domain(
         sympy.Interval.open(-2, 3),
         k=2,
         rng=_EndpointRng(),  # type: ignore[arg-type]
@@ -612,7 +896,11 @@ def test_in_domain_excludes_open_half_bounded_endpoint(
     domain: sympy.Interval,
     expected: float,
 ) -> None:
-    samples = rand.in_domain(domain, k=1, rng=_EndpointRng())  # type: ignore[arg-type]
+    samples = rand.sp.in_domain(
+        domain,
+        k=1,
+        rng=_EndpointRng(),  # type: ignore[arg-type]
+    )
 
     assert samples == pytest.approx([expected])
 
@@ -624,15 +912,18 @@ def test_in_domain_seeds_default_generator_from_random_module(
         rand.base, "getrandbits", lambda bits: 1234 if bits == 128 else 0
     )
 
-    actual = rand.in_domain(sympy.Reals, k=4)
-    expected = rand.in_domain(sympy.Reals, k=4, rng=np.random.default_rng(1234))
+    actual = rand.sp.in_domain(sympy.Reals, k=4)
+    expected = rand.sp.in_domain(sympy.Reals, k=4, rng=np.random.default_rng(1234))
 
     assert np.array_equal(actual, expected)
 
 
 def test_in_domain_rejects_unsupported_sets() -> None:
     with pytest.raises(TypeError, match="Unsupported domain type"):
-        rand.in_domain(sympy.FiniteSet(1, 2), rng=np.random.default_rng(1234))  # type: ignore[arg-type]
+        rand.sp.in_domain(
+            sympy.FiniteSet(1, 2),  # type: ignore[arg-type]
+            rng=np.random.default_rng(1234),
+        )
 
 
 def test_in_domain_factory_delays_and_repeats_evaluation(
@@ -650,8 +941,8 @@ def test_in_domain_factory_delays_and_repeats_evaluation(
         calls.append((domain, k, rng))
         return np.array([len(calls)])
 
-    monkeypatch.setattr(rand, "in_domain", fake_in_domain)
-    generate = rand.in_domain_(sympy.Integers, 3, rng=rng)
+    monkeypatch.setattr(rand.sp, "in_domain", fake_in_domain)
+    generate = rand.factory(rand.sp.in_domain, sympy.Integers, k=3, rng=rng)
 
     assert calls == []
     assert np.array_equal(generate(), np.array([1]))
