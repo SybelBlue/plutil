@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Literal, assert_type
 
 import prairielearn as pl
@@ -36,14 +36,18 @@ from plutil.functions import eval_at, evalf_at
 
 def test_rand_factory_preserves_generator_return_types() -> None:
     assert_type(rand.mbool(), Literal["true", "false"])
-    assert_type(rand.factory(rand.int, 1, 2), Callable[[], int])
+    integer_factory = rand.factory(rand.int, 1, 2)
+    integer_callable: Callable[[], int] = integer_factory
+    assert_type(integer_factory, rand.Factory[int])
+    assert callable(integer_callable)
+    assert_type(iter(integer_factory), Iterator[int])
     assert_type(
         rand.factory(rand.mbool, 75),
-        Callable[[], Literal["true", "false"]],
+        rand.Factory[Literal["true", "false"]],
     )
     assert_type(
         rand.factory(rand.sp.poly, of="x", degree=2),
-        Callable[[], sympy.Expr],
+        rand.Factory[sympy.Expr],
     )
 
 

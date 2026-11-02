@@ -721,6 +721,7 @@ generators live under `rand.sp`:
 
 ```python
 from fractions import Fraction
+from itertools import islice
 
 import sympy
 
@@ -895,10 +896,11 @@ samples = rand.sp.in_domain(
 )
 ```
 
-### `rand.factory(generator, /, *args, **kwargs) -> Callable[[], T]`
+### `rand.factory(generator, /, *args, **kwargs) -> Factory[T]`
 
-Bind a generator's arguments without selecting a value yet. Each invocation of
-the resulting zero-argument callable makes a fresh random selection:
+Bind a generator's arguments without selecting a value yet. The resulting
+frozen, slotted object is both a zero-argument callable and an infinite
+iterable. Each call or iteration produces a fresh random selection:
 
 ```python
 next_sign = rand.factory(rand.sign, 75)
@@ -942,6 +944,7 @@ next_coprimes = rand.factory(rand.coprimes, (2, 3, 5, 7, 11))
 a = next_integer()
 colors = next_choices()
 p = next_polynomial()
+three_more_integers = list(islice(next_integer, 3))
 ```
 
 The former flat SymPy names (`rand.spsign`, `rand.spint`, `rand.sprational`,

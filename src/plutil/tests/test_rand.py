@@ -1,4 +1,6 @@
+from dataclasses import FrozenInstanceError, is_dataclass
 from fractions import Fraction
+from itertools import islice
 from typing import Any
 
 import numpy as np
@@ -476,6 +478,19 @@ def test_rand_numeric_factories_delay_and_repeat_evaluation(
             },
         ),
     ]
+
+
+def test_rand_factory_is_final_frozen_slotted_and_iterable() -> None:
+    outcomes = iter((2, 3, 5))
+    generate = rand.factory(lambda: next(outcomes))
+
+    assert getattr(rand.Factory, "__final__") is True  # noqa: B009
+    assert rand.Factory.__slots__ == ("_generate",)
+    assert is_dataclass(generate)
+    assert not hasattr(generate, "__dict__")
+    assert list(islice(generate, 3)) == [2, 3, 5]
+    with pytest.raises(FrozenInstanceError):
+        setattr(generate, "_generate", lambda: 7)  # noqa: B010
 
 
 def test_randspint_delegates_to_randint_and_returns_sympy_integer(

@@ -31,25 +31,7 @@ from ._core import (
     rational,
     sign,
 )
-
-
-def factory[**P, R](
-    generator: Callable[P, R],
-    /,
-    *args: P.args,
-    **kwargs: P.kwargs,
-) -> Callable[[], R]:
-    """Bind a generator's arguments and return a zero-argument factory.
-
-    No value is generated until the returned callable is invoked. Each
-    invocation calls ``generator`` again with the bound arguments.
-    """
-
-    def generate() -> R:
-        return generator(*args, **kwargs)
-
-    return generate
-
+from ._factory import Factory, factory
 
 # ``Domain`` cannot carry the PEP 702 decorator used by the callables below.
 # Keep it as a compatibility alias; new annotations should use ``sp.Domain``.
@@ -405,6 +387,7 @@ def in_domain_(
 
 __all__ = (
     "Domain",
+    "Factory",
     "base",
     "bool",
     "bool_",
