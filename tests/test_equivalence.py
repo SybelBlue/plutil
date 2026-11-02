@@ -43,15 +43,15 @@ def test_equivalent_matches_domains_to_sorted_symbol_names(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     x, y = sympy.symbols("x y")
-    x_domain = cast(equivalence.rand.Domain, sympy.Interval(1, 2))
-    y_domain = cast(equivalence.rand.Domain, sympy.Interval(3, 4))
+    x_domain = cast(equivalence.rand.sp.Domain, sympy.Interval(1, 2))
+    y_domain = cast(equivalence.rand.sp.Domain, sympy.Interval(3, 4))
     calls: list[tuple[object, int]] = []
 
     def fake_in_domain(domain: object, *, k: int) -> np.ndarray[Any, Any]:
         calls.append((domain, k))
         return np.full(k, float(domain.start))  # type: ignore[attr-defined]
 
-    monkeypatch.setattr(equivalence.rand, "in_domain", fake_in_domain)
+    monkeypatch.setattr(equivalence.rand.sp, "in_domain", fake_in_domain)
 
     assert equivalence.equivalent(
         x + y,
@@ -73,7 +73,7 @@ def test_equivalent_screens_before_checking_remaining_samples(
         sizes.append(k)
         return np.arange(k)
 
-    monkeypatch.setattr(equivalence.rand, "in_domain", fake_in_domain)
+    monkeypatch.setattr(equivalence.rand.sp, "in_domain", fake_in_domain)
 
     assert equivalence.equivalent(x, x, n=300, x=sympy.Reals)
     assert sizes == [equivalence._SCREENING_SIZE, 300 - equivalence._SCREENING_SIZE]
@@ -89,7 +89,7 @@ def test_equivalent_stops_after_failed_screen(
         sizes.append(k)
         return np.arange(k)
 
-    monkeypatch.setattr(equivalence.rand, "in_domain", fake_in_domain)
+    monkeypatch.setattr(equivalence.rand.sp, "in_domain", fake_in_domain)
 
     assert not equivalence.equivalent(x, x + 1, n=300, x=sympy.Reals)
     assert sizes == [equivalence._SCREENING_SIZE]

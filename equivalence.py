@@ -23,7 +23,7 @@ def equivalent(
     n: int = 10000,
     a_tol: float = 1e-10,
     r_tol: float = 1e-5,
-    **variable_domains: rand.Domain,
+    **variable_domains: rand.sp.Domain,
 ) -> bool:
     """Test two SymPy expressions for numerical equivalence at random points.
 
@@ -144,7 +144,7 @@ def equivalent(
     values_at = sp.lambdify(variables, (a, b), modules="numpy")
 
     def check(size: int) -> bool:
-        samples = (rand.in_domain(domain, k=size) for domain in domains)
+        samples = (rand.sp.in_domain(domain, k=size) for domain in domains)
         a_values, b_values = values_at(*samples)
         return bool(
             np.allclose(
@@ -170,7 +170,7 @@ def equal_or_equivalent(
     n_checks: int = 10000,
     a_tol: float = 1e-10,
     r_tol: float = 1e-5,
-    **variable_domains: rand.Domain,
+    **variable_domains: rand.sp.Domain,
 ) -> bool:
     """Try symbolic equality, falling back to random numerical evaluation.
 
@@ -226,7 +226,7 @@ def equivalent_and_equal(
     n_checks: int = 10000,
     a_tol: float = 1e-10,
     r_tol: float = 1e-5,
-    **variable_domains: rand.Domain,
+    **variable_domains: rand.sp.Domain,
 ) -> bool:
     """Screen numerically, then attempt a time-bounded symbolic comparison.
 
