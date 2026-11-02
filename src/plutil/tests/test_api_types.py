@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import Literal, assert_type
 
 import prairielearn as pl
@@ -23,6 +24,7 @@ from plutil import (
     is_finite_real_number,
     latex,
     mbool,
+    rand,
     require_expr,
     to_expr,
 )
@@ -30,6 +32,14 @@ from plutil.calculus import approximate_area, derivative, integrate
 from plutil.choices import checkbox, multiple_choice
 from plutil.common import _to_expr_input, _to_set_input, eq, str_to_sympy
 from plutil.functions import eval_at, evalf_at
+
+
+def test_rand_factory_preserves_generator_return_types() -> None:
+    assert_type(rand.factory(rand.int, 1, 2), Callable[[], int])
+    assert_type(
+        rand.factory(rand.sp.poly, of="x", degree=2),
+        Callable[[], sympy.Expr],
+    )
 
 
 def test_expression_apis_return_sympy_expressions() -> None:
