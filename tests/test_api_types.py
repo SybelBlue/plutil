@@ -1,6 +1,8 @@
 from collections.abc import Callable, Iterator
 from typing import Literal, assert_type
 
+import numpy as np
+import numpy.typing as npt
 import prairielearn as pl
 import prairielearn.sympy_utils as psu
 import pytest
@@ -48,6 +50,20 @@ def test_rand_factory_preserves_generator_return_types() -> None:
     assert_type(
         rand.factory(rand.sp.poly, of="x", degree=2),
         rand.Factory[sympy.Expr],
+    )
+
+
+def test_rand_numpy_generators_preserve_array_dtypes() -> None:
+    assert_type(rand.np.bool(size=2), npt.NDArray[np.bool_])
+    assert_type(rand.np.mbool(size=2), npt.NDArray[np.str_])
+    assert_type(rand.np.sign(size=2), npt.NDArray[np.int8])
+    assert_type(rand.np.int(1, 2, size=2), npt.NDArray[np.int64])
+    assert_type(rand.np.float(1.0, 2.0, size=2), npt.NDArray[np.float64])
+    assert_type(rand.np.normal(size=2), npt.NDArray[np.float64])
+    assert_type(rand.np.exponential(size=2), npt.NDArray[np.float64])
+    assert_type(
+        rand.np.complex(1j, 1j, size=2),
+        npt.NDArray[np.complex128],
     )
 
 

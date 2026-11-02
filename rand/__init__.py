@@ -11,12 +11,12 @@ from fractions import Fraction
 from typing import Any, Literal
 from warnings import deprecated
 
-import numpy as np
+import numpy as _numpy
 import sympy
 
 from ..common import ExprLike, Variable
 from ..common import spint as _spint
-from . import sp
+from . import np, sp
 from ._core import (
     base,
     bool,
@@ -368,8 +368,8 @@ def in_domain(
     domain: Domain,
     *,
     k: py.int = 1,
-    rng: np.random.Generator | None = None,
-) -> np.ndarray[Any, Any]:
+    rng: _numpy.random.Generator | None = None,
+) -> _numpy.ndarray[Any, Any]:
     """Deprecated compatibility wrapper for :func:`rand.sp.in_domain`."""
     return sp.in_domain(domain, k=k, rng=rng)
 
@@ -379,8 +379,8 @@ def in_domain_(
     domain: Domain,
     k: py.int = 1,
     *,
-    rng: np.random.Generator | None = None,
-) -> Callable[[], np.ndarray[Any, Any]]:
+    rng: _numpy.random.Generator | None = None,
+) -> Callable[[], _numpy.ndarray[Any, Any]]:
     """Deprecated compatibility wrapper for :func:`factory`."""
     return factory(sp.in_domain, domain, k=k, rng=rng)
 
@@ -406,6 +406,7 @@ __all__ = (
     "int",
     "int_",
     "mbool",
+    "np",
     "partitions",
     "partitions_",
     "poly",
