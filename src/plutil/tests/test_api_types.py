@@ -35,7 +35,12 @@ from plutil.functions import eval_at, evalf_at
 
 
 def test_rand_factory_preserves_generator_return_types() -> None:
+    assert_type(rand.mbool(), Literal["true", "false"])
     assert_type(rand.factory(rand.int, 1, 2), Callable[[], int])
+    assert_type(
+        rand.factory(rand.mbool, 75),
+        Callable[[], Literal["true", "false"]],
+    )
     assert_type(
         rand.factory(rand.sp.poly, of="x", degree=2),
         Callable[[], sympy.Expr],

@@ -748,6 +748,15 @@ below 0 or above 100 are clamped to the valid range.
 direction = rand.sign(70)  # 70% chance of 1, 30% chance of -1
 ```
 
+### `rand.mbool(odds=50.0) -> Literal["true", "false"]`
+
+Return `"true"` with an `odds` percent probability and `"false"` otherwise.
+This is the mustache-string form of `rand.bool`.
+
+```python
+show_hint = rand.mbool(25)
+```
+
 ### `rand.sp.sign(odds=50.0) -> sympy.Integer`
 
 Choose a value using the same rules as `rand.sign`, but return it as an exact

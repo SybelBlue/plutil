@@ -19,6 +19,20 @@ def test_randsign_converts_random_boolean_to_sign(
     assert rand.sign(37.5) == expected
 
 
+@pytest.mark.parametrize(
+    ("outcome", "expected"),
+    [(True, "true"), (False, "false")],
+)
+def test_rand_mustache_bool_returns_random_boolean_string(
+    monkeypatch: pytest.MonkeyPatch,
+    outcome: bool,
+    expected: str,
+) -> None:
+    monkeypatch.setattr(rand.base, "random", lambda: 0.0 if outcome else 1.0)
+
+    assert rand.mbool(37.5) == expected
+
+
 def test_randsign_factory_delays_and_repeats_evaluation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

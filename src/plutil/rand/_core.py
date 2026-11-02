@@ -9,12 +9,18 @@ from math import prod
 from typing import Literal
 
 from ..common import ExprLike, clamp
+from ..common import mbool as _mbool
 from ._progression import number as _number
 
 
 def bool(odds: py.float = 50.0) -> py.bool:
     """Return true with ``odds`` percent probability."""
     return base.random() * 100.0 < clamp(odds, min=0.0, max=100.0)
+
+
+def mbool(odds: py.float = 50.0) -> Literal["true", "false"]:
+    """Return a random mustache boolean string."""
+    return _mbool(bool(odds))
 
 
 def sign(odds: py.float = 50.0) -> Literal[-1, 1]:
@@ -236,6 +242,7 @@ __all__ = (
     "coprimes",
     "float",
     "int",
+    "mbool",
     "partitions",
     "rational",
     "sign",
