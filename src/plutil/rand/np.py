@@ -23,12 +23,22 @@ def _array[DType: _np.generic](
     size: Shape,
     dtype: type[DType] | _np.dtype[DType],
 ) -> npt.NDArray[DType]:
+    shape = _shape(size)
+    array = _np.fromiter(values, dtype=dtype, count=prod(shape))
+    return cast(npt.NDArray[DType], array.reshape(shape))
+
+
+def _shape(size: Shape) -> tuple[py.int, ...]:
     shape = (size,) if isinstance(size, py.int) else tuple(size)
     if any(dimension < 0 for dimension in shape):
         raise ValueError("array dimensions must be nonnegative")
+    return shape
 
-    array = _np.fromiter(values, dtype=dtype, count=prod(shape))
-    return cast(npt.NDArray[DType], array.reshape(shape))
+
+def _rng(rng: _np.random.Generator | None) -> _np.random.Generator:
+    if rng is not None:
+        return rng
+    return _np.random.default_rng(_core.base.getrandbits(128))
 
 
 def bool(
@@ -127,12 +137,37 @@ def complex(
     return _array(generate, size=size, dtype=_np.complex128)
 
 
+def normal(
+    loc: py.float = 0.0,
+    scale: py.float = 1.0,
+    *,
+    size: Shape,
+    rng: _np.random.Generator | None = None,
+) -> npt.NDArray[_np.float64]:
+    """Return normally distributed values with the requested shape."""
+    values = _rng(rng).normal(loc, scale, size=_shape(size))
+    return cast(npt.NDArray[_np.float64], values)
+
+
+def exponential(
+    scale: py.float = 1.0,
+    *,
+    size: Shape,
+    rng: _np.random.Generator | None = None,
+) -> npt.NDArray[_np.float64]:
+    """Return exponentially distributed values with the requested shape."""
+    values = _rng(rng).exponential(scale, size=_shape(size))
+    return cast(npt.NDArray[_np.float64], values)
+
+
 __all__ = (
     "Shape",
     "bool",
     "complex",
+    "exponential",
     "float",
     "int",
     "mbool",
+    "normal",
     "sign",
 )

@@ -59,6 +59,8 @@ def test_rand_numpy_generators_preserve_array_dtypes() -> None:
     assert_type(rand.np.sign(size=2), npt.NDArray[np.int8])
     assert_type(rand.np.int(1, 2, size=2), npt.NDArray[np.int64])
     assert_type(rand.np.float(1.0, 2.0, size=2), npt.NDArray[np.float64])
+    assert_type(rand.np.normal(size=2), npt.NDArray[np.float64])
+    assert_type(rand.np.exponential(size=2), npt.NDArray[np.float64])
     assert_type(
         rand.np.complex(1j, 1j, size=2),
         npt.NDArray[np.complex128],

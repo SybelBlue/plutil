@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -84,6 +85,53 @@ def test_array_size_supports_vectors_scalars_and_empty_dimensions(
         lambda _odds: pytest.fail("empty arrays must not generate values"),
     )
     assert rand.np.bool(size=(2, 0)).shape == (2, 0)
+
+
+def test_numpy_distributions_accept_an_explicit_generator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        rand.base,
+        "getrandbits",
+        lambda _bits: pytest.fail("an explicit generator must be used directly"),
+    )
+    rng = np.random.default_rng(42)
+    expected_rng = np.random.default_rng(42)
+
+    normal = rand.np.normal(2.0, 0.5, size=(2, 2), rng=rng)
+    exponential = rand.np.exponential(3.0, size=3, rng=rng)
+
+    assert normal.dtype == np.dtype(np.float64)
+    assert normal.shape == (2, 2)
+    assert np.array_equal(normal, expected_rng.normal(2.0, 0.5, size=(2, 2)))
+    assert exponential.dtype == np.dtype(np.float64)
+    assert exponential.shape == (3,)
+    assert np.array_equal(exponential, expected_rng.exponential(3.0, size=(3,)))
+
+
+@pytest.mark.parametrize(
+    ("generator", "expected"),
+    [
+        (
+            lambda: rand.np.normal(size=3),
+            lambda: np.random.default_rng(1234).normal(size=(3,)),
+        ),
+        (
+            lambda: rand.np.exponential(size=3),
+            lambda: np.random.default_rng(1234).exponential(size=(3,)),
+        ),
+    ],
+)
+def test_numpy_distributions_seed_from_random_module(
+    monkeypatch: pytest.MonkeyPatch,
+    generator: Callable[[], np.ndarray[Any, Any]],
+    expected: Callable[[], np.ndarray[Any, Any]],
+) -> None:
+    monkeypatch.setattr(
+        rand.base, "getrandbits", lambda bits: 1234 if bits == 128 else 0
+    )
+
+    assert np.array_equal(generator(), expected())
 
 
 @pytest.mark.parametrize("size", [-1, (2, -1)])

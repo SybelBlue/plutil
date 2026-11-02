@@ -958,12 +958,15 @@ generator.
 flags = rand.np.mbool(25, size=(2, 3))
 coefficients = rand.np.int(-5, 5, size=4, exclude=(0,))
 measurements = rand.np.float(0.0, 1.0, size=(2, 2), step=0.1)
+errors = rand.np.normal(0.0, 0.1, size=4)
+waiting_times = rand.np.exponential(2.0, size=4)
 ```
 
-The initial array API includes `bool`, `mbool`, `sign`, `int`, `float`, and
-`complex`. Generic or structured helpers such as `choice` and `coprimes` are
-not mirrored yet. These constructors draw through `rand.base`, just like their
-scalar counterparts.
+The initial array API includes `bool`, `mbool`, `sign`, `int`, `float`,
+`complex`, `normal`, and `exponential`. Generic or structured helpers such as
+`choice` and `coprimes` are not mirrored yet. The scalar mirrors draw through
+`rand.base`; `normal` and `exponential` accept an optional NumPy `Generator`
+and otherwise seed one reproducibly from `rand.base`.
 
 The former flat SymPy names (`rand.spsign`, `rand.spint`, `rand.sprational`,
 `rand.poly`, `rand.poly_roots`, and `rand.in_domain`) remain available with
