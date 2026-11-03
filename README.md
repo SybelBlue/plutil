@@ -483,6 +483,63 @@ and the wrong number of correct options.
 
 ---
 
+## `fmt`
+
+`plutil.fmt` formats finite real values as deterministic English strings. It
+accepts Python and NumPy real scalars, `Decimal` values, and numeric SymPy
+expressions. Arbitrary symbolic expressions remain the domain of `fmt.latex`,
+which is the same function as the existing top-level `plutil.latex` export.
+
+```python
+from decimal import Decimal
+
+from plutil import fmt
+
+fmt.number(1234.5678)  # "1,234.568"
+fmt.number(12345, notation="engineering")  # "12.3e+3"
+fmt.number(12345, notation="compact")  # "12.3K"
+fmt.scientific(12345, exponent_style="times")  # "1.23 × 10^4"
+
+fmt.currency(Decimal("1234.565"))  # "$1,234.56" (half-even)
+fmt.currency(-1234.5, currency_sign="accounting")  # "($1,234.50)"
+fmt.currency(1, display="name")  # "1.00 US dollar"
+
+fmt.quantity(1234.5, "V")  # "1.23 kV"
+fmt.quantity(1234, "V", uncertainty=56)  # "(1.23 ± 0.06) kV"
+fmt.quantity(
+    1234,
+    "V",
+    uncertainty=56,
+    uncertainty_significant_digits=2,
+    uncertainty_style="parenthetical",
+)  # "1.234(56) kV"
+```
+
+`number` supports `standard`, `scientific`, `engineering`, and `compact`
+notation. Standard numbers default to zero through three fractional digits;
+scaled notation defaults to one through three significant digits. Pass
+`min_fraction_digits`/`max_fraction_digits` or
+`min_significant_digits`/`max_significant_digits` to override those limits,
+but do not mix the two precision families. Grouping can be `none`, `comma`, or
+`thin_space`; rounding can be `half_even` (the default) or `half_up`.
+
+`currency` has fixed English data for USD, EUR, GBP, JPY, CNY, CAD, and AUD.
+Its display can be `symbol`, `code`, or `name`, and negative values can use a
+leading minus or accounting parentheses. It is intentionally not
+locale-sensitive.
+
+`quantity` automatically selects engineering-scale SI prefixes, or accepts an
+explicit prefix or `None`. An uncertainty is rounded to one significant digit,
+or two when its leading digit is 1 or 2; the measured value is rounded to the
+same decimal place. Use `uncertainty_significant_digits` to override that rule.
+The formatter joins an SI prefix directly to the caller-provided unit but does
+not parse, convert, or validate unit algebra.
+
+Percentage, fraction, date/time, locale-aware, and chemical-formula formatting
+are not part of this initial module.
+
+---
+
 ## Exact decimal symbolic input
 
 `parse_symbolic_decimals` is an opt-in helper for `pl-symbolic-input`. Call it

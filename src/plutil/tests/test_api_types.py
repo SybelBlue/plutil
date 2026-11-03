@@ -1,4 +1,5 @@
 from collections.abc import Callable, Iterator
+from decimal import Decimal
 from typing import Literal, assert_type
 
 import numpy as np
@@ -23,6 +24,7 @@ from plutil import (
     SympyInput,
     SympyValue,
     domain,
+    fmt,
     is_finite_integer,
     is_finite_real_number,
     latex,
@@ -86,6 +88,18 @@ def test_expression_apis_return_sympy_expressions() -> None:
         approximate_area(value, d=x, bounds=(0, 1), n=2, method="left"),
         ExprLike,
     )
+
+
+def test_formatting_apis_return_strings() -> None:
+    notation: fmt.Notation = "scientific"
+    currency_code: fmt.CurrencyCode = "USD"
+    prefix: fmt.SIPrefix = "k"
+
+    assert_type(fmt.number(Decimal("1.25"), notation=notation), str)
+    assert_type(fmt.scientific(sympy.pi), str)
+    assert_type(fmt.currency(1, currency=currency_code), str)
+    assert_type(fmt.quantity(1, "V", prefix=prefix), str)
+    assert_type(fmt.latex(x + 1), str)
 
 
 def test_domain_apis_return_sympy_sets() -> None:
