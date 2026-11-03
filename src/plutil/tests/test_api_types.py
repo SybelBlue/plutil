@@ -1,6 +1,6 @@
 from collections.abc import Callable, Iterator
 from decimal import Decimal
-from typing import Literal, assert_type
+from typing import Literal, assert_type, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -23,6 +23,7 @@ from plutil import (
     SetLike,
     SympyInput,
     SympyValue,
+    defmt,
     domain,
     fmt,
     is_finite_integer,
@@ -101,6 +102,31 @@ def test_formatting_apis_return_strings() -> None:
     assert_type(fmt.currency(1, currency=currency_code, latex=True), str)
     assert_type(fmt.quantity(1, "V", prefix=prefix), str)
     assert_type(fmt.latex(x + 1), str)
+
+    assert_type(defmt.parse("1.25"), tuple[Decimal, defmt.FormatSpec])
+    assert_type(
+        defmt.parse("1.25", kind="number"),
+        tuple[Decimal, defmt.NumberFormat],
+    )
+    assert_type(
+        defmt.parse("$1.25", kind="currency"),
+        tuple[Decimal, defmt.CurrencyFormat],
+    )
+    assert_type(
+        defmt.parse("1.25 V", kind="quantity"),
+        tuple[Decimal, defmt.QuantityFormat],
+    )
+    assert_type(
+        defmt.parse("1.25 V", unit="V"),
+        tuple[Decimal, defmt.QuantityFormat],
+    )
+    format_kind = cast(defmt.FormatKind, "number")
+    assert_type(
+        defmt.parse("1.25", kind=format_kind),
+        tuple[Decimal, defmt.FormatSpec],
+    )
+    format_spec: defmt.FormatSpec = defmt.NumberFormat()
+    assert_type(format_spec(Decimal("1.25")), str)
 
 
 def test_domain_apis_return_sympy_sets() -> None:

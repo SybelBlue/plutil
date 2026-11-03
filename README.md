@@ -544,6 +544,48 @@ not parse, convert, or validate unit algebra.
 Percentage, fraction, date/time, locale-aware, and chemical-formula formatting
 are not part of this initial module.
 
+## `defmt`
+
+`plutil.defmt` is the opt-in canonical inverse of the numeric formatters. It is
+kept separate so importing `plutil` or `plutil.fmt` does not load its parsing
+expressions and helpers. `defmt.parse` returns the
+displayed value as a `Decimal` in the formatter's input scale and an immutable,
+inspectable callable that reproduces the presentation:
+
+```python
+from plutil import defmt
+
+value, spec = defmt.parse("$1,234.50")
+
+assert value == Decimal("1234.50")
+assert spec.kind == "currency"
+assert spec(value) == "$1,234.50"
+assert spec(Decimal("9.5")) == "$9.50"
+```
+
+Scaling is applied to the recovered value, so `defmt.parse("1.20e+3")` returns
+`Decimal("1.20e3")`, and `defmt.parse("1.2 kV")` returns `Decimal("1200")`.
+The returned object is one of `defmt.NumberFormat`, `defmt.CurrencyFormat`, or
+`defmt.QuantityFormat`; its fields expose the inferred formatter arguments.
+
+Some formatter outputs have more than one valid interpretation. Automatic
+detection prefers currency, then numbers (including compact notation), then
+quantities. Pass `kind` to select a family, and pass the base `unit` to control
+SI-prefix splitting:
+
+```python
+defmt.parse("1.2 kg")[0]  # Decimal("1200"), inferred as 1.2 k(g)
+defmt.parse("1.2 kg", unit="kg")[0]  # Decimal("1.2"), unprefixed kg
+```
+
+Only exact strings emitted by the current formatters are accepted. The result
+guarantees `spec(value) == text`, but formatting is lossy: it cannot recover
+the pre-rounded value, a sign hidden by `sign="never"`, the original rounding
+mode, or other arguments that produce identical text. In those cases `defmt`
+uses the visible digit count and presentation with half-even rounding as its
+canonical interpretation. Arbitrary symbolic output from `fmt.latex` is not
+supported.
+
 ---
 
 ## Exact decimal symbolic input
