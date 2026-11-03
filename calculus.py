@@ -17,8 +17,8 @@ from .common import (
     ExprLike,
     NumberLike,
     Variable,
+    _input_to_expr,
     _normalize_one_or_more,
-    _to_expr_input,
     require_expr,
     var_name,
     var_to_symbol,
@@ -64,7 +64,7 @@ def derivative(
     Set ``evaluate=False`` to return an unevaluated SymPy derivative.
     """
     return sympy.Derivative(
-        _to_expr_input(f),
+        _input_to_expr(f),
         var_to_symbol(d),
         evaluate=evaluate,
     )
@@ -100,7 +100,7 @@ def integrate(
     If ``evaluate`` is ``False``, it returns an expression including ``sympy.Integral``
     """
     diff_var = var_to_symbol(d)
-    f_expr = _to_expr_input(f)
+    f_expr = _input_to_expr(f)
 
     if bounds is not None:
         result = (
@@ -128,8 +128,8 @@ def integrate(
         return antideriv + var_to_symbol(C)
 
     x_0, y_0 = known_antideriv_point
-    value_at_x_0 = require_expr(antideriv.subs(diff_var, _to_expr_input(x_0)))
-    return antideriv + (_to_expr_input(y_0) - value_at_x_0)
+    value_at_x_0 = require_expr(antideriv.subs(diff_var, _input_to_expr(x_0)))
+    return antideriv + (_input_to_expr(y_0) - value_at_x_0)
 
 
 def integrate_(
@@ -192,7 +192,7 @@ def approximate_area[key: NumberLike, value: NumberLike](
         }
         f_x = lambda x: next(v for k, v in table.items() if math.isclose(k, float(x)))
     else:
-        f_expr = _to_expr_input(f).simplify()
+        f_expr = _input_to_expr(f).simplify()
         f_x = lambda x: eval_at(f_expr, **{var_name(d): x}, simplify=True)
 
     terms: list[Any] = list(map(f_x, rect_xs))
@@ -224,7 +224,7 @@ def mean_value_theorem(
         raise ZeroDivisionError
     if upper < lower:
         raise ValueError("upper bound is less than lower bound")
-    f_expr = _to_expr_input(f)
+    f_expr = _input_to_expr(f)
     mean_val = integrate(f_expr, d=d, bounds=bounds) / (upper - lower)
     sols = sympy.solveset(
         f_expr - mean_val,

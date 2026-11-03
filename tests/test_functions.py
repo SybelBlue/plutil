@@ -6,9 +6,47 @@ import pytest
 import sympy
 from sympy.abc import s, t, x, y
 
-from plutil import evalf_at, rearrange_eqn
+from plutil import domain, evalf_at, rearrange_eqn
 from plutil.common import eq
 from plutil.functions import eval_at, translate_through_
+
+
+def test_domain_allows_complex_values_of_roots() -> None:
+    assert domain(sympy.sqrt(x), d=x) == sympy.S.Reals
+
+
+def test_domain_excludes_singularities_of_negative_powers() -> None:
+    result = domain(1 / sympy.sqrt(x), d=x)
+
+    assert result == sympy.Complement(sympy.S.Reals, sympy.FiniteSet(0))
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected"),
+    [
+        (1 / (x**2 - 1), sympy.Complement(sympy.S.Reals, sympy.FiniteSet(-1, 1))),
+        (1 / (x**2 + 1), sympy.S.Reals),
+    ],
+)
+def test_domain_only_excludes_real_poles(
+    expression: sympy.Expr, expected: sympy.Set
+) -> None:
+    assert domain(expression, d=x) == expected
+
+
+def test_domain_preserves_unresolved_conditions() -> None:
+    parameter = sympy.Symbol("a", real=True)
+
+    result = domain(1 / (x**5 - x + parameter), d=x)
+
+    assert result.has(sympy.ConditionSet)
+
+
+def test_domain_rejects_non_expression_input() -> None:
+    invalid: Any = sympy.FiniteSet(1)
+
+    with pytest.raises(TypeError, match="Expected an expression"):
+        domain(invalid, d=x)
 
 
 def test_rearrange_eqn_solves_for_requested_linear_variable():

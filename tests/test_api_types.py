@@ -22,6 +22,7 @@ from plutil import (
     SetLike,
     SympyInput,
     SympyValue,
+    domain,
     is_finite_integer,
     is_finite_real_number,
     latex,
@@ -32,7 +33,7 @@ from plutil import (
 )
 from plutil.calculus import approximate_area, derivative, integrate
 from plutil.choices import checkbox, multiple_choice
-from plutil.common import _to_expr_input, _to_set_input, eq, str_to_sympy
+from plutil.common import _input_to_expr, _input_to_set, eq, str_to_sympy
 from plutil.functions import eval_at, evalf_at
 
 
@@ -85,6 +86,10 @@ def test_expression_apis_return_sympy_expressions() -> None:
         approximate_area(value, d=x, bounds=(0, 1), n=2, method="left"),
         ExprLike,
     )
+
+
+def test_domain_apis_return_sympy_sets() -> None:
+    assert_type(domain(x**2, d=x), sympy.Set)
 
 
 def test_numeric_predicates_narrow_objects_to_sympy_expressions() -> None:
@@ -146,13 +151,13 @@ def test_input_types_accept_and_validate_sympy_json() -> None:
 
     assert_type(to_expr(expr_json), SympyValue)
     assert_type(to_expr(set_json), SympyValue)
-    assert_type(_to_expr_input(expr_input), sympy.Expr)
-    assert_type(_to_set_input(set_input), sympy.Set)
+    assert_type(_input_to_expr(expr_input), sympy.Expr)
+    assert_type(_input_to_set(set_input), sympy.Set)
     assert_type(derivative(expr_input, d=x), sympy.Expr)
     assert_type(integrate(expr_input, d=x), sympy.Expr)
     assert_type(latex(set_input), str)
-    assert _to_expr_input(expr_input) == x**2 + 1
-    assert _to_set_input(set_input) == sympy.Interval(0, 1)
+    assert _input_to_expr(expr_input) == x**2 + 1
+    assert _input_to_set(set_input) == sympy.Interval(0, 1)
     assert latex(set_input) == r"\left[0, 1\right]"
     assert eq(
         approximate_area(
@@ -175,7 +180,7 @@ def test_input_types_reject_sympy_json_with_the_wrong_value_kind() -> None:
         derivative(set_json, d=x)
 
     with pytest.raises(TypeError, match="Expected a set"):
-        _to_set_input(expr_json)
+        _input_to_set(expr_json)
 
 
 type Outcome = Literal["converges", "diverges"]

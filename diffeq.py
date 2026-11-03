@@ -15,8 +15,8 @@ from .common import (
     ExprInput,
     OneOrMore,
     Variable,
+    _input_to_expr,
     _normalize_one_or_more,
-    _to_expr_input,
     _var_names,
     latex,
     require_expr,
@@ -93,8 +93,8 @@ def check_implicit_solution(
     C_s = var_to_symbol(C)
     y_x = Function(var_name(dependent))(x_s)
 
-    ref_ode = require_expr(_to_expr_input(reference_ode).subs(y_s, y_x))
-    stu_sol = Eq(require_expr(_to_expr_input(student_sol).subs(y_s, y_x)), C_s)
+    ref_ode = require_expr(_input_to_expr(reference_ode).subs(y_s, y_x))
+    stu_sol = Eq(require_expr(_input_to_expr(student_sol).subs(y_s, y_x)), C_s)
 
     check, correct = None, False
     try:
@@ -134,11 +134,11 @@ def check_explicit_solution(
     y_s = var_to_symbol(dependent)
     y_x = Function(var_name(dependent))(x_s)
 
-    student_expr = _to_expr_input(student_solution)
+    student_expr = _input_to_expr(student_solution)
     if C_s not in student_expr.free_symbols:
         return OdeCheckResult(missing_constant=var_name(C))
 
-    ref_ode = require_expr(_to_expr_input(reference_ode).subs(y_s, y_x))
+    ref_ode = require_expr(_input_to_expr(reference_ode).subs(y_s, y_x))
     stu_sol = Eq(y_x, student_expr)
 
     correct, check = False, None
@@ -170,7 +170,7 @@ def implicit_diff(
     out: sp.Expr | None = None
     indeps = tuple(_normalize_one_or_more(variables))
     if not indeps:
-        return _to_expr_input(f)
+        return _input_to_expr(f)
     for v in indeps:
         dd = derivative(f, d=v)
         with sp.evaluate(False):
@@ -210,7 +210,7 @@ def diffeq_latex(
     """
     dependent_names = _var_names(dependent_vars)
     independent_names = _var_names(independent_vars)
-    normalized_expr = _to_expr_input(expr)
+    normalized_expr = _input_to_expr(expr)
     if independent_names:
         independent = var_to_symbol(independent_names[0])
         for fn in dependent_names:

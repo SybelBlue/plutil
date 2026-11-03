@@ -322,7 +322,7 @@ def require_expr(value: sympy.Basic | Any) -> sympy.Expr:
     return value
 
 
-def _to_expr_input(value: ExprInput, variables: OneOrMore[Variable] = ()) -> sympy.Expr:
+def _input_to_expr(value: ExprInput, variables: OneOrMore[Variable] = ()) -> sympy.Expr:
     """Parse and validate an expression-only symbolic input."""
     parsed = to_expr(value, variables)
     try:
@@ -333,7 +333,7 @@ def _to_expr_input(value: ExprInput, variables: OneOrMore[Variable] = ()) -> sym
         ) from exc
 
 
-def _to_set_input(value: SetInput, variables: OneOrMore[Variable] = ()) -> sympy.Set:
+def _input_to_set(value: SetInput, variables: OneOrMore[Variable] = ()) -> sympy.Set:
     """Parse and validate a set-only symbolic input."""
     parsed = to_expr(value, variables)
     if not isinstance(parsed, sympy.Set):
@@ -447,7 +447,7 @@ def latex(
         return rendered
     if log_base == math.e:
         return rendered.replace(r"\log", r"\ln")
-    parsed_log_base = _to_expr_input(log_base)
+    parsed_log_base = _input_to_expr(log_base)
     if parsed_log_base == sympy.E:
         return rendered.replace(r"\log", r"\ln")
 
@@ -493,13 +493,13 @@ def lim_latex(
         simplifyRatioPowers=simplifyRatioPowers,
     )
     val_tex = latex(
-        _to_expr_input(val),
+        _input_to_expr(val),
         log_base=log_base,
         reparse=reparse,
         displaystyle=displaystyle,
         simplifyRatioPowers=simplifyRatioPowers,
     )
-    body_expr = _to_expr_input(body)
+    body_expr = _input_to_expr(body)
     body_tex = latex(
         body_expr,
         log_base=log_base,
@@ -572,7 +572,7 @@ def is_trivial(
         Whether any provided triviality condition matches. Returns ``False`` if
         no conditions are provided.
     """
-    parsed = _to_expr_input(value)
+    parsed = _input_to_expr(value)
     if simplify:
         parsed = require_expr(sympy.simplify(parsed))
     return (

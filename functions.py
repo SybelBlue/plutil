@@ -9,7 +9,7 @@ import sympy
 from .common import (
     ExprInput,
     Variable,
-    _to_expr_input,
+    _input_to_expr,
     require_expr,
     var_to_symbol,
 )
@@ -43,7 +43,7 @@ def rearrange_eqn(
             raise TypeError("Keyword syntax requires exactly one equation")
         variable_name, rhs = next(iter(equation_kwarg.items()))
         lhs = var_to_symbol(variable_name)
-        rhs = _to_expr_input(rhs)
+        rhs = _input_to_expr(rhs)
         equation = sympy.Eq(lhs, rhs, evaluate=False)
         if isolate is None:
             candidate_variables = {
@@ -90,6 +90,31 @@ def rearrange_eqn(
     return require_expr(solutions[0][symbol])
 
 
+def _require_set(value: object) -> sympy.Set:
+    """Return ``value`` narrowed to a SymPy set."""
+    if not isinstance(value, sympy.Set):
+        raise TypeError(
+            f"Expected a SymPy Set, but got {type(value).__name__}: {value!r}"
+        )
+    return value
+
+
+def domain(f: ExprInput, *, d: Variable) -> sympy.Set:
+    """Return the natural domain of ``f`` over real inputs.
+
+    Function values may be complex, so roots of negative real values remain in
+    the domain. Inputs at singularities, including poles, are excluded.
+    Unresolved singularities are retained as :class:`sympy.ConditionSet`
+    expressions in the returned set.
+    """
+    expression = _input_to_expr(f)
+    variable = var_to_symbol(d)
+    singularities = _require_set(
+        sympy.singularities(expression, variable, domain=sympy.S.Reals)
+    )
+    return _require_set(sympy.Complement(sympy.S.Reals, singularities))
+
+
 def eval_at(
     f: ExprInput, simplify: bool = True, **bindings: ExprInput | None
 ) -> sympy.Expr:
@@ -106,11 +131,11 @@ def _eval_at(
     f: ExprInput, *, simplify: bool, bindings: Mapping[str, ExprInput | None]
 ) -> sympy.Expr:
     values = (
-        (sympy.Symbol(k), _to_expr_input(v))
+        (sympy.Symbol(k), _input_to_expr(v))
         for k, v in bindings.items()
         if v is not None
     )
-    res = require_expr(_to_expr_input(f).subs(values))
+    res = require_expr(_input_to_expr(f).subs(values))
     if simplify:
         res = require_expr(sympy.simplify(res))
     return res
@@ -128,11 +153,11 @@ def evalf_at(f: ExprInput, **bindings: ExprInput | None) -> float:
         TypeError: If evaluation produces a non-expression SymPy object.
         ValueError: If the resulting expression cannot be converted to float.
     """
-    fn = _to_expr_input(f)
+    fn = _input_to_expr(f)
     out = require_expr(
         fn.evalf(
             subs={
-                sympy.Symbol(k): _to_expr_input(v)
+                sympy.Symbol(k): _input_to_expr(v)
                 for k, v in bindings.items()
                 if v is not None
             }
@@ -162,8 +187,8 @@ def translate_through(
         )
 
     return (
-        _to_expr_input(f)
-        + _to_expr_input(y0)
+        _input_to_expr(f)
+        + _input_to_expr(y0)
         - _eval_at(f, simplify=True, bindings=bindings)
     )
 
@@ -195,8 +220,8 @@ def scale_through(
         )
 
     return (
-        _to_expr_input(f)
-        * _to_expr_input(y0)
+        _input_to_expr(f)
+        * _input_to_expr(y0)
         / _eval_at(f, simplify=True, bindings=bindings)
     )
 
