@@ -168,6 +168,32 @@ def test_currency_supports_label_and_sign_modes() -> None:
     assert fmt.currency(Decimal("-0.004"), currency_sign="accounting") == "$0.00"
 
 
+def test_currency_supports_latex_math_fragments() -> None:
+    assert fmt.currency(1234.5, latex=True) == r"\$1{,}234.50"
+    assert (
+        fmt.currency(1234.5, display="code", latex=True) == r"\mathrm{USD}\,1{,}234.50"
+    )
+    assert (
+        fmt.currency(1234.5, display="name", latex=True)
+        == r"1{,}234.50\,\mathrm{US\ dollars}"
+    )
+    assert fmt.currency(1.2, currency="CAD", latex=True) == r"\mathrm{CA\$}1.20"
+    assert fmt.currency(-1234.5, latex=True) == r"-\$1{,}234.50"
+    assert (
+        fmt.currency(-1234.5, latex=True, currency_sign="accounting")
+        == r"\left(\$1{,}234.50\right)"
+    )
+
+
+def test_currency_latex_converts_thin_space_grouping() -> None:
+    assert fmt.currency(1234.5, latex=True, grouping="thin_space") == r"\$1\,234.50"
+
+
+def test_currency_requires_boolean_latex_flag() -> None:
+    with pytest.raises(TypeError, match="latex must be a bool"):
+        fmt.currency(1, latex=cast(Any, "yes"))
+
+
 def test_currency_supports_digit_and_rounding_overrides() -> None:
     value = Decimal("1234.565")
 

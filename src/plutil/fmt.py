@@ -254,12 +254,18 @@ def currency(
     currency: CurrencyCode = "USD",
     display: CurrencyDisplay = "symbol",
     currency_sign: CurrencySign = "standard",
+    latex: bool = False,
     min_fraction_digits: int | None = None,
     max_fraction_digits: int | None = None,
     grouping: Grouping = "comma",
     rounding: RoundingMode = "half_even",
 ) -> str:
-    """Format a monetary value using deterministic English currency data."""
+    """Format a monetary value using deterministic English currency data.
+
+    Set ``latex`` to return a delimiter-free fragment for use in math mode.
+    """
+    if not isinstance(latex, bool):
+        raise TypeError("latex must be a bool")
     _typecheck("display", display, _CURRENCY_DISPLAYS)
     _typecheck("currency_sign", currency_sign, _CURRENCY_SIGNS)
     _typecheck("grouping", grouping, _GROUPINGS)
@@ -287,20 +293,49 @@ def currency(
         rounding=rounding,
     )
 
+    if latex:
+        rendered_number = _currency_number_latex(rendered_number)
+
     if display == "symbol":
-        body = f"{info.symbol}{rendered_number}"
+        symbol = _currency_symbol_latex(info.symbol) if latex else info.symbol
+        body = f"{symbol}{rendered_number}"
     elif display == "code":
-        body = f"{currency} {rendered_number}"
+        body = (
+            rf"\mathrm{{{currency}}}\,{rendered_number}"
+            if latex
+            else f"{currency} {rendered_number}"
+        )
     else:
         name = info.singular if rounded == 1 else info.plural
-        body = f"{rendered_number} {name}"
+        body = (
+            rf"{rendered_number}\,{_mathrm(name)}"
+            if latex
+            else f"{rendered_number} {name}"
+        )
 
     is_negative = decimal_value.is_signed() and rounded != 0
     if not is_negative:
         return body
     if currency_sign == "accounting":
-        return f"({body})"
+        return rf"\left({body}\right)" if latex else f"({body})"
     return f"-{body}"
+
+
+def _currency_number_latex(value: str) -> str:
+    """Make a formatted decimal safe and well-spaced in LaTeX math mode."""
+    return value.replace(",", "{,}").replace("\u2009", r"\,")
+
+
+def _currency_symbol_latex(symbol: str) -> str:
+    """Render a currency symbol or disambiguated symbol in LaTeX math mode."""
+    if any(character.isalpha() for character in symbol):
+        return _mathrm(symbol)
+    return symbol.replace("$", r"\$")
+
+
+def _mathrm(value: str) -> str:
+    escaped = value.replace("$", r"\$").replace(" ", r"\ ")
+    return rf"\mathrm{{{escaped}}}"
 
 
 def quantity(

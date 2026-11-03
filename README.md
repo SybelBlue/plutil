@@ -503,6 +503,7 @@ fmt.scientific(12345, exponent_style="times")  # "1.23 × 10^4"
 fmt.currency(Decimal("1234.565"))  # "$1,234.56" (half-even)
 fmt.currency(-1234.5, currency_sign="accounting")  # "($1,234.50)"
 fmt.currency(1, display="name")  # "1.00 US dollar"
+fmt.currency(1234.5, display="code", latex=True)  # r"\mathrm{USD}\,1{,}234.50"
 
 fmt.quantity(1234.5, "V")  # "1.23 kV"
 fmt.quantity(1234, "V", uncertainty=56)  # "(1.23 ± 0.06) kV"
@@ -526,7 +527,12 @@ but do not mix the two precision families. Grouping can be `none`, `comma`, or
 `currency` has fixed English data for USD, EUR, GBP, JPY, CNY, CAD, and AUD.
 Its display can be `symbol`, `code`, or `name`, and negative values can use a
 leading minus or accounting parentheses. It is intentionally not
-locale-sensitive.
+locale-sensitive. Set `latex=True` to produce a delimiter-free math fragment:
+symbols are escaped, grouping commas are protected from punctuation spacing,
+codes and names use `\mathrm`, and accounting parentheses use `\left` and
+`\right`. For example, render `fmt.currency(1234.5, latex=True)` inside an
+existing `\(...\)` context. The plain default remains appropriate for logs,
+CSV output, or an HTML element marked `mathjax_ignore`.
 
 `quantity` automatically selects engineering-scale SI prefixes, or accepts an
 explicit prefix or `None`. An uncertainty is rounded to one significant digit,
