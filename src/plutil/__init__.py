@@ -41,6 +41,7 @@ from .common import (
 )
 from .equivalence import equivalent
 from .functions import (
+    domain,
     eval_at,
     eval_at_,
     evalf_at,
@@ -98,6 +99,7 @@ __all__: Final[tuple[str, ...]] = (
     "clamp",
     "count_in_latex",
     "dbg",
+    "domain",
     "eq",
     "equivalent",
     "eval_at",

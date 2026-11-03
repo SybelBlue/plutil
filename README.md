@@ -527,6 +527,24 @@ stores a converted answer and `False` otherwise.
 
 Helpers for evaluating and transforming symbolic functions.
 
+### `domain(f, *, d) -> Set`
+
+Return the natural domain of an expression over real inputs while allowing its
+values to be complex. This differs from SymPy's `continuous_domain`, which
+applies real-valued constraints to roots and inverse functions. Poles are still
+excluded, and unresolved singularities remain represented by `ConditionSet`
+expressions in the returned set.
+
+```python
+from plutil import domain
+from sympy import S, sqrt
+from sympy.abc import x
+
+domain(sqrt(x), d=x)  # -> Reals
+domain(1 / sqrt(x), d=x)  # -> Reals ∖ {0}
+domain(1 / (x**2 + 1), d=x) == S.Reals  # -> True
+```
+
 ### `eval_at(f, **bindings) -> Expr`
 
 Substitute values into a SymPy expression and simplify. Both the substitution
