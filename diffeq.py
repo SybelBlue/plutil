@@ -158,12 +158,10 @@ def implicit_diff(
     *,
     d: Variable,
 ) -> sp.Expr:
-    r"""The call `implicit_diff(f, (x0,x1,...), d=t)` constructs:
+    r"""The call ``implicit_diff(f, (x0, x1, ...), d=t)`` constructs:
 
-    .. math:
+    .. math::
         \sum_{x_i} \frac{\partial f}{\partial x_i} \frac{dx_i}{dt}
-
-    ```
     """
     from .calculus import d as d_
 

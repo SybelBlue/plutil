@@ -344,7 +344,6 @@ def award_partial_credit(
     Example:
         For an integral whose correct answer is ``a*x**3/3 + C``::
 
-            ```
             award_partial_credit(
                 lens,
                 # broken problem, a should never be 0
@@ -363,7 +362,6 @@ def award_partial_credit(
                 # sign of C should never matter
                 addl_correct_ans=a * x**3 / 3 - C,
             )
-            ```
 
     Args:
         lens: Symbolic lens containing the question data, answer name, and
