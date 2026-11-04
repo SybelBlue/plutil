@@ -29,7 +29,6 @@ from plutil import (
     is_finite_integer,
     is_finite_real_number,
     latex,
-    mbool,
     rand,
     require_expr,
     to_expr,
@@ -84,7 +83,7 @@ def test_expression_apis_return_sympy_expressions() -> None:
     assert_type(evalf_at(value, x=2), float)
     assert_type(is_finite_real_number(value), bool)
     assert_type(is_finite_integer(value), bool)
-    assert_type(mbool(value), Literal["true", "false"])
+    assert_type(fmt.mbool(value), Literal["true", "false"])
     assert_type(
         approximate_area(value, d=x, bounds=(0, 1), n=2, method="left"),
         ExprLike,
@@ -127,6 +126,13 @@ def test_formatting_apis_return_strings() -> None:
     )
     format_spec: defmt.FormatSpec = defmt.NumberFormat()
     assert_type(format_spec(Decimal("1.25")), str)
+
+
+def test_structured_formatting_apis_return_json_values() -> None:
+    value: fmt.JsonValue = fmt.json({"expression": x + 1, "enabled": True})
+
+    assert_type(fmt.json(value), fmt.JsonValue)
+    assert_type(fmt.mustache(value), fmt.JsonValue)
 
 
 def test_domain_apis_return_sympy_sets() -> None:

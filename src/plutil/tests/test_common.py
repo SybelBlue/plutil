@@ -7,6 +7,7 @@ import pytest
 import sympy
 from sympy.abc import n, t, x, y
 
+import plutil
 import plutil.common as common_mod
 from plutil.common import (
     eq,
@@ -16,7 +17,6 @@ from plutil.common import (
     json_to_sympy,
     latex,
     lim_latex,
-    mbool,
     setrec,
     sign,
     spint,
@@ -34,20 +34,11 @@ def test_spint_constructs_an_exact_sympy_integer():
     assert value / 2 == sympy.Rational(3, 2)
 
 
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        (True, "true"),
-        (1, "true"),
-        ("false", "true"),
-        (False, "false"),
-        (0, "false"),
-        ("", "false"),
-        (None, "false"),
-    ],
-)
-def test_mustache_bool_uses_python_truthiness(value: object, expected: str):
-    assert mbool(value) == expected
+def test_deprecated_mustache_bool_aliases_remain_callable() -> None:
+    with pytest.warns(DeprecationWarning, match=r"plutil\.fmt\.mbool"):
+        assert common_mod.mbool(True) == "true"
+    with pytest.warns(DeprecationWarning, match=r"plutil\.fmt\.mbool"):
+        assert plutil.mbool(False) == "false"
 
 
 @pytest.mark.parametrize(("value", "expected"), [(3.9, 3), (-3.9, -3)])

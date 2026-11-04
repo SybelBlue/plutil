@@ -2,14 +2,22 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import math
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass, is_dataclass
 from decimal import Decimal, localcontext
 from typing import Any, Final, Literal, cast
 
 import numpy as np
+import prairielearn as pl
 import sympy
 
 from .common import latex
+
+type JsonValue = (
+    None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
+)
+"""A recursively JSON-compatible Python value returned by :func:`json`."""
 
 type NumberInput = (
     int | float | Decimal | np.integer[Any] | np.floating[Any] | sympy.Expr
@@ -60,6 +68,7 @@ __all__: Final[tuple[str, ...]] = (
     "CurrencySign",
     "ExponentStyle",
     "Grouping",
+    "JsonValue",
     "Notation",
     "NumberInput",
     "RoundingMode",
@@ -67,7 +76,10 @@ __all__: Final[tuple[str, ...]] = (
     "SignDisplay",
     "UncertaintyStyle",
     "currency",
+    "json",
     "latex",
+    "mbool",
+    "mustache",
     "number",
     "quantity",
     "scientific",
@@ -85,6 +97,142 @@ _SIGN_DISPLAYS: Final = frozenset(("auto", "always", "except_zero", "never"))
 _CURRENCY_DISPLAYS: Final = frozenset(("symbol", "code", "name"))
 _CURRENCY_SIGNS: Final = frozenset(("standard", "accounting"))
 _UNCERTAINTY_STYLES: Final = frozenset(("plus_minus", "parenthetical"))
+
+
+def mbool(value: Any) -> Literal["true", "false"]:
+    """Return a Mustache boolean string from the truthiness of ``value``."""
+    return "true" if value else "false"
+
+
+def json(
+    value: object,
+    *,
+    df_encoding_version: Literal[1, 2] = 2,
+    np_encoding_version: Literal[1, 2] = 2,
+) -> JsonValue:
+    """Return ``value`` as a recursively JSON-compatible Python value.
+
+    This returns Python data rather than JSON text. PrairieLearn-supported
+    scientific values are encoded with :func:`prairielearn.to_json`, mappings
+    and sequences are normalized recursively, and dataclass instances are
+    converted with :func:`dataclasses.asdict`.
+
+    Unsupported values raise :class:`TypeError` with their location in the
+    input. Both PrairieLearn encoding versions default to their modern v2
+    representations and can be overridden for compatibility.
+    """
+    return _json_value(
+        value,
+        path="$",
+        mustache_booleans=False,
+        df_encoding_version=df_encoding_version,
+        np_encoding_version=np_encoding_version,
+    )
+
+
+def mustache(
+    value: object,
+    *,
+    df_encoding_version: Literal[1, 2] = 2,
+    np_encoding_version: Literal[1, 2] = 2,
+) -> JsonValue:
+    """Return ``value`` with every boolean rendered for Mustache interpolation.
+
+    The result follows :func:`json`, except that boolean leaves become the
+    lowercase strings ``"true"`` and ``"false"``. This is appropriate for
+    interpolated HTML attributes. Use :func:`json` when native booleans are
+    needed for Mustache section logic, where the string ``"false"`` is truthy.
+    """
+    return _json_value(
+        value,
+        path="$",
+        mustache_booleans=True,
+        df_encoding_version=df_encoding_version,
+        np_encoding_version=np_encoding_version,
+    )
+
+
+def _json_value(
+    value: object,
+    *,
+    path: str,
+    mustache_booleans: bool,
+    df_encoding_version: Literal[1, 2],
+    np_encoding_version: Literal[1, 2],
+) -> JsonValue:
+    converted = pl.to_json(
+        value,
+        df_encoding_version=df_encoding_version,
+        np_encoding_version=np_encoding_version,
+    )
+    if converted is not value:
+        return _json_value(
+            converted,
+            path=path,
+            mustache_booleans=mustache_booleans,
+            df_encoding_version=df_encoding_version,
+            np_encoding_version=np_encoding_version,
+        )
+
+    if value is None or isinstance(value, str):
+        return value
+    if isinstance(value, (bool, np.bool_)):
+        boolean = bool(value)
+        return mbool(boolean) if mustache_booleans else boolean
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise TypeError(f"unsupported JSON value at {path}: non-finite float")
+        return value
+
+    if isinstance(value, Mapping):
+        result: dict[str, JsonValue] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise TypeError(
+                    f"unsupported JSON mapping key at {path}: "
+                    f"expected str, got {type(key).__name__}"
+                )
+            result[key] = _json_value(
+                item,
+                path=_json_path_key(path, key),
+                mustache_booleans=mustache_booleans,
+                df_encoding_version=df_encoding_version,
+                np_encoding_version=np_encoding_version,
+            )
+        return result
+
+    if isinstance(value, (list, tuple)):
+        return [
+            _json_value(
+                item,
+                path=f"{path}[{index}]",
+                mustache_booleans=mustache_booleans,
+                df_encoding_version=df_encoding_version,
+                np_encoding_version=np_encoding_version,
+            )
+            for index, item in enumerate(value)
+        ]
+
+    if isinstance(value, type) and is_dataclass(value):
+        raise TypeError(f"unsupported JSON value at {path}: dataclass type")
+    if is_dataclass(value):
+        return _json_value(
+            asdict(cast(Any, value)),
+            path=path,
+            mustache_booleans=mustache_booleans,
+            df_encoding_version=df_encoding_version,
+            np_encoding_version=np_encoding_version,
+        )
+
+    raise TypeError(f"unsupported JSON value at {path}: {type(value).__name__}")
+
+
+def _json_path_key(path: str, key: str) -> str:
+    if key.isidentifier():
+        return f"{path}.{key}"
+    return f"{path}[{key!r}]"
 
 
 @dataclass(frozen=True)
