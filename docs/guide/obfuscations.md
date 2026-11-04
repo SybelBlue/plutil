@@ -40,10 +40,26 @@ input. For example, obfuscating `sec(x)**2` can produce `tan(x)**2 + 1`, while
 obfuscating `tan(x)**2 + 1` can produce `sec(x)**2`. The same bidirectional
 targeting applies to `csc(x)**2` and `cot(x)**2 + 1`.
 
-Fraction splitting and joining each cost four gas, twice a basic identity
-rewrite. They can target the input directly, or add another transformation to
-an existing obfuscation when the total remains within `max_gas`. The separate
-flags allow either direction to be disabled.
+Fraction splitting and joining each cost three gas by default. They can target
+the input directly, or add another transformation to an existing obfuscation
+when the total remains within `max_gas`. The separate flags allow either
+direction to be disabled.
+
+### Customizing gas costs
+
+The mutable module-level `GAS_COSTS` dictionary contains every configurable
+effort cost:
+
+```python
+from plutil import obfuscations
+
+obfuscations.GAS_COSTS["fraction_rewrite"] = 6
+```
+
+Its defaults are two gas per identity rewrite, one per cancellation, one for
+an outer quotient, one when combining a non-neutral target with a mask, and
+three for fraction splitting or joining. Change entries before calling `trig`
+to tune candidate scoring and gas-budget filtering for a course.
 
 ```python
 import sympy as sp

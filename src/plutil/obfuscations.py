@@ -23,7 +23,7 @@ _TRIG_EXPONENT_VECTORS = {
 }
 _PRIMARY_TRIG_FUNCTIONS = frozenset({"sin", "cos"})
 
-_GAS_COSTS: Final[dict[str, int]] = {
+GAS_COSTS: Final[dict[str, int]] = {
     "identity_rewrite": 2,
     "cancellation": 1,
     "outer_quotient": 1,
@@ -293,11 +293,11 @@ def _identity_catalog(angle: sympy.Expr) -> tuple[_Identity, ...]:
 
 
 def _direct_identity_masks(identity: _Identity) -> Iterator[_Mask]:
-    # Each identity rewrite costs two gas. Eliminating the equal terms costs
-    # one more, and multiplicative forms add one outer quotient.
-    rewrite_gas = _GAS_COSTS["identity_rewrite"] * identity.rewrite_count
-    cancellation_gas = _GAS_COSTS["cancellation"]
-    quotient_gas = _GAS_COSTS["outer_quotient"]
+    # Score the rewrite, cancellation, and optional outer quotient separately
+    # so courses can tune each kind of work through GAS_COSTS.
+    rewrite_gas = GAS_COSTS["identity_rewrite"] * identity.rewrite_count
+    cancellation_gas = GAS_COSTS["cancellation"]
+    quotient_gas = GAS_COSTS["outer_quotient"]
     yield _Mask(
         _subtract(identity.lhs, identity.rhs),
         "zero",
@@ -352,9 +352,9 @@ def _legacy_one_masks(angle: sympy.Expr) -> Iterator[_Mask]:
             )
             outer_quotient_count = int(any(sign < 0 for sign in signs))
             gas = (
-                _GAS_COSTS["identity_rewrite"] * rewrite_count
-                + _GAS_COSTS["cancellation"] * cancellation_count
-                + _GAS_COSTS["outer_quotient"] * outer_quotient_count
+                GAS_COSTS["identity_rewrite"] * rewrite_count
+                + GAS_COSTS["cancellation"] * cancellation_count
+                + GAS_COSTS["outer_quotient"] * outer_quotient_count
             )
             yield _Mask(
                 _signed_product(
@@ -373,17 +373,17 @@ def _legacy_masks(angle: sympy.Expr) -> Iterator[_Mask]:
         yield _Mask(
             _ratio(one, mask.expression),
             "one",
-            mask.gas + _GAS_COSTS["outer_quotient"],
+            mask.gas + GAS_COSTS["outer_quotient"],
         )
         yield _Mask(
             _subtract(mask.expression, one),
             "zero",
-            mask.gas + _GAS_COSTS["cancellation"],
+            mask.gas + GAS_COSTS["cancellation"],
         )
         yield _Mask(
             _subtract(one, mask.expression),
             "zero",
-            mask.gas + _GAS_COSTS["cancellation"],
+            mask.gas + GAS_COSTS["cancellation"],
         )
 
 
@@ -404,11 +404,11 @@ def _combine_with_target(target: sympy.Expr, mask: _Mask) -> tuple[sympy.Expr, i
     if mask.kind == "zero":
         return (
             _add(target, mask.expression),
-            mask.gas + _GAS_COSTS["target_combination"],
+            mask.gas + GAS_COSTS["target_combination"],
         )
     return (
         _multiply(target, mask.expression),
-        mask.gas + _GAS_COSTS["target_combination"],
+        mask.gas + GAS_COSTS["target_combination"],
     )
 
 
@@ -528,11 +528,7 @@ def _target_rewrite_candidates(
             match_count = sum(
                 node == matched for node in sympy.preorder_traversal(target)
             )
-            gas = (
-                _GAS_COSTS["identity_rewrite"]
-                * identity.rewrite_count
-                * match_count
-            )
+            gas = GAS_COSTS["identity_rewrite"] * identity.rewrite_count * match_count
             if match_count == 0 or gas > max_gas:
                 continue
 
@@ -609,7 +605,7 @@ def _candidates(
             (candidate.source, candidate.gas) for candidate in unique.values()
         )
         for seed, seed_gas in seeds:
-            gas = seed_gas + _GAS_COSTS["fraction_rewrite"]
+            gas = seed_gas + GAS_COSTS["fraction_rewrite"]
             if gas > max_gas:
                 continue
             for source in _fraction_rewrites(
@@ -746,4 +742,4 @@ def trig(
     return tuple(rand.base.sample(candidates, k=min(max_k, len(candidates))))
 
 
-__all__ = ("TrigObfuscation", "trig")
+__all__ = ("GAS_COSTS", "TrigObfuscation", "trig")

@@ -87,6 +87,7 @@ def test_expression_apis_return_sympy_expressions() -> None:
     assert_type(is_finite_integer(value), bool)
     assert_type(fmt.mbool(value), Literal["true", "false"])
     assert_type(function_names(value), frozenset[str])
+    assert_type(obfuscations.GAS_COSTS, dict[str, int])
     assert_type(
         obfuscations.trig(value, angle=x, max_gas=4),
         obfuscations.TrigObfuscation,
