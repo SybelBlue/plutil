@@ -57,11 +57,6 @@ from .lenses import (
     Question,
     SympyQuestion,
 )
-from .magic import (
-    PlMagicError,
-    main,
-    plmagic,
-)
 from .partial_credit import (
     award_partial_credit,
     rule,
@@ -85,7 +80,6 @@ __all__: Final[tuple[str, ...]] = (
     "MultipleChoiceQuestion",
     "NoPreferences",
     "NumberLike",
-    "PlMagicError",
     "PlValue",
     "Question",
     "SetInput",
@@ -118,10 +112,8 @@ __all__: Final[tuple[str, ...]] = (
     "json_to_sympy",
     "latex",
     "lim_latex",
-    "main",
     "mbool",
     "parse_symbolic_decimals",
-    "plmagic",
     "rand",
     "rearrange_eqn",
     "reject_non_sympy_set_input",
