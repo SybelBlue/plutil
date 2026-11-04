@@ -394,7 +394,7 @@ def eq[T, R](
 
 INV_TRIG_OPERATOR_RE: re.Pattern[str] | None = None
 DISPLAY_OPERATOR_RE: re.Pattern[str] | None = None
-type LatexableValue = SympyInput | sympy.Rel
+type LatexableValue = SympyInput | sympy.Rel | sympy.Tuple | tuple[LatexableValue, ...]
 
 
 def latex(
@@ -409,7 +409,28 @@ def latex(
 
     With ``simplifyRatioPowers``, rational powers like ``n**(3/2)`` render as
     radicals (``\\sqrt{n^{3}}``) instead of placing a fraction in the exponent.
+
+    A tuple (Python or ``sympy.Tuple``) renders as a parenthesized,
+    comma-separated list whose entries are each rendered with the same options, e.g. ``(x / 2, 1)`` renders as
+    ``\\left(\\dfrac{x}{2}, 1\\right)``.
     """
+    if isinstance(expr, (tuple, sympy.Tuple)):
+        items = cast(
+            tuple[LatexableValue, ...],
+            expr.args if isinstance(expr, sympy.Tuple) else expr,
+        )
+        entries = ", ".join(
+            latex(
+                entry,
+                log_base=log_base,
+                reparse=reparse,
+                displaystyle=displaystyle,
+                simplifyRatioPowers=simplifyRatioPowers,
+            )
+            for entry in items
+        )
+        return rf"\left({entries}\right)"
+
     if isinstance(expr, sympy.Limit):
         e, z, z0, direction = expr.args
         if not isinstance(z, sympy.Symbol):

@@ -141,6 +141,16 @@ def test_params_latex_proxy_sets_rendered_latex(
     assert backing_params["latex"] == {"expression": r"\dfrac{x}{2}"}
 
 
+def test_params_latex_proxy_renders_tuple_under_single_key(
+    params: Params, backing_params: dict[str, JsonValue]
+) -> None:
+    x = sp.Symbol("x")
+
+    params.latex["point"] = (x / 2, 1)
+
+    assert backing_params["latex"] == {"point": r"\left(\dfrac{x}{2}, 1\right)"}
+
+
 def test_params_latex_proxy_writes_string_unchanged(
     params: Params, backing_params: dict[str, JsonValue]
 ) -> None:

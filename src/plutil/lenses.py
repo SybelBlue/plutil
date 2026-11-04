@@ -239,10 +239,10 @@ class SetParamsProxy[T, Encoded: JsonValue]:
     @overload
     def __setitem__(self, key: Sequence[str], value: Sequence[T]) -> None: ...
     def __setitem__(self, key: OneOrMore[str], value: OneOrMore[T]):
-        values = tuple(map(self.encode, _normalize_one_or_more(value)))
-        if isinstance(key, str) and len(values) == 1:
-            self.inner_dict.__setitem_single__(key, values[0])
+        if isinstance(key, str):
+            self.inner_dict.__setitem_single__(key, self.encode(cast(T, value)))
         else:
+            values = tuple(map(self.encode, _normalize_one_or_more(value)))
             self.inner_dict[key] = values
 
     def get_encoded(self, key: str) -> Encoded:

@@ -214,6 +214,8 @@ def test_input_types_accept_and_validate_sympy_json() -> None:
     assert _input_to_expr(expr_input) == x**2 + 1
     assert _input_to_set(set_input) == sympy.Interval(0, 1)
     assert latex(set_input) == r"\left[0, 1\right]"
+    assert_type(latex((expr_input, (set_input, x))), str)
+    assert_type(latex((sympy.Tuple(x, 1), sympy.Tuple())), str)
     assert eq(
         approximate_area(
             expr_input,

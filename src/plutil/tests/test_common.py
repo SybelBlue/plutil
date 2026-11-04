@@ -445,6 +445,35 @@ def test_latex_simplifies_ratio_powers_by_default(expr, rendered):
     assert latex(expr) == rendered
 
 
+def test_latex_renders_tuples_as_parenthesized_lists():
+    assert latex((x / 2, 1)) == r"\left(\dfrac{x}{2}, 1\right)"
+
+
+def test_latex_renders_nested_tuples_with_shared_options():
+    rendered = latex(
+        ((sympy.log(x), n ** sympy.Rational(3, 2)), x / 2),
+        log_base=2,
+        displaystyle=False,
+        simplifyRatioPowers=False,
+    )
+
+    assert rendered == (
+        r"\left(\left(\log_{2}{\left(x \right)}, n^{\frac{3}{2}}\right),"
+        r" \frac{x}{2}\right)"
+    )
+
+
+def test_latex_renders_sympy_tuples_like_python_tuples():
+    value = sympy.Tuple(x / 2, sympy.Tuple(1, n ** sympy.Rational(3, 2)))
+
+    assert latex(value) == latex((x / 2, (1, n ** sympy.Rational(3, 2))))
+    assert latex(value) == r"\left(\dfrac{x}{2}, \left(1, \sqrt{n^{3}}\right)\right)"
+
+
+def test_latex_renders_empty_tuple():
+    assert latex(()) == r"\left(\right)"
+
+
 def test_latex_can_keep_ratio_powers():
     assert (
         latex(n ** sympy.Rational(3, 2), simplifyRatioPowers=False)
