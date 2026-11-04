@@ -15,11 +15,11 @@ extensions = [
 source_suffix = {".rst": "restructuredtext", ".md": "markdown"}
 exclude_patterns = ["_build"]
 
-# Pygments can't lex Mustache tags inside the README's HTML examples; it
+# Pygments can't lex Mustache tags inside the guide's HTML examples; it
 # falls back to relaxed highlighting, which renders fine.
 suppress_warnings = ["misc.highlighting_failure"]
 
-# Let the README's GitHub-style anchor links (e.g. ``#choicespy``) resolve.
+# Generate GitHub-style heading anchors so guide pages can link to sections.
 myst_heading_anchors = 4
 
 # Docstrings use single backticks for code in places; render them as code
@@ -47,3 +47,8 @@ intersphinx_mapping = {
 
 html_theme = "furo"
 html_title = "plutil"
+html_theme_options = {
+    "source_repository": "https://github.com/SybelBlue/plutil/",
+    "source_branch": "main",
+    "source_directory": "docs/",
+}

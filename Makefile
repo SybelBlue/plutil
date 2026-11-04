@@ -37,4 +37,5 @@ ci-dryrun:
 		"$(MAKE) test" \
 		"$(MAKE) typecheck" \
 		"$(MAKE) check-format" \
-		"$(MAKE) check-prairielearn-dependencies"
+		"$(MAKE) check-prairielearn-dependencies" \
+		"$(MAKE) docs"
