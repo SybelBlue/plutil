@@ -17,6 +17,7 @@ New here? Start with {doc}`getting-started`.
 | {doc}`guide/functions` | Domains, evaluation, translating/scaling, and rearranging equations |
 | {doc}`guide/calculus` | Derivatives, tangent lines, integrals, missing-constant credit, stock feedback |
 | {doc}`guide/rand` | Random integers, rationals, polynomials, partitions, and reusable factories |
+| {doc}`guide/obfuscations` | Random equivalent expressions built from trigonometric identities |
 | {doc}`guide/assumptions` | Checking SymPy assumptions on values |
 | {doc}`guide/fabc` | `sympy.abc`-style undefined function symbols |
 
@@ -40,6 +41,7 @@ guide/formatting
 guide/functions
 guide/calculus
 guide/rand
+guide/obfuscations
 guide/assumptions
 guide/fabc
 ```

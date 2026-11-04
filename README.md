@@ -36,6 +36,7 @@ Each lens wraps `data` for one `answers-name` from `question.html`. See [Getting
 | [Functions](https://plutil.readthedocs.io/en/latest/guide/functions.html) | `plutil.functions` | Domains, evaluation, translate/scale, rearranging equations |
 | [Calculus & feedback](https://plutil.readthedocs.io/en/latest/guide/calculus.html) | `plutil.calculus`, `plutil.feedback` | Derivatives, tangent lines, integrals, stock feedback |
 | [Random values](https://plutil.readthedocs.io/en/latest/guide/rand.html) | `plutil.rand` | Random numbers, polynomials, partitions, factories |
+| [Symbolic obfuscations](https://plutil.readthedocs.io/en/latest/guide/obfuscations.html) | `plutil.obfuscations` | Equivalent expressions built from trigonometric identities |
 | [Assumptions](https://plutil.readthedocs.io/en/latest/guide/assumptions.html) | `plutil.assumptions` | Checking SymPy assumptions |
 | [Function symbols](https://plutil.readthedocs.io/en/latest/guide/fabc.html) | `plutil.fabc` | `sympy.abc`-style undefined functions |
 

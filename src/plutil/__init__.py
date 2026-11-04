@@ -1,6 +1,6 @@
 from typing import Final
 
-from . import choices, fabc, feedback, fmt, rand
+from . import choices, fabc, feedback, fmt, obfuscations, rand
 from .assumptions import (
     AssumptionsTypedDict,
     check,
@@ -25,6 +25,7 @@ from .common import (
     count_in_latex,
     dbg,
     eq,
+    function_names,
     getrec,
     give_triviality_feedback,
     is_trivial,
@@ -103,6 +104,7 @@ __all__: Final[tuple[str, ...]] = (
     "fabc",
     "feedback",
     "fmt",
+    "function_names",
     "getrec",
     "give_triviality_feedback",
     "grade_sympy_set",
@@ -113,6 +115,7 @@ __all__: Final[tuple[str, ...]] = (
     "latex",
     "lim_latex",
     "mbool",
+    "obfuscations",
     "parse_symbolic_decimals",
     "rand",
     "rearrange_eqn",
