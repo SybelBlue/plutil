@@ -1,7 +1,7 @@
 # plutil
 
-Utilities for PrairieLearn question `server.py` files: typed answer access with
-`@plmagic`, SymPy parsing and comparison, nested `data` access, partial credit,
+Utilities for PrairieLearn question `server.py` files: typed answer lenses,
+SymPy parsing and comparison, nested `data` access, partial credit,
 deterministic formatting, randomized parameters, and calculus helpers.
 
 New here? Start with {doc}`getting-started`.
@@ -10,7 +10,6 @@ New here? Start with {doc}`getting-started`.
 
 | Topic | What it covers |
 | --- | --- |
-| {doc}`guide/plmagic` | Typed `data` and answer objects for `generate`/`parse`/`grade`, plus generated editor types |
 | {doc}`guide/common` | Core symbolic types, expression equality and triviality checks, nested `data` access |
 | {doc}`guide/grading` | Rich scores, multiple-choice/checkbox credit, and rule-based partial credit |
 | {doc}`guide/choices` | Building `pl-multiple-choice` and `pl-checkbox` options from `server.py` |
@@ -34,7 +33,6 @@ getting-started
 :hidden:
 :caption: Guide
 
-guide/plmagic
 guide/common
 guide/grading
 guide/choices

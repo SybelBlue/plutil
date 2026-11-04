@@ -857,18 +857,18 @@ wheels = [
 
 [[package]]
 name = "plutil"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
-    { name = "chevron" },
-    { name = "lxml" },
     { name = "numpy" },
     { name = "prairielearn" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "chevron" },
     { name = "ipython" },
+    { name = "lxml" },
     { name = "pl-vendor" },
     { name = "pyfakefs" },
     { name = "pyright" },
@@ -883,15 +883,15 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "chevron", specifier = "==0.14.0" },
-    { name = "lxml", specifier = "==6.1.3" },
     { name = "numpy", specifier = "==2.4.6" },
     { name = "prairielearn", git = "https://github.com/PrairieLearn/PrairieLearn.git?subdirectory=apps%2Fprairielearn%2Fpython" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "chevron", specifier = "==0.14.0" },
     { name = "ipython" },
+    { name = "lxml", specifier = "==6.1.3" },
     { name = "pl-vendor" },
     { name = "pyfakefs" },
     { name = "pyright" },

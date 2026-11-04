@@ -17,7 +17,6 @@
    plutil.fmt
    plutil.functions
    plutil.lenses
-   plutil.magic
    plutil.partial_credit
    plutil.rand
    plutil.sets

@@ -90,8 +90,8 @@ the choice markup representation. `MultiDict`, `Params`, typed dictionaries,
 and other mappings use their mapping contents rather than their dataclass
 storage fields. A `QuantityFormat` containing a `Decimal` uncertainty is
 rejected under the same strict field rule. Live data/question lenses,
-callable-bearing params proxies, partial-credit transforms, random factories,
-and magic internals have no package-specific serialization contract; format
+callable-bearing params proxies, partial-credit transforms, and random
+factories have no package-specific serialization contract; format
 the underlying data intended for the template instead.
 
 `number` supports `standard`, `scientific`, `engineering`, and `compact`

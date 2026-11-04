@@ -2,8 +2,8 @@
 
 [![Documentation Status](https://readthedocs.org/projects/plutil/badge/?version=latest)](https://plutil.readthedocs.io/en/latest/)
 
-Utilities for PrairieLearn question `server.py` files: typed answer access with
-`@plmagic`, SymPy parsing and comparison, nested `data` access, partial credit,
+Utilities for PrairieLearn question `server.py` files: typed answer lenses,
+SymPy parsing and comparison, nested `data` access, partial credit,
 deterministic formatting, randomized parameters, and calculus helpers.
 
 **📖 Documentation: <https://plutil.readthedocs.io/en/latest/>**
@@ -13,26 +13,22 @@ deterministic formatting, randomized parameters, and calculus helpers.
 Import from course `serverFilesCourse` (available in every question in the course):
 
 ```python
-from plutil import Data, Question, SympyQuestion, plmagic
+from plutil import Data, Question, SympyQuestion
 from sympy.abc import x
 
 
-@plmagic
-def generate(data: Data, *, number: Question, expression: SympyQuestion):
-    data.params["prompt"] = "Enter the meaning of life."
-    number.correct_answer = 42
-    expression.correct_answer = x**2 + 1
+def generate(data):
+    Data(data).params["prompt"] = "Enter the meaning of life."
+    Question(data, "number").correct_answer = 42
+    SympyQuestion(data, "expression", variables="x").correct_answer = x**2 + 1
 ```
 
-Keyword-only parameter names match `answers-name` values in `question.html`.
-Run `plmagic-types path/to/questions` to generate question-specific editor
-types. See [Getting started](https://plutil.readthedocs.io/en/latest/getting-started.html).
+Each lens wraps `data` for one `answers-name` from `question.html`. See [Getting started](https://plutil.readthedocs.io/en/latest/getting-started.html).
 
 ## What's inside
 
 | Guide | Modules | What it covers |
 | --- | --- | --- |
-| [`@plmagic`](https://plutil.readthedocs.io/en/latest/guide/plmagic.html) | `plutil.magic` | Typed `data` and answer objects, generated editor types |
 | [Symbolic types & data](https://plutil.readthedocs.io/en/latest/guide/common.html) | `plutil.common` | Expression types, `eq`, `is_trivial`, `getrec`/`setrec` |
 | [Scoring & partial credit](https://plutil.readthedocs.io/en/latest/guide/grading.html) | `plutil.common`, `plutil.partial_credit` | Rich scores, choice credit, rule-based partial credit |
 | [Choices](https://plutil.readthedocs.io/en/latest/guide/choices.html) | `plutil.choices` | `pl-multiple-choice` / `pl-checkbox` option builders |
