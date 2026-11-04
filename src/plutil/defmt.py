@@ -1,11 +1,33 @@
-"""Recover values and reusable format specifications from formatted numbers."""
+"""Recover values and reusable format specifications from formatted output.
+
+:func:`parse` inverts the numeric display formatters, and :func:`json` inverts
+:func:`plutil.fmt.json`.
+"""
 
 from __future__ import annotations
 
+import math
 import re
-from dataclasses import dataclass
+import types
+from collections.abc import Mapping
+from dataclasses import MISSING, dataclass, fields, is_dataclass
 from decimal import Decimal
-from typing import Final, Literal, cast, overload
+from typing import (
+    Annotated,
+    Any,
+    Final,
+    Literal,
+    TypeAliasType,
+    TypeVar,
+    Union,
+    cast,
+    get_args,
+    get_origin,
+    get_type_hints,
+    overload,
+)
+
+import prairielearn as pl
 
 from . import fmt
 from .fmt import (
@@ -15,6 +37,7 @@ from .fmt import (
     CurrencySign,
     ExponentStyle,
     Grouping,
+    JsonValue,
     Notation,
     NumberInput,
     RoundingMode,
@@ -25,6 +48,7 @@ from .fmt import (
     _CURRENCIES,
     _SI_PREFIX_POWERS,
     _currency_symbol_latex,
+    _json_path_key,
     _mathrm,
     _scale10,
 )
@@ -37,6 +61,7 @@ __all__: Final[tuple[str, ...]] = (
     "FormatSpec",
     "NumberFormat",
     "QuantityFormat",
+    "json",
     "parse",
 )
 
@@ -578,3 +603,219 @@ def parse(
         if parsed is not None:
             return parsed
     raise ValueError(f"unsupported formatted number: {text!r}")
+
+
+type _TypeVarMap = Mapping[TypeVar, Any]
+
+
+@overload
+def json[T](value: JsonValue, *, into: type[T]) -> T: ...
+
+
+@overload
+def json(value: JsonValue, *, into: None = None) -> Any: ...
+
+
+def json(value: JsonValue, *, into: Any = None) -> Any:
+    """Recover Python values from the output of :func:`plutil.fmt.json`.
+
+    PrairieLearn-tagged values (``{"_type": ..., ...}``) are decoded with
+    :func:`prairielearn.from_json` wherever they appear, and mappings and lists
+    are rebuilt recursively.
+
+    ``fmt.json`` does not record dataclass or tuple types, so by default they
+    come back as dictionaries and lists. Pass ``into`` to rebuild them from type
+    hints: dataclasses (including generic and nested ones), ``tuple``,
+    ``list``, ``dict``, unions, and type aliases are reconstructed, and other
+    hints accept the decoded value unchanged. Dataclasses are built through
+    their constructors, so defaults and ``__post_init__`` validation apply.
+
+    A mapping that has its own ``"_type"`` key cannot be told apart from a
+    PrairieLearn-tagged value and is decoded as one. Strings produced by
+    :func:`plutil.fmt.mustache` are not converted back to booleans.
+    """
+    decoded = _decode_json(value, "$")
+    if into is None:
+        return decoded
+    if not (isinstance(into, (type, TypeAliasType)) or get_origin(into) is not None):
+        raise TypeError(f"into must be a type, got {type(into).__name__}")
+    return _coerce(decoded, into, "$", {})
+
+
+def _decode_json(value: object, path: str) -> Any:
+    if value is None or isinstance(value, (bool, int, str)):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise TypeError(f"unsupported JSON value at {path}: non-finite float")
+        return value
+    if isinstance(value, dict):
+        if "_type" in value:
+            try:
+                return pl.from_json(value)
+            except ValueError as error:
+                raise ValueError(
+                    f"invalid PrairieLearn JSON at {path}: {error}"
+                ) from error
+        result: dict[str, Any] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise TypeError(
+                    f"unsupported JSON mapping key at {path}: "
+                    f"expected str, got {type(key).__name__}"
+                )
+            result[key] = _decode_json(item, _json_path_key(path, key))
+        return result
+    if isinstance(value, list):
+        return [
+            _decode_json(item, f"{path}[{index}]") for index, item in enumerate(value)
+        ]
+    raise TypeError(f"unsupported JSON value at {path}: {type(value).__name__}")
+
+
+def _dataclass_origin(hint: Any) -> type | None:
+    if isinstance(hint, type) and is_dataclass(hint):
+        return hint
+    origin = get_origin(hint)
+    if isinstance(origin, type) and is_dataclass(origin):
+        return origin
+    return None
+
+
+def _is_structured(hint: Any) -> bool:
+    """Return whether :func:`_coerce` may reject a value for ``hint``."""
+    if _dataclass_origin(hint) is not None:
+        return True
+    origin = get_origin(hint) or hint
+    return origin in (tuple, list, dict, Union, types.UnionType) or isinstance(
+        origin, TypeAliasType
+    )
+
+
+def _coerce(value: Any, hint: Any, path: str, typevars: _TypeVarMap) -> Any:
+    if isinstance(hint, TypeVar):
+        if hint not in typevars:
+            return value
+        return _coerce(value, typevars[hint], path, {})
+    if isinstance(hint, TypeAliasType):
+        return _coerce(value, hint.__value__, path, typevars)
+
+    dataclass_type = _dataclass_origin(hint)
+    if dataclass_type is not None:
+        return _coerce_dataclass(value, hint, dataclass_type, path, typevars)
+
+    origin = get_origin(hint)
+    args = get_args(hint)
+    if origin is Annotated:
+        return _coerce(value, args[0], path, typevars)
+    if isinstance(origin, TypeAliasType):
+        return _coerce(value, origin.__value__, path, typevars)
+    if origin in (Union, types.UnionType):
+        return _coerce_union(value, args, path, typevars)
+    if hint is tuple or origin is tuple:
+        return _coerce_tuple(value, args, path, typevars)
+    if hint is list or origin is list:
+        _expect(value, list, "list", path)
+        item_hint = args[0] if args else Any
+        return [
+            _coerce(item, item_hint, f"{path}[{index}]", typevars)
+            for index, item in enumerate(value)
+        ]
+    if hint is dict or origin is dict:
+        _expect(value, dict, "object", path)
+        value_hint = args[1] if len(args) == 2 else Any
+        return {
+            key: _coerce(item, value_hint, _json_path_key(path, key), typevars)
+            for key, item in value.items()
+        }
+    return value
+
+
+def _expect(value: Any, expected: type, label: str, path: str) -> None:
+    if not isinstance(value, expected):
+        raise TypeError(f"expected {label} at {path}, got {type(value).__name__}")
+
+
+def _coerce_tuple(
+    value: Any, args: tuple[Any, ...], path: str, typevars: _TypeVarMap
+) -> tuple[Any, ...]:
+    _expect(value, list, "list", path)
+    if not args:
+        return tuple(value)
+    if len(args) == 2 and args[1] is Ellipsis:
+        return tuple(
+            _coerce(item, args[0], f"{path}[{index}]", typevars)
+            for index, item in enumerate(value)
+        )
+    if len(value) != len(args):
+        raise TypeError(f"expected {len(args)} items at {path}, got {len(value)}")
+    return tuple(
+        _coerce(item, item_hint, f"{path}[{index}]", typevars)
+        for index, (item, item_hint) in enumerate(zip(value, args, strict=True))
+    )
+
+
+def _coerce_union(
+    value: Any, members: tuple[Any, ...], path: str, typevars: _TypeVarMap
+) -> Any:
+    if value is None and type(None) in members:
+        return None
+    members = tuple(member for member in members if member is not type(None))
+    structured = [member for member in members if _is_structured(member)]
+    first_error: TypeError | ValueError | None = None
+    for member in structured:
+        try:
+            return _coerce(value, member, path, typevars)
+        except (TypeError, ValueError) as error:
+            first_error = first_error or error
+    if first_error is None or len(structured) < len(members):
+        return value
+    raise first_error
+
+
+def _coerce_dataclass(
+    value: Any, hint: Any, cls: type, path: str, typevars: _TypeVarMap
+) -> Any:
+    _expect(value, dict, f"object for {cls.__name__}", path)
+    try:
+        hints = get_type_hints(cls)
+    except NameError as error:
+        raise TypeError(
+            f"cannot resolve type hints for {cls.__name__} at {path}: {error}"
+        ) from error
+
+    parameters = cast(tuple[TypeVar, ...], getattr(cls, "__parameters__", ()))
+    arguments = get_args(hint)
+    field_typevars: dict[TypeVar, Any] = {}
+    for parameter, argument in zip(parameters, arguments, strict=False):
+        if isinstance(argument, TypeVar):
+            if argument not in typevars:
+                continue
+            argument = typevars[argument]
+        field_typevars[parameter] = argument
+
+    all_fields = {field.name: field for field in fields(cls)}
+    unknown = [key for key in value if key not in all_fields]
+    if unknown:
+        raise TypeError(f"unknown field {unknown[0]!r} for {cls.__name__} at {path}")
+
+    kwargs: dict[str, Any] = {}
+    for name, field in all_fields.items():
+        if not field.init:
+            continue
+        if name not in value:
+            if field.default is MISSING and field.default_factory is MISSING:
+                raise TypeError(f"missing field {name!r} for {cls.__name__} at {path}")
+            continue
+        kwargs[name] = _coerce(
+            value[name],
+            hints.get(name, Any),
+            _json_path_key(path, name),
+            field_typevars,
+        )
+
+    try:
+        return cls(**kwargs)
+    except (TypeError, ValueError) as error:
+        error.add_note(f"while building {cls.__name__} at {path}")
+        raise
