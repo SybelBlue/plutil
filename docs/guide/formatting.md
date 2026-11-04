@@ -81,7 +81,8 @@ deprecated compatibility wrappers.
 Conversion is strict. Mapping keys must be strings, native floats must be
 finite, and unsupported leaves such as `Decimal`, `Path`, Python sets, and
 callables raise `TypeError` identifying their nested location. Lists and tuples
-both become lists in the result.
+both become lists in the result. To reverse the conversion, use
+[`defmt.json`](#decoding-with-defmtjson).
 
 Plutil's ordinary value records, including `Choice`, `ChoiceSet`,
 `OdeCheckResult`, and compatible `defmt` format specifications, use their
@@ -163,6 +164,41 @@ mode, or other arguments that produce identical text. In those cases `defmt`
 uses the visible digit count and presentation with half-even rounding as its
 canonical interpretation. Arbitrary symbolic output from `fmt.latex` is not
 supported.
+
+### Decoding with `defmt.json`
+
+`defmt.json` reverses `fmt.json`. It decodes every PrairieLearn-tagged value
+(`{"_type": ...}`) with `prairielearn.from_json` and rebuilds mappings and lists
+recursively:
+
+```python
+encoded = fmt.json(Prompt(x + 1, True))
+defmt.json(encoded)
+# {"expression": x + 1, "enabled": True}
+```
+
+The encoded data does not record dataclass or tuple types, so by default they
+come back as dictionaries and lists. Pass `into` to rebuild them from type
+hints:
+
+```python
+defmt.json(encoded, into=Prompt)  # Prompt(expression=x + 1, enabled=True)
+defmt.json(fmt.json(choices), into=ChoiceSet[str])
+```
+
+`into` handles dataclasses (including nested and generic ones), `tuple`,
+`list`, `dict`, unions, and type aliases. Other hints, such as `int` or
+`Literal[...]`, take the decoded value unchanged. Dataclasses are built through
+their constructors, so defaults and `__post_init__` validation apply. A missing
+required field, an unknown field, or a container of the wrong shape raises
+`TypeError` naming its location, such as `$.choices[0]`.
+
+Some information cannot be recovered. A mapping with its own `"_type"` key looks
+the same as a PrairieLearn-tagged value and is decoded as one. NumPy scalars
+encoded with `np_encoding_version=1` are plain numbers, and legacy
+`df_encoding_version=1` DataFrames may not keep their column dtypes. There is no
+`defmt.mustache`, because the strings `"true"` and `"false"` cannot be told apart
+from booleans that `fmt.mustache` converted.
 
 ## Exact decimal symbolic input
 
