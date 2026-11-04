@@ -23,6 +23,16 @@ required to remove the obfuscation. A result contains the displayed `source`,
 an unsimplified `rewritten` expression using sine and cosine in place of the
 six standard trig functions, and its `gas` score.
 
+Generated expressions receive a conservative arithmetic cleanup: nested sums
+and products are flattened, literal numbers are combined, and additive zero or
+multiplicative one is removed. Symbolic terms and factors are never canceled,
+so the trigonometric work remains visible to the student.
+
+Candidates whose sine/cosine rewrite would be identical to their source are
+excluded. Pythagorean forms that already use only sine and cosine are combined
+with a reciprocal identity—for example, `(1 - sin(x)**2) * sec(x)**2`—so the
+rewrite step always performs real work.
+
 ```python
 import sympy as sp
 

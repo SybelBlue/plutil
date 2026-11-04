@@ -37,7 +37,8 @@ class TrigObfuscation:
 class _Identity:
     lhs: sympy.Expr
     rhs: sympy.Expr
-    family: _IdentityFamily
+    families: frozenset[_IdentityFamily]
+    rewrite_count: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +71,102 @@ def _subtract(lhs: sympy.Expr, rhs: sympy.Expr) -> sympy.Expr:
 
 def _ratio(numerator: sympy.Expr, denominator: sympy.Expr) -> sympy.Expr:
     return _multiply(numerator, _power(denominator, -1))
+
+
+def _normalize_basic_arithmetic(expression: sympy.Basic) -> sympy.Basic:
+    """Remove numeric arithmetic noise without canceling symbolic expressions."""
+    if not expression.args:
+        return expression
+
+    if isinstance(expression, sympy.Add):
+        terms: list[sympy.Expr] = []
+        for argument in expression.args:
+            normalized = require_expr(_normalize_basic_arithmetic(argument))
+            if isinstance(normalized, sympy.Add):
+                terms.extend(normalized.args)
+            else:
+                terms.append(normalized)
+
+        numeric_total: sympy.Expr = sympy.Integer(0)
+        for term in terms:
+            if isinstance(term, sympy.Number):
+                numeric_total = require_expr(numeric_total + term)
+
+        normalized_terms: list[sympy.Expr] = []
+        inserted_numeric = False
+        for term in terms:
+            if isinstance(term, sympy.Number):
+                if not inserted_numeric and numeric_total != 0:
+                    normalized_terms.append(numeric_total)
+                inserted_numeric = True
+            else:
+                normalized_terms.append(term)
+
+        if not normalized_terms:
+            return sympy.Integer(0)
+        if len(normalized_terms) == 1:
+            return normalized_terms[0]
+        return _add(*normalized_terms)
+
+    if isinstance(expression, sympy.Mul):
+        factors: list[sympy.Expr] = []
+        for argument in expression.args:
+            normalized = require_expr(_normalize_basic_arithmetic(argument))
+            if isinstance(normalized, sympy.Mul):
+                factors.extend(normalized.args)
+            else:
+                factors.append(normalized)
+
+        numeric_product: sympy.Expr = sympy.Integer(1)
+        for factor in factors:
+            if isinstance(factor, sympy.Number):
+                numeric_product = require_expr(numeric_product * factor)
+        if numeric_product == 0:
+            return sympy.Integer(0)
+
+        normalized_factors: list[sympy.Expr] = []
+        inserted_numeric = False
+        for factor in factors:
+            if isinstance(factor, sympy.Number):
+                if not inserted_numeric and numeric_product != 1:
+                    normalized_factors.append(numeric_product)
+                inserted_numeric = True
+            else:
+                normalized_factors.append(factor)
+
+        if not normalized_factors:
+            return sympy.Integer(1)
+        if len(normalized_factors) == 1:
+            return normalized_factors[0]
+        return _multiply(*normalized_factors)
+
+    if isinstance(expression, sympy.Pow):
+        base = require_expr(_normalize_basic_arithmetic(expression.base))
+        exponent = require_expr(_normalize_basic_arithmetic(expression.exp))
+        if exponent == 0:
+            return sympy.Integer(1)
+        if exponent == 1:
+            return base
+        if base == 1:
+            return sympy.Integer(1)
+        return sympy.Pow(base, exponent, evaluate=False)
+
+    normalized_args = tuple(
+        _normalize_basic_arithmetic(argument) for argument in expression.args
+    )
+    replacements = {
+        original: normalized
+        for original, normalized in zip(expression.args, normalized_args, strict=True)
+        if original != normalized
+    }
+    if not replacements:
+        return expression
+    with sympy.evaluate(False):
+        return expression.xreplace(replacements)
+
+
+def _normalize_trivial_arithmetic(expression: sympy.Expr) -> sympy.Expr:
+    return require_expr(_normalize_basic_arithmetic(expression))
 
 
 def _trig_function(name: str, angle: sympy.Expr) -> sympy.Expr:
@@ -129,6 +226,15 @@ def _rewrite_to_sine_cosine(expression: sympy.Expr) -> sympy.Expr:
         return require_expr(expression.xreplace(replacements))
 
 
+def _identity(
+    lhs: sympy.Expr,
+    rhs: sympy.Expr,
+    *families: _IdentityFamily,
+    rewrite_count: int = 1,
+) -> _Identity:
+    return _Identity(lhs, rhs, frozenset(families), rewrite_count)
+
+
 def _identity_catalog(angle: sympy.Expr) -> tuple[_Identity, ...]:
     one = sympy.Integer(1)
     sine = _trig_function("sin", angle)
@@ -146,30 +252,45 @@ def _identity_catalog(angle: sympy.Expr) -> tuple[_Identity, ...]:
     csc_squared = _power(cosecant, 2)
 
     return (
-        _Identity(cosecant, _ratio(one, sine), "reciprocal"),
-        _Identity(secant, _ratio(one, cosine), "reciprocal"),
-        _Identity(cotangent, _ratio(one, tangent), "reciprocal"),
-        _Identity(tangent, _ratio(sine, cosine), "quotient"),
-        _Identity(cotangent, _ratio(cosine, sine), "quotient"),
-        _Identity(_add(sin_squared, cos_squared), one, "pythagorean"),
-        _Identity(_subtract(one, sin_squared), cos_squared, "pythagorean"),
-        _Identity(_subtract(one, cos_squared), sin_squared, "pythagorean"),
-        _Identity(_add(one, tan_squared), sec_squared, "pythagorean"),
-        _Identity(_subtract(sec_squared, tan_squared), one, "pythagorean"),
-        _Identity(_subtract(sec_squared, one), tan_squared, "pythagorean"),
-        _Identity(_add(one, cot_squared), csc_squared, "pythagorean"),
-        _Identity(_subtract(csc_squared, cot_squared), one, "pythagorean"),
-        _Identity(_subtract(csc_squared, one), cot_squared, "pythagorean"),
+        _identity(cosecant, _ratio(one, sine), "reciprocal"),
+        _identity(secant, _ratio(one, cosine), "reciprocal"),
+        _identity(cotangent, _ratio(one, tangent), "reciprocal"),
+        _identity(tangent, _ratio(sine, cosine), "quotient"),
+        _identity(cotangent, _ratio(cosine, sine), "quotient"),
+        _identity(_add(sin_squared, cos_squared), one, "pythagorean"),
+        _identity(_subtract(one, sin_squared), cos_squared, "pythagorean"),
+        _identity(_subtract(one, cos_squared), sin_squared, "pythagorean"),
+        _identity(_add(one, tan_squared), sec_squared, "pythagorean"),
+        _identity(_subtract(sec_squared, tan_squared), one, "pythagorean"),
+        _identity(_subtract(sec_squared, one), tan_squared, "pythagorean"),
+        _identity(_add(one, cot_squared), csc_squared, "pythagorean"),
+        _identity(_subtract(csc_squared, cot_squared), one, "pythagorean"),
+        _identity(_subtract(csc_squared, one), cot_squared, "pythagorean"),
+        _identity(
+            _multiply(_subtract(one, sin_squared), sec_squared),
+            one,
+            "pythagorean",
+            "reciprocal",
+            rewrite_count=2,
+        ),
+        _identity(
+            _multiply(_subtract(one, cos_squared), csc_squared),
+            one,
+            "pythagorean",
+            "reciprocal",
+            rewrite_count=2,
+        ),
     )
 
 
 def _direct_identity_masks(identity: _Identity) -> Iterator[_Mask]:
-    # One identity rewrite costs two gas. Eliminating the equal terms costs one
-    # more, and multiplicative forms add one outer quotient.
-    yield _Mask(_subtract(identity.lhs, identity.rhs), "zero", 3)
-    yield _Mask(_subtract(identity.rhs, identity.lhs), "zero", 3)
-    yield _Mask(_ratio(identity.lhs, identity.rhs), "one", 4)
-    yield _Mask(_ratio(identity.rhs, identity.lhs), "one", 4)
+    # Each identity rewrite costs two gas. Eliminating the equal terms costs
+    # one more, and multiplicative forms add one outer quotient.
+    rewrite_gas = 2 * identity.rewrite_count
+    yield _Mask(_subtract(identity.lhs, identity.rhs), "zero", rewrite_gas + 1)
+    yield _Mask(_subtract(identity.rhs, identity.lhs), "zero", rewrite_gas + 1)
+    yield _Mask(_ratio(identity.lhs, identity.rhs), "one", rewrite_gas + 2)
+    yield _Mask(_ratio(identity.rhs, identity.lhs), "one", rewrite_gas + 2)
 
 
 def _signed_product(
@@ -261,19 +382,28 @@ def _candidates(
 
     masks: list[_Mask] = []
     for identity in _identity_catalog(angle):
-        if identity.family in allowed_families:
+        if identity.families <= allowed_families:
             masks.extend(_direct_identity_masks(identity))
     if allow_reciprocal and allow_quotient:
         masks.extend(_legacy_masks(angle))
 
     unique: dict[str, TrigObfuscation] = {}
     for mask in _deduplicate_masks(iter(masks)):
+        normalized_mask = _normalize_trivial_arithmetic(mask.expression)
+        rewritten_mask = _normalize_trivial_arithmetic(
+            _rewrite_to_sine_cosine(normalized_mask)
+        )
+        if normalized_mask == rewritten_mask:
+            continue
         source, gas = _combine_with_target(target, mask)
         if gas > max_gas:
             continue
+        source = _normalize_trivial_arithmetic(source)
+        if source == target:
+            continue
         candidate = TrigObfuscation(
             source=source,
-            rewritten=_rewrite_to_sine_cosine(source),
+            rewritten=_normalize_trivial_arithmetic(_rewrite_to_sine_cosine(source)),
             gas=gas,
         )
         key = sympy.srepr(source)
@@ -354,7 +484,7 @@ def trig(
     if max_k is not None and max_k < 1:
         raise ValueError("max_k must be positive")
 
-    target = _input_to_expr(value)
+    target = _normalize_trivial_arithmetic(_input_to_expr(value))
     trig_angle = _input_to_expr(angle)
     candidates = _candidates(
         target,
@@ -368,7 +498,9 @@ def trig(
         return (
             TrigObfuscation(
                 source=target,
-                rewritten=_rewrite_to_sine_cosine(target),
+                rewritten=_normalize_trivial_arithmetic(
+                    _rewrite_to_sine_cosine(target)
+                ),
                 gas=0,
             )
             if max_k == 1

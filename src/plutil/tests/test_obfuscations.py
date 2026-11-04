@@ -44,6 +44,7 @@ def test_trig_candidates_are_unique_equivalent_and_rewritten(
         candidates
     )
     for candidate in candidates:
+        assert candidate.source != candidate.rewritten
         source_difference = sympy.trigsimp(
             (candidate.source - target).rewrite(sympy.sin)
         )
@@ -55,18 +56,52 @@ def test_trig_candidates_are_unique_equivalent_and_rewritten(
         )
 
 
+def test_trig_removes_numeric_noise_without_symbolic_cancellation() -> None:
+    candidates = obfuscations.trig(1, angle=x, max_gas=7, max_k=None)
+
+    pythagorean = next(
+        candidate
+        for candidate in candidates
+        if str(candidate.source) == "-tan(x)**2 + sec(x)**2"
+    )
+    assert str(pythagorean.rewritten) == "-(sin(x)/cos(x))**2 + (1/cos(x))**2"
+
+    quotient = next(
+        candidate
+        for candidate in candidates
+        if str(candidate.source) == "sin(x)/(cos(x)*tan(x))"
+    )
+    assert quotient.rewritten != 1
+    assert sympy.trigsimp(quotient.rewritten) == 1
+
+
+def test_trig_omits_multiplicative_no_ops_after_numeric_cleanup() -> None:
+    candidates = obfuscations.trig(0, angle=x, max_gas=7, max_k=None)
+
+    assert candidates
+    assert all(candidate.source != 0 for candidate in candidates)
+
+
 def test_trig_includes_requested_pythagorean_forms(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     candidates = _capture_candidates(
         monkeypatch,
-        allow_reciprocal=False,
+        allow_reciprocal=True,
         allow_quotient=False,
         allow_pythagorean=True,
     )
 
-    assert any("1 - sin(x)**2" in str(candidate.source) for candidate in candidates)
-    assert any("1 - cos(x)**2" in str(candidate.source) for candidate in candidates)
+    assert any(
+        "1 - sin(x)**2" in str(candidate.source)
+        and "sec(x)**2" in str(candidate.source)
+        for candidate in candidates
+    )
+    assert any(
+        "1 - cos(x)**2" in str(candidate.source)
+        and "csc(x)**2" in str(candidate.source)
+        for candidate in candidates
+    )
 
 
 def test_trig_preserves_legacy_three_factor_family(
