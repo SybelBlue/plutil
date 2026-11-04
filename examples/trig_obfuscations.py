@@ -3,6 +3,7 @@
 Run with ``uv run python examples/trig_obfuscations.py``.
 """
 
+from sympy import sec, tan
 from sympy.abc import x
 
 from plutil import function_names, obfuscations, rand
@@ -31,6 +32,23 @@ def main() -> None:
 
     all_candidates = obfuscations.trig(1, angle=x, max_gas=7, max_k=None)
     print(f"\nAll eligible candidates: {len(all_candidates)}")
+
+    print("\nTargeted Pythagorean rewrite:")
+    targeted_candidates = obfuscations.trig(
+        sec(x) ** 2,
+        angle=x,
+        max_gas=7,
+        max_k=None,
+        allow_reciprocal=False,
+        allow_quotient=False,
+        allow_pythagorean=True,
+    )
+    targeted = next(
+        candidate
+        for candidate in targeted_candidates
+        if candidate.source == tan(x) ** 2 + 1
+    )
+    describe(1, targeted)
 
 
 if __name__ == "__main__":

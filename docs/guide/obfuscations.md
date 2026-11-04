@@ -33,6 +33,11 @@ excluded. Pythagorean forms that already use only sine and cosine are combined
 with a reciprocal identity—for example, `(1 - sin(x)**2) * sec(x)**2`—so the
 rewrite step always performs real work.
 
+Enabled identities also apply directly when one side already occurs in the
+input. For example, obfuscating `sec(x)**2` can produce `tan(x)**2 + 1`, while
+obfuscating `tan(x)**2 + 1` can produce `sec(x)**2`. The same bidirectional
+targeting applies to `csc(x)**2` and `cot(x)**2 + 1`.
+
 ```python
 import sympy as sp
 

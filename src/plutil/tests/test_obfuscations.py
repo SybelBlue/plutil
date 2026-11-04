@@ -104,6 +104,37 @@ def test_trig_includes_requested_pythagorean_forms(
     )
 
 
+@pytest.mark.parametrize(
+    ("target", "expected_source"),
+    (
+        (sympy.sec(x) ** 2, sympy.tan(x) ** 2 + 1),
+        (sympy.tan(x) ** 2 + 1, sympy.sec(x) ** 2),
+        (sympy.csc(x) ** 2, sympy.cot(x) ** 2 + 1),
+        (sympy.cot(x) ** 2 + 1, sympy.csc(x) ** 2),
+    ),
+)
+def test_trig_rewrites_matching_pythagorean_targets(
+    target: sympy.Expr,
+    expected_source: sympy.Expr,
+) -> None:
+    candidates = obfuscations.trig(
+        target,
+        angle=x,
+        max_gas=7,
+        max_k=None,
+        allow_reciprocal=False,
+        allow_quotient=False,
+        allow_pythagorean=True,
+    )
+
+    match = next(
+        candidate for candidate in candidates if candidate.source == expected_source
+    )
+    assert match.gas == 2
+    assert match.source != match.rewritten
+    assert sympy.trigsimp(match.source - target) == 0
+
+
 def test_trig_preserves_legacy_three_factor_family(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

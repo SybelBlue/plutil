@@ -363,6 +363,41 @@ def _combine_with_target(target: sympy.Expr, mask: _Mask) -> tuple[sympy.Expr, i
     return _multiply(target, mask.expression), mask.gas + 1
 
 
+def _target_rewrite_candidates(
+    target: sympy.Expr,
+    identities: Collection[_Identity],
+    *,
+    max_gas: int,
+) -> Iterator[TrigObfuscation]:
+    """Yield nontrivial replacements of identity sides already in ``target``."""
+    for identity in identities:
+        for matched, replacement in (
+            (identity.lhs, identity.rhs),
+            (identity.rhs, identity.lhs),
+        ):
+            # Numeric identities are already represented by additive and
+            # multiplicative masks. Replacing every literal 0 or 1 in an input
+            # would be surprising and would duplicate those candidates.
+            if isinstance(matched, sympy.Number):
+                continue
+            match_count = sum(
+                node == matched for node in sympy.preorder_traversal(target)
+            )
+            gas = 2 * identity.rewrite_count * match_count
+            if match_count == 0 or gas > max_gas:
+                continue
+
+            with sympy.evaluate(False):
+                replaced = require_expr(target.xreplace({matched: replacement}))
+            source = _normalize_trivial_arithmetic(replaced)
+            if source == target:
+                continue
+            rewritten = _normalize_trivial_arithmetic(_rewrite_to_sine_cosine(source))
+            if source == rewritten:
+                continue
+            yield TrigObfuscation(source=source, rewritten=rewritten, gas=gas)
+
+
 def _candidates(
     target: sympy.Expr,
     angle: sympy.Expr,
@@ -380,14 +415,21 @@ def _candidates(
     if allow_pythagorean:
         allowed_families.add("pythagorean")
 
+    identities = tuple(
+        identity
+        for identity in _identity_catalog(angle)
+        if identity.families <= allowed_families
+    )
     masks: list[_Mask] = []
-    for identity in _identity_catalog(angle):
-        if identity.families <= allowed_families:
-            masks.extend(_direct_identity_masks(identity))
+    for identity in identities:
+        masks.extend(_direct_identity_masks(identity))
     if allow_reciprocal and allow_quotient:
         masks.extend(_legacy_masks(angle))
 
     unique: dict[str, TrigObfuscation] = {}
+    for candidate in _target_rewrite_candidates(target, identities, max_gas=max_gas):
+        unique[sympy.srepr(candidate.source)] = candidate
+
     for mask in _deduplicate_masks(iter(masks)):
         normalized_mask = _normalize_trivial_arithmetic(mask.expression)
         rewritten_mask = _normalize_trivial_arithmetic(
