@@ -129,6 +129,13 @@ def test_formatting_apis_return_strings() -> None:
     assert_type(format_spec(Decimal("1.25")), str)
 
 
+def test_structured_formatting_apis_return_json_values() -> None:
+    value: fmt.JsonValue = fmt.json({"expression": x + 1, "enabled": True})
+
+    assert_type(fmt.json(value), fmt.JsonValue)
+    assert_type(fmt.mustache(value), fmt.JsonValue)
+
+
 def test_domain_apis_return_sympy_sets() -> None:
     assert_type(domain(x**2, d=x), sympy.Set)
 

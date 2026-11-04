@@ -516,6 +516,64 @@ fmt.quantity(
 )  # "1.234(56) kV"
 ```
 
+### Structured JSON and Mustache values
+
+`fmt.json` recursively converts a value to JSON-ready Python data; it does not
+return JSON text. It delegates scientific values to PrairieLearn, normalizes
+mappings and sequences, and converts dataclass instances through
+`dataclasses.asdict`. PrairieLearn's DataFrame and NumPy encodings default to
+version 2, and their version arguments can be overridden when legacy output is
+required:
+
+```python
+from dataclasses import dataclass
+
+from sympy.abc import x
+
+
+@dataclass
+class Prompt:
+    expression: object
+    enabled: bool
+
+
+fmt.json(Prompt(x + 1, True))
+# {
+#     "expression": {"_type": "sympy", ...},
+#     "enabled": True,
+# }
+```
+
+`fmt.mustache` performs the same conversion but changes every boolean leaf to
+the lowercase string `"true"` or `"false"`. Use it for interpolated values and
+HTML attributes:
+
+```python
+fmt.mustache({"enabled": True, "options": (False, True)})
+# {"enabled": "true", "options": ["false", "true"]}
+```
+
+Use `fmt.json`, not `fmt.mustache`, for values consumed by Mustache sections
+such as `{{#enabled}}...{{/enabled}}`: the string `"false"` is truthy in
+Mustache. The existing `mbool(value)` remains available when deliberately
+converting the truthiness of one value.
+
+Conversion is strict. Mapping keys must be strings, native floats must be
+finite, and unsupported leaves such as `Decimal`, `Path`, Python sets, and
+callables raise `TypeError` identifying their nested location. Lists and tuples
+both become lists in the result.
+
+Plutil's ordinary value records, including `Choice`, `ChoiceSet`,
+`OdeCheckResult`, and compatible `defmt` format specifications, use their
+dataclass fields. `ChoiceSet.to_params()` remains the explicit conversion for
+the choice markup representation. `MultiDict`, `Params`, typed dictionaries,
+and other mappings use their mapping contents rather than their dataclass
+storage fields. A `QuantityFormat` containing a `Decimal` uncertainty is
+rejected under the same strict field rule. Live data/question lenses,
+callable-bearing params proxies, partial-credit transforms, random factories,
+and magic internals have no package-specific serialization contract; format
+the underlying data intended for the template instead.
+
 `number` supports `standard`, `scientific`, `engineering`, and `compact`
 notation. Standard numbers default to zero through three fractional digits;
 scaled notation defaults to one through three significant digits. Pass

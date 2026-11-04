@@ -1,13 +1,206 @@
+import json as stdlib_json
+from dataclasses import dataclass
 from decimal import Decimal, localcontext
+from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
+import pandas as pd
+import prairielearn as pl
 import pytest
 import sympy
 from sympy.abc import x
 
 import plutil
-from plutil import fmt
+from plutil import Choice, ChoiceSet, defmt, fmt
+from plutil.diffeq import OdeCheckResult
+from plutil.lenses import MultiDict
+
+
+def test_json_returns_recursive_python_values() -> None:
+    value = {
+        "enabled": True,
+        "items": (1, None, {"hidden": False}),
+        "label": "value",
+    }
+
+    result = fmt.json(value)
+
+    assert result == {
+        "enabled": True,
+        "items": [1, None, {"hidden": False}],
+        "label": "value",
+    }
+    assert stdlib_json.loads(stdlib_json.dumps(result, allow_nan=False)) == result
+
+
+def test_mustache_recursively_formats_only_boolean_values() -> None:
+    value = {
+        "enabled": True,
+        "items": [False, np.bool_(True)],
+        "number": 1,
+        "empty": "",
+    }
+
+    assert fmt.mustache(value) == {
+        "enabled": "true",
+        "items": ["false", "true"],
+        "number": 1,
+        "empty": "",
+    }
+
+
+@dataclass(frozen=True)
+class _JsonPayload:
+    expression: object
+    flags: tuple[bool, ...]
+    scalar: object
+
+
+def test_json_converts_dataclasses_and_nested_prairielearn_values() -> None:
+    value = _JsonPayload(x + 1, (True, False), np.int64(3))
+
+    result = fmt.json(value)
+
+    assert result == {
+        "expression": pl.to_json(x + 1, np_encoding_version=2),
+        "flags": [True, False],
+        "scalar": pl.to_json(np.int64(3), np_encoding_version=2),
+    }
+    stdlib_json.dumps(result, allow_nan=False)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        x + 1,
+        sympy.Matrix([[x, 1]]),
+        1 + 2j,
+        np.int64(3),
+        np.array([1, 2], dtype=np.int16),
+    ],
+)
+def test_json_delegates_scientific_values_to_prairielearn(value: object) -> None:
+    result = fmt.json(value)
+
+    assert result == pl.to_json(
+        value,
+        df_encoding_version=2,
+        np_encoding_version=2,
+    )
+    stdlib_json.dumps(result, allow_nan=False)
+
+
+def test_json_delegates_dataframe_encoding_versions_to_prairielearn() -> None:
+    modern_value = pd.DataFrame({"value": [1.0, None]})
+    legacy_value = pd.DataFrame({"value": [1.0, 2.0]})
+
+    assert fmt.json(modern_value) == pl.to_json(
+        modern_value,
+        df_encoding_version=2,
+    )
+    assert fmt.json(legacy_value, df_encoding_version=1) == pl.to_json(
+        legacy_value,
+        df_encoding_version=1,
+        np_encoding_version=2,
+    )
+
+
+def test_json_defaults_to_numpy_encoding_v2() -> None:
+    value = np.int64(3)
+
+    assert fmt.json(value) == {
+        "_type": "np_scalar",
+        "_concrete_type": "int64",
+        "_value": "3",
+    }
+    with pytest.raises(TypeError, match=r"at \$: int64"):
+        fmt.json(value, np_encoding_version=1)
+
+
+def test_json_prefers_mapping_semantics_over_dataclass_fields() -> None:
+    value = MultiDict({"expression": x + 1, "enabled": True})
+
+    assert fmt.json(value) == {
+        "expression": pl.to_json(x + 1, np_encoding_version=2),
+        "enabled": True,
+    }
+
+
+def test_json_supports_plutil_value_dataclasses_structurally() -> None:
+    choices = ChoiceSet(
+        "pl-multiple-choice",
+        (
+            Choice("yes", correct=True, tag="yes"),
+            Choice("no", tag="no"),
+        ),
+    )
+    check = OdeCheckResult(checked=True, correct=False)
+
+    assert fmt.json(choices) == {
+        "element": "pl-multiple-choice",
+        "choices": [
+            {"text": "yes", "correct": True, "feedback": None, "tag": "yes"},
+            {"text": "no", "correct": False, "feedback": None, "tag": "no"},
+        ],
+        "allow_multiple_correct": False,
+    }
+    assert fmt.mustache(choices) == {
+        "element": "pl-multiple-choice",
+        "choices": [
+            {"text": "yes", "correct": "true", "feedback": None, "tag": "yes"},
+            {"text": "no", "correct": "false", "feedback": None, "tag": "no"},
+        ],
+        "allow_multiple_correct": "false",
+    }
+    assert fmt.mustache(check) == {
+        "timeout": "false",
+        "checked": "true",
+        "correct": "false",
+        "missing_constant": None,
+    }
+
+
+def test_json_supports_compatible_defmt_specs() -> None:
+    number = defmt.NumberFormat(max_fraction_digits=2)
+    currency = defmt.CurrencyFormat(currency="EUR")
+    quantity = defmt.QuantityFormat("V")
+    number_result = fmt.json(number)
+    currency_result = fmt.json(currency)
+    quantity_result = fmt.json(quantity)
+
+    assert isinstance(number_result, dict)
+    assert isinstance(currency_result, dict)
+    assert isinstance(quantity_result, dict)
+    assert number_result["kind"] == "number"
+    assert currency_result["currency"] == "EUR"
+    assert quantity_result["unit"] == "V"
+
+    with pytest.raises(TypeError, match=r"at \$\.uncertainty: Decimal"):
+        fmt.json(defmt.QuantityFormat("V", uncertainty=Decimal("0.1")))
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        ({"nested": Decimal("1.2")}, r"at \$\.nested: Decimal"),
+        ({"nested": Path("value")}, r"at \$\.nested: .*Path"),
+        ({"nested": {1, 2}}, r"at \$\.nested: set"),
+        ({"nested": lambda: None}, r"at \$\.nested: function"),
+        ({"nested": float("nan")}, r"at \$\.nested: non-finite float"),
+        ({"nested": float("inf")}, r"at \$\.nested: non-finite float"),
+    ],
+)
+def test_json_rejects_unsupported_nested_values(value: object, message: str) -> None:
+    with pytest.raises(TypeError, match=message):
+        fmt.json(value)
+
+
+def test_json_rejects_non_string_mapping_keys_and_dataclass_types() -> None:
+    with pytest.raises(TypeError, match=r"mapping key at \$"):
+        fmt.json({1: "value"})
+    with pytest.raises(TypeError, match=r"at \$: dataclass type"):
+        fmt.json(_JsonPayload)
 
 
 def test_fmt_reexports_existing_latex_function() -> None:
