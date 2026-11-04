@@ -50,6 +50,25 @@ from sympy.abc import x
 eq(x + 1, 1 + x)  # -> True
 ```
 
+## `function_names(value) -> frozenset[str]`
+
+Return the unique names of functions applied in an expression. The inspection
+is structural, so nested and undefined functions are included while powers
+such as `sqrt(x)` are not treated as function applications.
+
+```python
+import sympy
+from sympy.abc import x
+
+from plutil import function_names
+
+function_names(sympy.sin(sympy.exp(x)))  # -> frozenset({"sin", "exp"})
+function_names(1)  # -> frozenset()
+```
+
+This is useful for exact function-vocabulary checks in grading. See
+{doc}`obfuscations` for a trigonometric rewrite example.
+
 ## `is_trivial(value, *, constant_in=None, min_terms=None, simplify=False) -> bool`
 
 Check whether a symbolic value matches any requested triviality condition.

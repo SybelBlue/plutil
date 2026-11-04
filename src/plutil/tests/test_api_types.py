@@ -26,9 +26,11 @@ from plutil import (
     defmt,
     domain,
     fmt,
+    function_names,
     is_finite_integer,
     is_finite_real_number,
     latex,
+    obfuscations,
     rand,
     require_expr,
     to_expr,
@@ -84,6 +86,24 @@ def test_expression_apis_return_sympy_expressions() -> None:
     assert_type(is_finite_real_number(value), bool)
     assert_type(is_finite_integer(value), bool)
     assert_type(fmt.mbool(value), Literal["true", "false"])
+    assert_type(function_names(value), frozenset[str])
+    assert_type(
+        obfuscations.trig(value, angle=x, max_gas=4),
+        obfuscations.TrigObfuscation,
+    )
+    assert_type(
+        obfuscations.trig(value, angle=x, max_gas=4, max_k=1),
+        obfuscations.TrigObfuscation,
+    )
+    assert_type(
+        obfuscations.trig(value, angle=x, max_gas=4, max_k=None),
+        tuple[obfuscations.TrigObfuscation, ...],
+    )
+    max_k: int = 2
+    assert_type(
+        obfuscations.trig(value, angle=x, max_gas=4, max_k=max_k),
+        obfuscations.TrigObfuscation | tuple[obfuscations.TrigObfuscation, ...],
+    )
     assert_type(
         approximate_area(value, d=x, bounds=(0, 1), n=2, method="left"),
         ExprLike,

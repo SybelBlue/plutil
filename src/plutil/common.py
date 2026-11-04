@@ -549,6 +549,28 @@ def count_in_latex(
     return sum(l.count(s) for s in substrings)
 
 
+def function_names(value: ExprLike | None) -> frozenset[str]:
+    """Return the names of applied SymPy functions in an expression.
+
+    Function names are collected structurally rather than from rendered LaTeX,
+    so nested and undefined functions are included. Numeric values and ``None``
+    contain no applied functions.
+
+    Examples:
+        >>> x = sympy.Symbol("x")
+        >>> function_names(sympy.sin(sympy.exp(x))) == frozenset({"exp", "sin"})
+        True
+        >>> function_names(1)
+        frozenset()
+    """
+    if value is None:
+        return frozenset()
+    expression = _input_to_expr(value)
+    return frozenset(
+        str(function.func) for function in expression.atoms(sympy.Function)
+    )
+
+
 def _is_trivial_constant_in(value: sympy.Expr, variables: OneOrMore[Variable]) -> bool:
     free_symbols = value.free_symbols
     return any(
