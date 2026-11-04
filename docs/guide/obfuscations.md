@@ -61,6 +61,47 @@ an outer quotient, one when combining a non-neutral target with a mask, and
 three for fraction splitting or joining. Change entries before calling `trig`
 to tune candidate scoring and gas-budget filtering for a course.
 
+### Validation evidence
+
+The repository includes a reproducible audit that enumerates every candidate
+through gas 12 for five representative target shapes. For each candidate it
+checks structural uniqueness, symbolic equivalence of both `source` and
+`rewritten`, removal of tangent/cotangent/secant/cosecant from `rewritten`, and
+that every budget admits exactly the candidates whose measured gas is within
+that budget:
+
+```console
+uv run python examples/audit_trig_obfuscations.py
+```
+
+With the default gas costs, the audit checks 462 candidates and reports these
+cumulative population sizes:
+
+| `max_gas` | `1` | `0` | `y` | `sec(x)**2` | `(tan(x)+sec(x))/x` |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 0 | 0 | 0 | 0 | 0 | 0 |
+| 1 | 0 | 0 | 0 | 0 | 0 |
+| 2 | 0 | 0 | 0 | 1 | 2 |
+| 3 | 0 | 20 | 0 | 1 | 3 |
+| 4 | 40 | 20 | 20 | 21 | 23 |
+| 5 | 40 | 24 | 42 | 43 | 47 |
+| 6 | 48 | 24 | 46 | 47 | 51 |
+| 7 | 60 | 28 | 52 | 53 | 77 |
+| 8 | 68 | 40 | 68 | 69 | 117 |
+| 9 | 74 | 40 | 86 | 87 | 139 |
+| 10 | 74 | 40 | 86 | 87 | 147 |
+| 11 | 74 | 40 | 86 | 87 | 157 |
+| 12 | 74 | 40 | 86 | 87 | 175 |
+
+The table is a gas-budget profile, not a claim that expression size increases
+strictly with gas. Gas estimates the prescribed rewrite work: for example,
+directly replacing `sec(x)**2` with `tan(x)**2 + 1` costs 2, while masks add
+cancellation, quotient, target-combination, or fraction-rewrite work.
+
+The same audit is enforced in the test suite through gas 12. The exact default
+gas distribution is also snapshot-tested through gas 9, so changes to the
+catalog or effort model require an intentional update to this evidence.
+
 ```python
 import sympy as sp
 

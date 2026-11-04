@@ -1,3 +1,5 @@
+from collections import Counter
+
 import sympy
 import pytest
 from sympy.abc import x, y
@@ -33,17 +35,33 @@ def _capture_candidates(
     return tuple(captured)
 
 
-def test_trig_candidates_are_unique_equivalent_and_rewritten(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize(
+    "target",
+    (
+        pytest.param(sympy.Integer(1), id="one"),
+        pytest.param(sympy.Integer(0), id="zero"),
+        pytest.param(y, id="non-neutral"),
+        pytest.param(sympy.sec(x) ** 2, id="pythagorean"),
+        pytest.param((sympy.tan(x) + sympy.sec(x)) / x, id="fraction"),
+    ),
+)
+def test_trig_candidates_are_unique_equivalent_and_rewritten_across_gas_budgets(
+    target: sympy.Expr,
 ) -> None:
-    target = x + 2
-    candidates = _capture_candidates(monkeypatch, target)
+    max_gas = 12
+    candidates = obfuscations.trig(
+        target,
+        angle=x,
+        max_gas=max_gas,
+        max_k=None,
+    )
 
     assert candidates
     assert len({sympy.srepr(candidate.source) for candidate in candidates}) == len(
         candidates
     )
     for candidate in candidates:
+        assert 0 <= candidate.gas <= max_gas
         assert candidate.source != candidate.rewritten
         source_difference = sympy.trigsimp(
             (candidate.source - target).rewrite(sympy.sin)
@@ -54,6 +72,45 @@ def test_trig_candidates_are_unique_equivalent_and_rewritten(
         assert function_names(candidate.rewritten).isdisjoint(
             {"tan", "cot", "sec", "csc"}
         )
+
+    gas_by_source = {
+        sympy.srepr(candidate.source): candidate.gas for candidate in candidates
+    }
+    for budget in range(max_gas + 1):
+        at_budget = obfuscations.trig(
+            target,
+            angle=x,
+            max_gas=budget,
+            max_k=None,
+        )
+        assert {sympy.srepr(candidate.source) for candidate in at_budget} == {
+            source for source, gas in gas_by_source.items() if gas <= budget
+        }
+
+
+def test_trig_default_gas_profile() -> None:
+    targets_and_expected_profiles = (
+        (sympy.Integer(1), {4: 40, 6: 8, 7: 12, 8: 8, 9: 6}),
+        (sympy.Integer(0), {3: 20, 5: 4, 7: 4, 8: 12}),
+        (y, {4: 20, 5: 22, 6: 4, 7: 6, 8: 16, 9: 18}),
+        (
+            sympy.sec(x) ** 2,
+            {2: 1, 4: 20, 5: 22, 6: 4, 7: 6, 8: 16, 9: 18},
+        ),
+        (
+            (sympy.tan(x) + sympy.sec(x)) / x,
+            {2: 2, 3: 1, 4: 20, 5: 24, 6: 4, 7: 26, 8: 40, 9: 22},
+        ),
+    )
+
+    for target, expected_profile in targets_and_expected_profiles:
+        candidates = obfuscations.trig(
+            target,
+            angle=x,
+            max_gas=9,
+            max_k=None,
+        )
+        assert Counter(candidate.gas for candidate in candidates) == expected_profile
 
 
 def test_trig_removes_numeric_noise_without_symbolic_cancellation() -> None:
