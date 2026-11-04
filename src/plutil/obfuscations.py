@@ -3,7 +3,7 @@
 from collections.abc import Collection, Iterator
 from dataclasses import dataclass
 from itertools import combinations, product
-from typing import Literal, overload
+from typing import Final, Literal, overload
 
 import sympy
 
@@ -22,6 +22,15 @@ _TRIG_EXPONENT_VECTORS = {
     "csc": (-1, 0),
 }
 _PRIMARY_TRIG_FUNCTIONS = frozenset({"sin", "cos"})
+
+_GAS_COSTS: Final[dict[str, int]] = {
+    "identity_rewrite": 2,
+    "cancellation": 1,
+    "outer_quotient": 1,
+    "target_combination": 1,
+    "fraction_rewrite": 3,
+}
+"""Mutable costs used to score trigonometric obfuscation effort."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -286,11 +295,29 @@ def _identity_catalog(angle: sympy.Expr) -> tuple[_Identity, ...]:
 def _direct_identity_masks(identity: _Identity) -> Iterator[_Mask]:
     # Each identity rewrite costs two gas. Eliminating the equal terms costs
     # one more, and multiplicative forms add one outer quotient.
-    rewrite_gas = 2 * identity.rewrite_count
-    yield _Mask(_subtract(identity.lhs, identity.rhs), "zero", rewrite_gas + 1)
-    yield _Mask(_subtract(identity.rhs, identity.lhs), "zero", rewrite_gas + 1)
-    yield _Mask(_ratio(identity.lhs, identity.rhs), "one", rewrite_gas + 2)
-    yield _Mask(_ratio(identity.rhs, identity.lhs), "one", rewrite_gas + 2)
+    rewrite_gas = _GAS_COSTS["identity_rewrite"] * identity.rewrite_count
+    cancellation_gas = _GAS_COSTS["cancellation"]
+    quotient_gas = _GAS_COSTS["outer_quotient"]
+    yield _Mask(
+        _subtract(identity.lhs, identity.rhs),
+        "zero",
+        rewrite_gas + cancellation_gas,
+    )
+    yield _Mask(
+        _subtract(identity.rhs, identity.lhs),
+        "zero",
+        rewrite_gas + cancellation_gas,
+    )
+    yield _Mask(
+        _ratio(identity.lhs, identity.rhs),
+        "one",
+        rewrite_gas + cancellation_gas + quotient_gas,
+    )
+    yield _Mask(
+        _ratio(identity.rhs, identity.lhs),
+        "one",
+        rewrite_gas + cancellation_gas + quotient_gas,
+    )
 
 
 def _signed_product(
@@ -323,8 +350,12 @@ def _legacy_one_masks(angle: sympy.Expr) -> Iterator[_Mask]:
             cancellation_count = sum(
                 max(component, 0) for vector in signed_vectors for component in vector
             )
-            outer_quotient_cost = int(any(sign < 0 for sign in signs))
-            gas = 2 * rewrite_count + cancellation_count + outer_quotient_cost
+            outer_quotient_count = int(any(sign < 0 for sign in signs))
+            gas = (
+                _GAS_COSTS["identity_rewrite"] * rewrite_count
+                + _GAS_COSTS["cancellation"] * cancellation_count
+                + _GAS_COSTS["outer_quotient"] * outer_quotient_count
+            )
             yield _Mask(
                 _signed_product(
                     tuple(_trig_function(name, angle) for name in function_names),
@@ -339,9 +370,21 @@ def _legacy_masks(angle: sympy.Expr) -> Iterator[_Mask]:
     one = sympy.Integer(1)
     for mask in _legacy_one_masks(angle):
         yield mask
-        yield _Mask(_ratio(one, mask.expression), "one", mask.gas + 1)
-        yield _Mask(_subtract(mask.expression, one), "zero", mask.gas + 1)
-        yield _Mask(_subtract(one, mask.expression), "zero", mask.gas + 1)
+        yield _Mask(
+            _ratio(one, mask.expression),
+            "one",
+            mask.gas + _GAS_COSTS["outer_quotient"],
+        )
+        yield _Mask(
+            _subtract(mask.expression, one),
+            "zero",
+            mask.gas + _GAS_COSTS["cancellation"],
+        )
+        yield _Mask(
+            _subtract(one, mask.expression),
+            "zero",
+            mask.gas + _GAS_COSTS["cancellation"],
+        )
 
 
 def _deduplicate_masks(masks: Iterator[_Mask]) -> tuple[_Mask, ...]:
@@ -359,8 +402,110 @@ def _combine_with_target(target: sympy.Expr, mask: _Mask) -> tuple[sympy.Expr, i
     if target == neutral:
         return mask.expression, mask.gas
     if mask.kind == "zero":
-        return _add(target, mask.expression), mask.gas + 1
-    return _multiply(target, mask.expression), mask.gas + 1
+        return (
+            _add(target, mask.expression),
+            mask.gas + _GAS_COSTS["target_combination"],
+        )
+    return (
+        _multiply(target, mask.expression),
+        mask.gas + _GAS_COSTS["target_combination"],
+    )
+
+
+def _fraction_parts(
+    expression: sympy.Expr,
+) -> tuple[sympy.Expr, sympy.Expr] | None:
+    factors = expression.args if isinstance(expression, sympy.Mul) else (expression,)
+    numerator_factors: list[sympy.Expr] = []
+    denominator_factors: list[sympy.Expr] = []
+    for factor in factors:
+        if (
+            isinstance(factor, sympy.Pow)
+            and factor.exp == -1
+            and isinstance(factor.base, sympy.Expr)
+        ):
+            denominator_factors.append(factor.base)
+        else:
+            numerator_factors.append(require_expr(factor))
+    if not denominator_factors:
+        return None
+
+    numerator = (
+        sympy.Integer(1)
+        if not numerator_factors
+        else numerator_factors[0]
+        if len(numerator_factors) == 1
+        else _multiply(*numerator_factors)
+    )
+    denominator = (
+        denominator_factors[0]
+        if len(denominator_factors) == 1
+        else _multiply(*denominator_factors)
+    )
+    return numerator, denominator
+
+
+def _local_fraction_rewrites(
+    expression: sympy.Expr,
+    *,
+    allow_splitting: bool,
+    allow_joining: bool,
+) -> Iterator[sympy.Expr]:
+    if allow_splitting and (parts := _fraction_parts(expression)) is not None:
+        numerator, denominator = parts
+        numerator_factors = (
+            list(numerator.args) if isinstance(numerator, sympy.Mul) else [numerator]
+        )
+        for index, factor in enumerate(numerator_factors):
+            if not isinstance(factor, sympy.Add):
+                continue
+            yield _add(
+                *(
+                    _ratio(
+                        _multiply(
+                            *numerator_factors[:index],
+                            require_expr(term),
+                            *numerator_factors[index + 1 :],
+                        ),
+                        denominator,
+                    )
+                    for term in factor.args
+                )
+            )
+
+    if allow_joining and isinstance(expression, sympy.Add):
+        term_parts = tuple(
+            _fraction_parts(require_expr(term)) for term in expression.args
+        )
+        if not term_parts or any(parts is None for parts in term_parts):
+            return
+        fractions = tuple(parts for parts in term_parts if parts is not None)
+        denominator = fractions[0][1]
+        if all(parts[1] == denominator for parts in fractions[1:]):
+            yield _ratio(_add(*(parts[0] for parts in fractions)), denominator)
+
+
+def _fraction_rewrites(
+    expression: sympy.Expr,
+    *,
+    allow_splitting: bool,
+    allow_joining: bool,
+) -> Iterator[sympy.Expr]:
+    unique: dict[str, sympy.Expr] = {}
+    for node in sympy.preorder_traversal(expression):
+        if not isinstance(node, sympy.Expr):
+            continue
+        for replacement in _local_fraction_rewrites(
+            node,
+            allow_splitting=allow_splitting,
+            allow_joining=allow_joining,
+        ):
+            with sympy.evaluate(False):
+                replaced = require_expr(expression.xreplace({node: replacement}))
+            normalized = _normalize_trivial_arithmetic(replaced)
+            if normalized != expression:
+                unique[sympy.srepr(normalized)] = normalized
+    yield from unique.values()
 
 
 def _target_rewrite_candidates(
@@ -383,7 +528,11 @@ def _target_rewrite_candidates(
             match_count = sum(
                 node == matched for node in sympy.preorder_traversal(target)
             )
-            gas = 2 * identity.rewrite_count * match_count
+            gas = (
+                _GAS_COSTS["identity_rewrite"]
+                * identity.rewrite_count
+                * match_count
+            )
             if match_count == 0 or gas > max_gas:
                 continue
 
@@ -406,6 +555,8 @@ def _candidates(
     allow_reciprocal: bool,
     allow_quotient: bool,
     allow_pythagorean: bool,
+    allow_fraction_splitting: bool,
+    allow_fraction_joining: bool,
 ) -> tuple[TrigObfuscation, ...]:
     allowed_families: set[_IdentityFamily] = set()
     if allow_reciprocal:
@@ -452,6 +603,36 @@ def _candidates(
         previous = unique.get(key)
         if previous is None or candidate.gas < previous.gas:
             unique[key] = candidate
+
+    if allow_fraction_splitting or allow_fraction_joining:
+        seeds = ((target, 0),) + tuple(
+            (candidate.source, candidate.gas) for candidate in unique.values()
+        )
+        for seed, seed_gas in seeds:
+            gas = seed_gas + _GAS_COSTS["fraction_rewrite"]
+            if gas > max_gas:
+                continue
+            for source in _fraction_rewrites(
+                seed,
+                allow_splitting=allow_fraction_splitting,
+                allow_joining=allow_fraction_joining,
+            ):
+                if source == target:
+                    continue
+                rewritten = _normalize_trivial_arithmetic(
+                    _rewrite_to_sine_cosine(source)
+                )
+                if source == rewritten:
+                    continue
+                candidate = TrigObfuscation(
+                    source=source,
+                    rewritten=rewritten,
+                    gas=gas,
+                )
+                key = sympy.srepr(source)
+                previous = unique.get(key)
+                if previous is None or candidate.gas < previous.gas:
+                    unique[key] = candidate
     return tuple(unique.values())
 
 
@@ -465,6 +646,8 @@ def trig(
     allow_reciprocal: bool = True,
     allow_quotient: bool = True,
     allow_pythagorean: bool = True,
+    allow_fraction_splitting: bool = True,
+    allow_fraction_joining: bool = True,
 ) -> TrigObfuscation: ...
 
 
@@ -478,6 +661,8 @@ def trig(
     allow_reciprocal: bool = True,
     allow_quotient: bool = True,
     allow_pythagorean: bool = True,
+    allow_fraction_splitting: bool = True,
+    allow_fraction_joining: bool = True,
 ) -> tuple[TrigObfuscation, ...]: ...
 
 
@@ -491,6 +676,8 @@ def trig(
     allow_reciprocal: bool = True,
     allow_quotient: bool = True,
     allow_pythagorean: bool = True,
+    allow_fraction_splitting: bool = True,
+    allow_fraction_joining: bool = True,
 ) -> TrigObfuscation | tuple[TrigObfuscation, ...]: ...
 
 
@@ -503,6 +690,8 @@ def trig(
     allow_reciprocal: bool = True,
     allow_quotient: bool = True,
     allow_pythagorean: bool = True,
+    allow_fraction_splitting: bool = True,
+    allow_fraction_joining: bool = True,
 ) -> TrigObfuscation | tuple[TrigObfuscation, ...]:
     """Return one or more trigonometric obfuscations of ``value``.
 
@@ -526,7 +715,7 @@ def trig(
     if max_k is not None and max_k < 1:
         raise ValueError("max_k must be positive")
 
-    target = _normalize_trivial_arithmetic(_input_to_expr(value))
+    target = _input_to_expr(value)
     trig_angle = _input_to_expr(angle)
     candidates = _candidates(
         target,
@@ -535,6 +724,8 @@ def trig(
         allow_reciprocal=allow_reciprocal,
         allow_quotient=allow_quotient,
         allow_pythagorean=allow_pythagorean,
+        allow_fraction_splitting=allow_fraction_splitting,
+        allow_fraction_joining=allow_fraction_joining,
     )
     if not candidates:
         return (

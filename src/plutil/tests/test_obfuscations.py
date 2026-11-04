@@ -135,6 +135,60 @@ def test_trig_rewrites_matching_pythagorean_targets(
     assert sympy.trigsimp(match.source - target) == 0
 
 
+def test_trig_splits_fraction_targets_at_high_cost() -> None:
+    target = (sympy.tan(x) + sympy.sec(x)) / x
+
+    candidates = obfuscations.trig(
+        target,
+        angle=x,
+        max_gas=4,
+        max_k=None,
+        allow_reciprocal=False,
+        allow_quotient=False,
+        allow_pythagorean=False,
+        allow_fraction_splitting=True,
+        allow_fraction_joining=False,
+    )
+
+    assert len(candidates) == 1
+    assert str(candidates[0].source) == "tan(x)/x + sec(x)/x"
+    assert candidates[0].gas == 4
+    assert sympy.trigsimp(candidates[0].source - target) == 0
+
+
+def test_trig_joins_fraction_targets_at_high_cost() -> None:
+    target = sympy.tan(x) / x + sympy.sec(x) / x
+
+    candidates = obfuscations.trig(
+        target,
+        angle=x,
+        max_gas=4,
+        max_k=None,
+        allow_reciprocal=False,
+        allow_quotient=False,
+        allow_pythagorean=False,
+        allow_fraction_splitting=False,
+        allow_fraction_joining=True,
+    )
+
+    assert len(candidates) == 1
+    assert str(candidates[0].source) == "(tan(x) + sec(x))/x"
+    assert candidates[0].gas == 4
+    assert sympy.trigsimp(candidates[0].source - target) == 0
+
+
+def test_trig_fraction_rules_require_their_full_gas_budget() -> None:
+    low_budget = obfuscations.trig(1, angle=x, max_gas=7, max_k=None)
+    high_budget = obfuscations.trig(1, angle=x, max_gas=8, max_k=None)
+    split_source = "tan(x)**2/(sec(x)**2) + 1/(sec(x)**2)"
+
+    assert all(str(candidate.source) != split_source for candidate in low_budget)
+    match = next(
+        candidate for candidate in high_budget if str(candidate.source) == split_source
+    )
+    assert match.gas == 8
+
+
 def test_trig_preserves_legacy_three_factor_family(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

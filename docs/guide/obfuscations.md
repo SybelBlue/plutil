@@ -17,6 +17,8 @@ be enabled independently:
 - `allow_quotient` controls tangent and cotangent quotient identities.
 - `allow_pythagorean` controls the standard Pythagorean identities and their
   rearrangements, including `1 - sin(x)**2 = cos(x)**2`.
+- `allow_fraction_splitting` controls `(a + b) / c → a / c + b / c`.
+- `allow_fraction_joining` controls `a / c + b / c → (a + b) / c`.
 
 All three families are enabled by default. `max_gas` bounds the estimated work
 required to remove the obfuscation. A result contains the displayed `source`,
@@ -37,6 +39,11 @@ Enabled identities also apply directly when one side already occurs in the
 input. For example, obfuscating `sec(x)**2` can produce `tan(x)**2 + 1`, while
 obfuscating `tan(x)**2 + 1` can produce `sec(x)**2`. The same bidirectional
 targeting applies to `csc(x)**2` and `cot(x)**2 + 1`.
+
+Fraction splitting and joining each cost four gas, twice a basic identity
+rewrite. They can target the input directly, or add another transformation to
+an existing obfuscation when the total remains within `max_gas`. The separate
+flags allow either direction to be disabled.
 
 ```python
 import sympy as sp
