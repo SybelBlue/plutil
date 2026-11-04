@@ -63,19 +63,14 @@ to tune candidate scoring and gas-budget filtering for a course.
 
 ### Validation evidence
 
-The repository includes a reproducible audit that enumerates every candidate
-through gas 12 for five representative target shapes. For each candidate it
-checks structural uniqueness, symbolic equivalence of both `source` and
-`rewritten`, removal of tangent/cotangent/secant/cosecant from `rewritten`, and
-that every budget admits exactly the candidates whose measured gas is within
-that budget:
+The test suite enumerates every candidate through gas 12 for five
+representative target shapes. For each candidate it checks structural
+uniqueness, symbolic equivalence of both `source` and `rewritten`, removal of
+tangent/cotangent/secant/cosecant from `rewritten`, and that every budget
+admits exactly the candidates whose measured gas is within that budget.
 
-```console
-uv run python examples/audit_trig_obfuscations.py
-```
-
-With the default gas costs, the audit checks 462 candidates and reports these
-cumulative population sizes:
+With the default gas costs, these checks cover 462 candidates and produce the
+following cumulative population sizes:
 
 | `max_gas` | `1` | `0` | `y` | `sec(x)**2` | `(tan(x)+sec(x))/x` |
 | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -98,9 +93,9 @@ strictly with gas. Gas estimates the prescribed rewrite work: for example,
 directly replacing `sec(x)**2` with `tan(x)**2 + 1` costs 2, while masks add
 cancellation, quotient, target-combination, or fraction-rewrite work.
 
-The same audit is enforced in the test suite through gas 12. The exact default
-gas distribution is also snapshot-tested through gas 9, so changes to the
-catalog or effort model require an intentional update to this evidence.
+The exact default gas distribution is also snapshot-tested through gas 9, so
+changes to the catalog or effort model require an intentional update to this
+evidence.
 
 ```python
 import sympy as sp
