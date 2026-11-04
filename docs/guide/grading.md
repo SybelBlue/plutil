@@ -27,9 +27,8 @@ lens.set_rich_score(
 ## `MultipleChoiceQuestion`
 
 `MultipleChoiceQuestion` extends the standard `BaseQuestion[str]` lens for
-PrairieLearn's prepared `pl-multiple-choice` representation. A
-`pl-multiple-choice` parameter injected by `@plmagic` automatically receives
-this lens.
+PrairieLearn's prepared `pl-multiple-choice` representation; construct it as
+`MultipleChoiceQuestion(data, "answers-name")`.
 
 Its typed multiple-choice properties are:
 
@@ -99,14 +98,12 @@ After PrairieLearn shuffles and re-keys them, `question[tag]` (or
 `choice_for_tag(tag)`) returns the prepared option, `tag_of(key_or_option)` maps
 back, and `submitted_tag()` names the selected option. Parametrize the lens with
 the tag type, as in `MultipleChoiceQuestion[Outcome]` or `CheckboxQuestion[Outcome]`, so
-the type checker rejects unknown tags. This also works in `@plmagic`
-annotations. Unparametrized lenses accept any `str`. Lookup reads `params[f"{answers_name}_options"]` (override
+the type checker rejects unknown tags. Unparametrized lenses accept any `str`. Lookup reads `params[f"{answers_name}_options"]` (override
 with `options_param=`) and matches option text against the prepared HTML. An
 unknown tag raises `KeyError`, and a tag PrairieLearn did not display raises
 `LookupError`.
 
-`CheckboxQuestion` is the `pl-checkbox` counterpart, and `@plmagic` injects it
-automatically. It shares `answer_choices`, `get_choice`, and the tag lookups, and
+`CheckboxQuestion` is the `pl-checkbox` counterpart. It shares `answer_choices`, `get_choice`, and the tag lookups, and
 adds `correct_choices`, `correct_answer` (a list of keys), `submitted_choices`,
 and `submitted_tags()`.
 

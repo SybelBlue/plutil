@@ -9,7 +9,7 @@ it at `serverFilesCourse/plutil` in your course so every question can import it.
 ## Importing
 
 ```python
-from plutil import award_partial_credit, eval_at, plmagic, rand, rule
+from plutil import award_partial_credit, eval_at, rand, rule
 from plutil.calculus import integrate, award_missing_constant_credit
 from plutil.functions import (
     scale_through,
@@ -21,9 +21,8 @@ from plutil.functions import (
 
 ## A first question
 
-Name the keyword-only parameters of a lifecycle function after the
-`answers-name` values in `question.html`, and annotate them with the answer type
-you want:
+Wrap PrairieLearn's `data` in a lens for each `answers-name` in
+`question.html`, choosing the lens for the kind of answer you want:
 
 ```html
 <pl-number-input answers-name="number"></pl-number-input>
@@ -31,24 +30,15 @@ you want:
 ```
 
 ```python
-from plutil import Data, Question, SympyQuestion, plmagic
+from plutil import Data, Question, SympyQuestion
 from sympy.abc import x
 
 
-@plmagic
-def generate(data: Data, *, number: Question, expression: SympyQuestion):
-    data.params["prompt"] = "Enter the meaning of life."
-    number.correct_answer = 42
-    expression.correct_answer = x**2 + 1
+def generate(data):
+    Data(data).params["prompt"] = "Enter the meaning of life."
+    Question(data, "number").correct_answer = 42
+    SympyQuestion(data, "expression", variables="x").correct_answer = x**2 + 1
 ```
 
-Then generate question-specific editor types:
-
-```sh
-plmagic-types path/to/questions
-# Equivalent package invocation:
-python -m plutil path/to/questions
-```
-
-See {doc}`guide/plmagic` for details. To go further, read {doc}`guide/grading`
+To go further, read {doc}`guide/grading`
 for partial credit and {doc}`guide/rand` for randomized parameters.
