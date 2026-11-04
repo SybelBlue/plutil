@@ -17,6 +17,22 @@ from plutil.diffeq import OdeCheckResult
 from plutil.lenses import MultiDict
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (True, "true"),
+        (1, "true"),
+        ("false", "true"),
+        (False, "false"),
+        (0, "false"),
+        ("", "false"),
+        (None, "false"),
+    ],
+)
+def test_mustache_bool_uses_python_truthiness(value: object, expected: str) -> None:
+    assert fmt.mbool(value) == expected
+
+
 def test_json_returns_recursive_python_values() -> None:
     value = {
         "enabled": True,

@@ -16,6 +16,7 @@ from typing import (
     cast,
     overload,
 )
+from warnings import deprecated
 
 import prairielearn.sympy_utils as psu
 import sympy
@@ -54,9 +55,12 @@ spint: Final[type[sympy.Integer]] = sympy.Integer
 """Ergonomics type. Alias for :class:`sympy.Integer`"""
 
 
+@deprecated("Use plutil.fmt.mbool() instead.")
 def mbool(value: Any) -> Literal["true", "false"]:
-    """Return a mustache boolean string from the truthiness of ``value``."""
-    return "true" if value else "false"
+    """Deprecated compatibility wrapper for :func:`plutil.fmt.mbool`."""
+    from .fmt import mbool as fmt_mbool
+
+    return fmt_mbool(value)
 
 
 def truncate_to_significant_digits(value: NumberLike, digits: int) -> float:

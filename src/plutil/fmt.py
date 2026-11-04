@@ -12,7 +12,7 @@ import numpy as np
 import prairielearn as pl
 import sympy
 
-from .common import latex, mbool
+from .common import latex
 
 type JsonValue = (
     None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
@@ -78,6 +78,7 @@ __all__: Final[tuple[str, ...]] = (
     "currency",
     "json",
     "latex",
+    "mbool",
     "mustache",
     "number",
     "quantity",
@@ -96,6 +97,11 @@ _SIGN_DISPLAYS: Final = frozenset(("auto", "always", "except_zero", "never"))
 _CURRENCY_DISPLAYS: Final = frozenset(("symbol", "code", "name"))
 _CURRENCY_SIGNS: Final = frozenset(("standard", "accounting"))
 _UNCERTAINTY_STYLES: Final = frozenset(("plus_minus", "parenthetical"))
+
+
+def mbool(value: Any) -> Literal["true", "false"]:
+    """Return a Mustache boolean string from the truthiness of ``value``."""
+    return "true" if value else "false"
 
 
 def json(

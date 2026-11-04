@@ -20,7 +20,8 @@ from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict
 
 import prairielearn as pl
 
-from .common import OneOrMore, _normalize_one_or_more, mbool
+from .common import OneOrMore, _normalize_one_or_more
+from .fmt import mbool
 
 if TYPE_CHECKING:
     from .lenses import BaseData

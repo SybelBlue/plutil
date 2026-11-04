@@ -555,8 +555,9 @@ fmt.mustache({"enabled": True, "options": (False, True)})
 
 Use `fmt.json`, not `fmt.mustache`, for values consumed by Mustache sections
 such as `{{#enabled}}...{{/enabled}}`: the string `"false"` is truthy in
-Mustache. The existing `mbool(value)` remains available when deliberately
-converting the truthiness of one value.
+Mustache. Use `fmt.mbool(value)` when deliberately converting the truthiness of
+one value. The former `plutil.mbool` and `plutil.common.mbool` paths remain as
+deprecated compatibility wrappers.
 
 Conversion is strict. Mapping keys must be strings, native floats must be
 finite, and unsupported leaves such as `Decimal`, `Path`, Python sets, and

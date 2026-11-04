@@ -9,7 +9,7 @@ from math import prod
 from typing import Literal
 
 from ..common import ExprLike, clamp
-from ..common import mbool as _mbool
+from ..fmt import mbool as _mbool
 from ._progression import number as _number
 
 
