@@ -1,6 +1,6 @@
 from collections.abc import Callable, Iterator
 from decimal import Decimal
-from typing import Literal, assert_type, cast
+from typing import Any, Literal, assert_type, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -126,6 +126,14 @@ def test_formatting_apis_return_strings() -> None:
     )
     format_spec: defmt.FormatSpec = defmt.NumberFormat()
     assert_type(format_spec(Decimal("1.25")), str)
+
+    encoded = fmt.json(defmt.NumberFormat())
+    assert_type(defmt.json(encoded), Any)
+    assert_type(defmt.json(encoded, into=defmt.NumberFormat), defmt.NumberFormat)
+    encoded_choices = fmt.json(
+        ChoiceSet("pl-multiple-choice", (Choice("yes", correct=True), Choice("no")))
+    )
+    assert_type(defmt.json(encoded_choices, into=ChoiceSet[str]), ChoiceSet[str])
 
 
 def test_structured_formatting_apis_return_json_values() -> None:
