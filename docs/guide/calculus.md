@@ -15,23 +15,71 @@ from sympy.abc import x
 derivative(x**3 + 2 * x, d=x)  # -> 3*x**2 + 2
 ```
 
-### `tangent_line_of(*, f=None, df=None, d, at, y0_name="y") -> Expr`
+### `tangent_of(f, **point) -> Expr`
 
-Return the tangent line through `at=(x0, y0)`. Pass either the function as
-`f` or its derivative as `df`; supplying `df` is useful when only derivative
-data is known. The first coordinate of `at` determines the slope, while the
-second determines the point the resulting line passes through.
+Return the tangent line to `f` at a point. Bind the input variable the same
+way as `eval_at`. If you bind several variables, you get the tangent plane
+(linearization).
 
 ```python
-from plutil.calculus import tangent_line_of
-from sympy.abc import x
+from plutil.calculus import tangent_of
+from sympy.abc import x, y
 
-tangent_line_of(f=x**2, d=x, at=(2, 4))  # -> 4*x - 4
-tangent_line_of(df=3 * x**2, d=x, at=(2, 7))  # -> 12*x - 17
+tangent_of(x**2, x=1)  # -> 2*x - 1
+tangent_of(x**2 + y**2, x=1, y=2)  # -> 2*x + 4*y - 5
+```
+
+Unbound symbols are treated as constants. The result is simplified unless you
+pass `simplify=False`. `ValueError` is raised when `f` or a derivative is not
+finite at the point.
+
+### `tangent_of(*, f=None, df=None, d, at, y0_name="y") -> Expr`
+
+Passing `d` switches to the through-a-point form: the line with slope `f'(x0)`
+through `at=(x0, y0)`. Here `y0` does not have to equal `f(x0)`. Pass the
+derivative as `df` instead of `f` when only derivative data is known.
+
+```python
+tangent_of(f=x**2, d=x, at=(2, 4))  # -> 4*x - 4
+tangent_of(df=3 * x**2, d=x, at=(2, 7))  # -> 12*x - 17
 ```
 
 Use `y0_name` when the dependent variable has another name, such as
 `y0_name="v"` for a point expressed with coordinates `(u, v)`.
+
+The names `df`, `d`, `at`, `y0_name` and `simplify` are reserved, so they cannot
+be used as variable bindings. Mixing the two forms raises `TypeError`.
+
+`tangent_line_of` is a deprecated alias for this form.
+
+### `secant_of(f, **endpoints) -> Expr`
+
+Return the line through `(a, f(a))` and `(b, f(b))`. Bind a single variable to
+the pair of endpoints.
+
+```python
+from plutil.calculus import secant_of
+
+secant_of(x**2, x=(1, 3))  # -> 4*x - 3
+```
+
+`ValueError` is raised when the endpoints coincide or `f` is not finite at
+either one.
+
+### `tangent_of_(...)` and `secant_of_(...)`
+
+The trailing-underscore forms take every argument except the function itself
+and return a reusable transformation, for example for use in partial-credit
+rules. `tangent_of_` supports both forms.
+
+```python
+from plutil.calculus import secant_of_, tangent_of_
+from sympy import sin
+
+tangent_of_(x=0)(sin(x))  # -> x
+tangent_of_(d=x, at=(2, 4))(x**2)  # -> 4*x - 4
+secant_of_(x=(0, 2))(x**3)  # -> 4*x
+```
 
 ### `integrate(f, *, d, C="C", bounds=None, known_antideriv_point=None) -> Expr`
 

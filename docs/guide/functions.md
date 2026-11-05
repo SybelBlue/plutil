@@ -43,6 +43,21 @@ rejected with `TypeError`; symbolic results that cannot be converted to a
 native float raise `ValueError` with the original conversion exception as the
 cause.
 
+## `finite_at(f, **point) -> Expr`
+
+Like `eval_at`, but raises `ValueError` if the value is NaN or infinite at the
+point. The point is substituted before simplification, so removable
+singularities are rejected too.
+
+```python
+from plutil import finite_at
+from sympy.abc import x
+
+finite_at(x**2, x=3)  # -> 9
+finite_at(1 / x, x=0)  # ValueError: f is not finite at {x: 0}: zoo
+finite_at((x**2 - 1) / (x - 1), x=1)  # ValueError (0/0)
+```
+
 ## `translate_through(f, *, y0_name="y", **bindings)` and `scale_through(f, *, y0_name="y", **bindings)`
 
 Transform a function so it passes through a given point. `translate_through`

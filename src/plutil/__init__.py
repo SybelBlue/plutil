@@ -47,6 +47,7 @@ from .functions import (
     eval_at_,
     evalf_at,
     evalf_at_,
+    finite_at,
     rearrange_eqn,
 )
 from .lenses import (
@@ -103,6 +104,7 @@ __all__: Final[tuple[str, ...]] = (
     "evalf_at_",
     "fabc",
     "feedback",
+    "finite_at",
     "fmt",
     "function_names",
     "getrec",

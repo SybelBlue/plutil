@@ -6,7 +6,12 @@ import pytest
 import sympy
 from sympy.abc import s, t, x, y
 
-from plutil import domain, evalf_at, rearrange_eqn
+from plutil import (
+    domain,
+    evalf_at,
+    finite_at,
+    rearrange_eqn,
+)
 from plutil.common import eq
 from plutil.functions import eval_at, translate_through_
 
@@ -193,3 +198,25 @@ def test_translate_through__shifts_function_to_hit_target_point():
 def test_translate_through__requires_output_binding():
     with pytest.raises(ValueError, match="not found in bindings"):
         translate_through_(x=0)
+
+
+def test_finite_at_returns_simplified_value():
+    assert finite_at((x + 1) ** 2, x=2) == 9
+
+
+def test_finite_at_leaves_unbound_symbols():
+    assert eq(finite_at(x + y, x=2), y + 2)
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [1 / x, sympy.log(x), (x**2 - 1) / (x - 1) - x - 1 + 1 / x],
+)
+def test_finite_at_rejects_non_finite_values(expression: sympy.Expr) -> None:
+    with pytest.raises(ValueError, match="not finite"):
+        finite_at(expression, x=0)
+
+
+def test_finite_at_rejects_removable_singularity():
+    with pytest.raises(ValueError, match="not finite"):
+        finite_at((x**2 - 1) / (x - 1), x=1)

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from typing import Any
+
 import prairielearn as pl
 import pytest
 import sympy
-from sympy.abc import x
+from sympy.abc import x, y
 
 import plutil.lenses as lenses_mod
 from plutil.calculus import (
@@ -11,7 +13,11 @@ from plutil.calculus import (
     award_missing_constant_credit,
     integrate,
     mean_value_theorem,
+    secant_of,
+    secant_of_,
     tangent_line_of,
+    tangent_of,
+    tangent_of_,
 )
 from plutil.common import eq
 from plutil.feedback import missing_constant
@@ -55,30 +61,30 @@ def test_integrate_known_point_shifts_antiderivative():
     assert eq(shifted, x**2 + 5)
 
 
-def test_tangent_line_of_differentiates_function_at_point():
-    line = tangent_line_of(f=x**2, d=x, at=(2, 4))
+def test_tangent_of_through_differentiates_function_at_point():
+    line = tangent_of(f=x**2, d=x, at=(2, 4))
 
     assert eq(line, 4 * x - 4)
 
 
-def test_tangent_line_of_accepts_precomputed_derivative():
+def test_tangent_of_through_accepts_precomputed_derivative():
     t = sympy.Symbol("t")
-    line = tangent_line_of(df=3 * t**2, d=t, at=(2, 7))
+    line = tangent_of(df=3 * t**2, d=t, at=(2, 7))
 
     assert eq(line, 12 * t - 17)
 
 
-def test_tangent_line_of_supports_custom_output_variable_name():
+def test_tangent_of_through_supports_custom_output_variable_name():
     u = sympy.Symbol("u")
-    line = tangent_line_of(f=u**3, d=u, at=(1, 5), y0_name="v")
+    line = tangent_of(f=u**3, d=u, at=(1, 5), y0_name="v")
 
     assert eq(line, 3 * u + 2)
 
 
-def test_tangent_line_of_requires_function_or_derivative():
+def test_tangent_of_through_requires_function_or_derivative():
     with pytest.raises(ValueError, match="At least one of f and df must be specified"):
         # This intentionally exercises runtime validation for an invalid call.
-        tangent_line_of(d=x, at=(2, 4))  # pyright: ignore[reportCallIssue]
+        tangent_of(d=x, at=(2, 4))  # pyright: ignore[reportCallIssue]
 
 
 def test_mean_value_theorem_returns_solutions_and_average_value():
@@ -255,3 +261,124 @@ def test_award_missing_constant_credit_does_not_grant_credit_for_other_answers(
     )
     assert data["partial_scores"]["answer"]["score"] == 0.0
     assert len(calls) == 0
+
+
+def test_tangent_of_returns_tangent_line():
+    assert eq(tangent_of(x**2, x=1), 2 * x - 1)
+
+
+def test_tangent_of_treats_unbound_symbols_as_constants():
+    assert eq(tangent_of(y * x**2, x=1), y * (2 * x - 1))
+
+
+def test_tangent_of_with_several_bindings_returns_tangent_plane():
+    assert eq(tangent_of(x**2 + y**2, x=1, y=2), 2 * x + 4 * y - 5)
+
+
+def test_tangent_of_finds_symbols_with_assumptions():
+    real_x = sympy.Symbol("x", real=True)
+
+    assert eq(tangent_of(real_x**2, x=1), 2 * real_x - 1)
+
+
+def test_tangent_of_can_skip_simplification():
+    result = tangent_of(x**2, simplify=False, x=1)
+
+    assert result == 1 + 2 * (x - 1)
+
+
+def test_tangent_of_rejects_non_differentiable_point():
+    with pytest.raises(ValueError, match="not finite"):
+        tangent_of(sympy.sqrt(x), x=0)
+
+
+def test_tangent_of_requires_a_point():
+    with pytest.raises(TypeError, match="Bind at least one variable"):
+        tangent_of(x**2)
+
+
+def test_tangent_of__builds_reusable_transformation():
+    tangent = tangent_of_(x=0)
+
+    assert eq(tangent(sympy.exp(x)), x + 1)
+    assert eq(tangent(sympy.sin(x)), x)
+
+
+def test_tangent_of__requires_a_point_eagerly():
+    with pytest.raises(TypeError, match="Bind at least one variable"):
+        tangent_of_()
+
+
+def test_secant_of_returns_secant_line():
+    assert eq(secant_of(x**2, x=(1, 3)), 4 * x - 3)
+
+
+def test_secant_of_accepts_symbolic_endpoints():
+    h = sympy.Symbol("h", nonzero=True)
+
+    assert eq(secant_of(x**2, x=(1, 1 + h)), 1 + (2 + h) * (x - 1))
+
+
+def test_secant_of_rejects_coincident_endpoints():
+    with pytest.raises(ValueError, match="must be distinct"):
+        secant_of(x**2, x=(2, 2))
+
+
+def test_secant_of_rejects_non_finite_endpoint():
+    with pytest.raises(ValueError, match="not finite"):
+        secant_of(1 / x, x=(0, 1))
+
+
+@pytest.mark.parametrize(
+    "endpoints",
+    [{}, {"x": (0, 1), "y": (0, 1)}, {"x": 1}, {"x": (0, 1, 2)}],
+)
+def test_secant_of_requires_one_pair_of_endpoints(endpoints: dict[str, Any]) -> None:
+    with pytest.raises(TypeError, match="endpoints"):
+        secant_of(x**2, **endpoints)
+
+
+def test_secant_of__builds_reusable_transformation():
+    secant = secant_of_(x=(0, 2))
+
+    assert eq(secant(x**2), 2 * x)
+    assert eq(secant(x**3), 4 * x)
+
+
+def test_secant_of__validates_endpoints_eagerly():
+    with pytest.raises(TypeError, match="endpoints"):
+        secant_of_(x=1)  # type: ignore[arg-type]
+
+
+def test_tangent_line_of_is_deprecated_alias_for_through_form():
+    with pytest.warns(DeprecationWarning, match=r"tangent_of"):
+        line = tangent_line_of(f=x**2, d=x, at=(2, 4))
+
+    assert eq(line, 4 * x - 4)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"d": x, "at": (2, 4), "x": 1}, "not both"),
+        ({"d": x}, "`at` is required"),
+        ({"at": (2, 4)}, "`d` is required"),
+        ({"df": 2 * x, "x": 1}, "`d` is required"),
+    ],
+)
+def test_tangent_of_rejects_mixed_or_incomplete_forms(
+    kwargs: dict[str, Any], message: str
+) -> None:
+    with pytest.raises(TypeError, match=message):
+        tangent_of(f=x**2, **kwargs)
+
+
+def test_tangent_of__supports_through_form():
+    tangent = tangent_of_(d=x, at=(2, 4))
+
+    assert eq(tangent(x**2), 4 * x - 4)
+
+
+def test_tangent_of__rejects_mixed_forms_eagerly():
+    with pytest.raises(TypeError, match="not both"):
+        tangent_of_(d=x, at=(2, 4), x=1)  # pyright: ignore[reportArgumentType]
