@@ -174,6 +174,68 @@ def evalf_at_(**bindings: ExprInput | None) -> Callable[[ExprInput], float]:
     return lambda f: evalf_at(f, **bindings)
 
 
+_NON_FINITE = (
+    sympy.S.NaN,
+    sympy.S.ComplexInfinity,
+    sympy.S.Infinity,
+    sympy.S.NegativeInfinity,
+)
+
+
+def _resolve_symbol(expression: sympy.Expr, name: str) -> sympy.Symbol:
+    """Return the free symbol of ``expression`` named ``name``.
+
+    This keeps symbols with assumptions (e.g. ``Symbol("x", real=True)``)
+    from being shadowed by a plain ``Symbol("x")``.
+    """
+    for symbol in expression.free_symbols:
+        if isinstance(symbol, sympy.Symbol) and symbol.name == name:
+            return symbol
+    return sympy.Symbol(name)
+
+
+def _finite_at(
+    expression: sympy.Expr, point: Mapping[sympy.Symbol, sympy.Expr], what: str
+) -> sympy.Expr:
+    """Substitute ``point`` into ``expression`` and reject non-finite values."""
+    value = require_expr(expression.subs(list(point.items()), simultaneous=True))
+    _require_finite(value, point, what)
+    return value
+
+
+def _require_finite(
+    value: sympy.Expr, point: Mapping[sympy.Symbol, sympy.Expr], what: str
+) -> None:
+    if value.has(*_NON_FINITE):
+        raise ValueError(f"{what} is not finite at {dict(point)}: {value}")
+
+
+def _finish(expression: sympy.Expr, simplify: bool) -> sympy.Expr:
+    return require_expr(sympy.simplify(expression)) if simplify else expression
+
+
+def finite_at(f: ExprInput, *, simplify: bool = True, **point: ExprInput) -> sympy.Expr:
+    """Evaluate ``f`` at ``point`` like :func:`eval_at`, rejecting non-finite values.
+
+    The point is substituted before any simplification, so removable
+    singularities such as ``(x**2 - 1) / (x - 1)`` at ``x=1`` are rejected.
+
+    Raises:
+        ValueError: If the value is NaN or infinite (including complex
+            infinity) at ``point``.
+    """
+    expression = _input_to_expr(f)
+    coordinates = {
+        _resolve_symbol(expression, name): _input_to_expr(value)
+        for name, value in point.items()
+    }
+    value = _finite_at(expression, coordinates, "f")
+    if simplify:
+        value = _finish(value, simplify)
+        _require_finite(value, coordinates, "f")
+    return value
+
+
 def translate_through(
     f: ExprInput, *, y0_name: str = "y", **bindings: ExprInput
 ) -> sympy.Expr:

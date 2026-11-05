@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import math
 import operator
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from functools import reduce
 from itertools import pairwise
 from typing import Any, Literal, overload
+from warnings import deprecated
 
 import prairielearn.sympy_utils as psu
 import sympy
@@ -24,7 +25,14 @@ from .common import (
     var_to_symbol,
 )
 from .feedback import missing_constant
-from .functions import eval_at, eval_at_, translate_through
+from .functions import (
+    _finish,
+    _finite_at,
+    _resolve_symbol,
+    eval_at,
+    eval_at_,
+    translate_through,
+)
 from .lenses import SympyQuestion
 from .partial_credit import rule
 
@@ -247,40 +255,17 @@ def d(u: Variable) -> sympy.Symbol:
     return sympy.Symbol(f"d{var_name(u)}")
 
 
-@overload
-def tangent_line_of(
+type _Point2 = tuple[ExprLike, ExprLike]
+
+
+def _tangent_line_through(
     *,
-    f: ExprInput,
+    f: ExprInput | None,
+    df: ExprInput | None,
     d: Variable,
-    at: tuple[ExprLike, ExprLike],
-    y0_name: str = "y",
-) -> sympy.Expr: ...
-@overload
-def tangent_line_of(
-    *,
-    df: ExprInput,
-    d: Variable,
-    at: tuple[ExprLike, ExprLike],
-    y0_name: str = "y",
-) -> sympy.Expr: ...
-def tangent_line_of(
-    *,
-    f: ExprInput | None = None,
-    df: ExprInput | None = None,
-    d: Variable,
-    at: tuple[ExprLike, ExprLike],
-    y0_name: str = "y",
+    at: _Point2,
+    y0_name: str,
 ) -> sympy.Expr:
-    """Return the tangent line through a given point.
-
-    Pass the function as ``f`` to compute its derivative, or pass a known
-    derivative as ``df``. The first coordinate of ``at`` determines where the
-    slope is evaluated, and the second determines the value through which the
-    resulting line passes. ``y0_name`` names that dependent-value coordinate.
-
-    Raises:
-        ValueError: If neither ``f`` nor ``df`` is specified.
-    """
     body: ExprInput
     if f is None:
         if df is None:
@@ -295,3 +280,202 @@ def tangent_line_of(
         y0_name=y0_name,
         **bindings,
     )
+
+
+def _tangent_at(
+    f: ExprInput, *, simplify: bool, point: Mapping[str, ExprInput]
+) -> sympy.Expr:
+    expression = _input_to_expr(f)
+    coordinates = {
+        _resolve_symbol(expression, name): _input_to_expr(value)
+        for name, value in point.items()
+    }
+    tangent = _finite_at(expression, coordinates, "f") + sympy.Add(
+        *(
+            _finite_at(expression.diff(variable), coordinates, f"df/d{variable}")
+            * (variable - coordinate)
+            for variable, coordinate in coordinates.items()
+        )
+    )
+    return _finish(tangent, simplify)
+
+
+def _require_point(point: Mapping[str, object]) -> None:
+    if not point:
+        raise TypeError("Bind at least one variable to a coordinate, e.g. x=1")
+
+
+def _is_through_form(
+    *,
+    df: ExprInput | None,
+    d: Variable | None,
+    at: _Point2 | None,
+    point: Mapping[str, object],
+) -> bool:
+    """Validate :func:`tangent_of` arguments; True means the ``d``/``at`` form."""
+    if d is not None:
+        if point:
+            raise TypeError(
+                "Pass either `d` and `at` or variable bindings, not both "
+                f"(got bindings for {', '.join(point)})"
+            )
+        if at is None:
+            raise TypeError("`at` is required with `d`")
+        return True
+    if df is not None or at is not None:
+        raise TypeError("`d` is required with `df` or `at`")
+    _require_point(point)
+    return False
+
+
+@overload
+def tangent_of(
+    f: ExprInput, *, simplify: bool = True, **point: ExprInput
+) -> sympy.Expr: ...
+@overload
+def tangent_of(
+    *, f: ExprInput, d: Variable, at: _Point2, y0_name: str = "y"
+) -> sympy.Expr: ...
+@overload
+def tangent_of(
+    *, df: ExprInput, d: Variable, at: _Point2, y0_name: str = "y"
+) -> sympy.Expr: ...
+# Overload 1's **point could name `d` or `at`; _is_through_form rejects that at runtime.
+def tangent_of(  # pyright: ignore[reportInconsistentOverload]
+    f: ExprInput | None = None,
+    *,
+    df: ExprInput | None = None,
+    d: Variable | None = None,
+    at: _Point2 | None = None,
+    y0_name: str = "y",
+    simplify: bool = True,
+    **point: ExprInput,
+) -> sympy.Expr:
+    """Return a tangent line (or plane) to a function.
+
+    There are two forms, chosen by whether ``d`` is given:
+
+    - ``tangent_of(f, x=a)`` returns the tangent to ``f`` at ``x = a``,
+      ``f(a) + f'(a) * (x - a)``. Binding several variables returns the
+      tangent plane (linearization) ``f(p) + sum(f_xi(p) * (xi - pi))``.
+      Unbound symbols are treated as constants. The result is simplified
+      unless ``simplify=False``.
+    - ``tangent_of(f=f, d=x, at=(x0, y0))`` returns the line with slope
+      ``f'(x0)`` through ``(x0, y0)``. Pass ``df`` instead of ``f`` when only
+      the derivative is known. ``y0_name`` names the dependent coordinate.
+
+    Because the keyword names ``df``, ``d``, ``at``, ``y0_name`` and
+    ``simplify`` are taken, they cannot be used as variable bindings.
+
+    Raises:
+        TypeError: If the arguments mix the two forms or a form is incomplete.
+        ValueError: If neither ``f`` nor ``df`` is given in the ``d`` form, or
+            if ``f`` or a partial derivative is not finite at the point.
+    """
+    if _is_through_form(df=df, d=d, at=at, point=point):
+        assert d is not None and at is not None
+        return _tangent_line_through(f=f, df=df, d=d, at=at, y0_name=y0_name)
+    if f is None:
+        raise TypeError("`f` is required")
+    return _tangent_at(f, simplify=simplify, point=point)
+
+
+@overload
+def tangent_of_(
+    *, simplify: bool = True, **point: ExprInput
+) -> Callable[[ExprInput], sympy.Expr]: ...
+@overload
+def tangent_of_(
+    *, d: Variable, at: _Point2, y0_name: str = "y"
+) -> Callable[[ExprInput], sympy.Expr]: ...
+# Overload 1's **point could name `d` or `at`; _is_through_form rejects that at runtime.
+def tangent_of_(  # pyright: ignore[reportInconsistentOverload]
+    *,
+    d: Variable | None = None,
+    at: _Point2 | None = None,
+    y0_name: str = "y",
+    simplify: bool = True,
+    **point: ExprInput,
+) -> Callable[[ExprInput], sympy.Expr]:
+    """Return a callable that applies :func:`tangent_of` to its argument.
+
+    Takes the same keyword arguments as :func:`tangent_of` except ``f`` and
+    ``df``, and checks them right away.
+    """
+    if _is_through_form(df=None, d=d, at=at, point=point):
+        assert d is not None and at is not None
+        return lambda f: _tangent_line_through(
+            f=f, df=None, d=d, at=at, y0_name=y0_name
+        )
+    return lambda f: _tangent_at(f, simplify=simplify, point=point)
+
+
+@overload
+def tangent_line_of(
+    *, f: ExprInput, d: Variable, at: _Point2, y0_name: str = "y"
+) -> sympy.Expr: ...
+@overload
+def tangent_line_of(
+    *, df: ExprInput, d: Variable, at: _Point2, y0_name: str = "y"
+) -> sympy.Expr: ...
+@deprecated("Use plutil.calculus.tangent_of() instead.")
+def tangent_line_of(
+    *,
+    f: ExprInput | None = None,
+    df: ExprInput | None = None,
+    d: Variable,
+    at: _Point2,
+    y0_name: str = "y",
+) -> sympy.Expr:
+    """Deprecated alias for the ``d``/``at`` form of :func:`tangent_of`."""
+    return _tangent_line_through(f=f, df=df, d=d, at=at, y0_name=y0_name)
+
+
+def _secant_endpoints(
+    endpoints: Mapping[str, tuple[ExprInput, ExprInput]],
+) -> tuple[str, ExprInput, ExprInput]:
+    if len(endpoints) != 1:
+        raise TypeError(
+            "Bind exactly one variable to a pair of endpoints, e.g. x=(0, 2)"
+        )
+    name, pair = next(iter(endpoints.items()))
+    if not isinstance(pair, (tuple, list)) or len(pair) != 2:
+        raise TypeError(f"Expected a pair of endpoints for `{name}`, got {pair!r}")
+    a, b = pair
+    return name, a, b
+
+
+def secant_of(
+    f: ExprInput,
+    *,
+    simplify: bool = True,
+    **endpoints: tuple[ExprInput, ExprInput],
+) -> sympy.Expr:
+    """Return the secant line to ``f`` between two input values.
+
+    ``secant_of(f, x=(a, b))`` returns the line through ``(a, f(a))`` and
+    ``(b, f(b))``: ``f(a) + (f(b) - f(a)) / (b - a) * (x - a)``. Other
+    symbols are treated as constants.
+
+    Raises:
+        TypeError: If not exactly one variable is bound to a pair of endpoints.
+        ValueError: If the endpoints coincide or ``f`` is not finite at either.
+    """
+    name, a_input, b_input = _secant_endpoints(endpoints)
+    expression = _input_to_expr(f)
+    variable = _resolve_symbol(expression, name)
+    a, b = _input_to_expr(a_input), _input_to_expr(b_input)
+    run = b - a
+    if run.is_zero:
+        raise ValueError(f"Secant endpoints must be distinct, got {a} and {b}")
+    fa = _finite_at(expression, {variable: a}, "f")
+    fb = _finite_at(expression, {variable: b}, "f")
+    return _finish(fa + (fb - fa) / run * (variable - a), simplify)
+
+
+def secant_of_(
+    *, simplify: bool = True, **endpoints: tuple[ExprInput, ExprInput]
+) -> Callable[[ExprInput], sympy.Expr]:
+    """Return a callable that takes the secant of its argument over ``endpoints``."""
+    _secant_endpoints(endpoints)
+    return lambda f: secant_of(f, simplify=simplify, **endpoints)
