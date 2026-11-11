@@ -52,7 +52,10 @@ fmt.latex(power, ratio_power_style="linear")  # r"x^{3/2}"
 ```
 
 Unit-numerator powers retain root notation in every style, so `x**(1/2)`
-renders as `\sqrt{x}`. The former `simplifyRatioPowers` keyword is deprecated;
+renders as `\sqrt{x}`. The `"linear"` style also renders short fractions in
+integral, sum, and product limits inline, so `sympy.Integral(x, (x, 0, 5/2))`
+becomes `\int_{0}^{5 / 2} x\, dx`; the other styles follow `displaystyle`
+(`\dfrac` when true, `\frac` otherwise). The former `simplifyRatioPowers` keyword is deprecated;
 replace `True` with `ratio_power_style="radical"` and `False` with
 `ratio_power_style="stacked"`.
 
