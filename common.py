@@ -525,6 +525,8 @@ def latex(
         parsed = sympy.sympify(expr) if reparse else expr
     if style == "radical" and isinstance(parsed, sympy.Basic):
         parsed = parsed.replace(_is_ratio_power, _display_ratio_power)
+    if style == "linear" and isinstance(parsed, sympy.Basic):
+        parsed = parsed.replace(_is_large_operator, _inline_operator_limits)
     unparsed = str(sympy.latex(parsed, fold_frac_powers=style == "linear"))
     rendered = INV_TRIG_OPERATOR_RE.sub(r"\\operatorname{\1}^{-1}", unparsed).replace(
         r"\int\limits", r"\int"
@@ -560,6 +562,38 @@ def _display_ratio_power(value: sympy.Pow) -> sympy.Expr:
     radicand = sympy.Pow(value.base, abs(exponent.p), evaluate=False)
     root = sympy.Pow(radicand, sympy.Rational(1, exponent.q), evaluate=False)
     return sympy.Pow(root, -1, evaluate=False) if exponent.p < 0 else root
+
+
+_LARGE_OPERATORS: Final = (sympy.Integral, sympy.Sum, sympy.Product)
+
+
+class _InlineFractions(sympy.Expr):
+    """Display-only wrapper that renders short fractions in its argument as ``p / q``."""
+
+    def _latex(self, printer: Any) -> str:
+        settings = printer._settings
+        previous = settings["fold_short_frac"]
+        settings["fold_short_frac"] = True
+        try:
+            return cast(str, printer._print(self.args[0]))
+        finally:
+            settings["fold_short_frac"] = previous
+
+
+def _is_large_operator(value: sympy.Basic) -> bool:
+    return isinstance(value, _LARGE_OPERATORS)
+
+
+def _inline_operator_limits(value: sympy.Basic) -> sympy.Basic:
+    """Wrap the bounds of an integral, sum, or product so they render as ``p / q``.
+
+    The result is display-only; the wrapped bounds are not usable for evaluation.
+    """
+    limits = (
+        (limit[0], *(_InlineFractions(bound) for bound in limit[1:]))
+        for limit in cast(Any, value).limits
+    )
+    return type(value)(cast(Any, value).function, *limits)
 
 
 @overload

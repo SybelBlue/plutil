@@ -520,6 +520,55 @@ def test_latex_stacked_ratio_powers_follow_displaystyle() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("expr", "linear_latex", "stacked_latex"),
+    [
+        (
+            sympy.Integral(x**2, (x, 0, sympy.Rational(5, 2))),
+            r"\displaystyle \int_{0}^{5 / 2} x^{2}\, dx",
+            r"\displaystyle \int_{0}^{\dfrac{5}{2}} x^{2}\, dx",
+        ),
+        (
+            sympy.Integral(
+                x / 2, (x, -sympy.Rational(1, 2), sympy.pi / 2), (y, 0, 1 / n)
+            ),
+            (
+                r"\displaystyle \int_{0}^{1 / n}\displaystyle \int_{- 1 / 2}^{\pi / 2}"
+                r" \dfrac{x}{2}\, dx\, dy"
+            ),
+            (
+                r"\displaystyle \int_{0}^{\dfrac{1}{n}}\displaystyle "
+                r"\int_{- \dfrac{1}{2}}^{\dfrac{\pi}{2}} \dfrac{x}{2}\, dx\, dy"
+            ),
+        ),
+        (
+            sympy.Sum(1 / x, (x, 1, n / 2)),
+            r"\displaystyle \sum_{x=1}^{n / 2} \dfrac{1}{x}",
+            r"\displaystyle \sum_{x=1}^{\dfrac{n}{2}} \dfrac{1}{x}",
+        ),
+        (
+            sympy.Product(x, (x, 1, sympy.Rational(7, 3))),
+            r"\displaystyle \prod_{x=1}^{7 / 3} x",
+            r"\displaystyle \prod_{x=1}^{\dfrac{7}{3}} x",
+        ),
+    ],
+)
+def test_latex_linear_style_renders_operator_limits_inline(
+    expr: sympy.Expr, linear_latex: str, stacked_latex: str
+) -> None:
+    assert latex(expr, ratio_power_style="linear") == linear_latex
+    assert latex(expr, ratio_power_style="stacked") == stacked_latex
+
+
+def test_latex_linear_operator_limits_ignore_displaystyle() -> None:
+    value = sympy.Integral(x, (x, 0, sympy.Rational(5, 2)))
+
+    assert latex(value, ratio_power_style="linear", displaystyle=False) == (
+        r"\int_{0}^{5 / 2} x\, dx"
+    )
+    assert latex(value, displaystyle=False) == r"\int_{0}^{\frac{5}{2}} x\, dx"
+
+
 def test_latex_propagates_linear_ratio_powers_through_tuples() -> None:
     value = (n ** sympy.Rational(3, 2), (x, n ** sympy.Rational(-3, 2)))
 
