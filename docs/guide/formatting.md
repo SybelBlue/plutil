@@ -35,6 +35,27 @@ fmt.quantity(
 )  # "1.234(56) kV"
 ```
 
+### Symbolic LaTeX ratio powers
+
+`fmt.latex` uses `ratio_power_style` to choose how non-unit rational powers
+are rendered:
+
+```python
+import sympy
+from sympy.abc import x
+
+power = x ** sympy.Rational(3, 2)
+
+fmt.latex(power)  # r"\sqrt{x^{3}}"
+fmt.latex(power, ratio_power_style="stacked")  # r"x^{\dfrac{3}{2}}"
+fmt.latex(power, ratio_power_style="linear")  # r"x^{3/2}"
+```
+
+Unit-numerator powers retain root notation in every style, so `x**(1/2)`
+renders as `\sqrt{x}`. The former `simplifyRatioPowers` keyword is deprecated;
+replace `True` with `ratio_power_style="radical"` and `False` with
+`ratio_power_style="stacked"`.
+
 ### Structured JSON and Mustache values
 
 `fmt.json` recursively converts a value to JSON-ready Python data; it does not

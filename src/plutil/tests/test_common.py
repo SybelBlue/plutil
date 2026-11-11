@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from typing import Any, cast
 
 import prairielearn as pl
 import pytest
@@ -424,7 +425,7 @@ def test_latex_dispatches_limits_to_lim_latex(monkeypatch: pytest.MonkeyPatch):
             "log_base": 2,
             "reparse": True,
             "displaystyle": False,
-            "simplifyRatioPowers": True,
+            "ratio_power_style": "radical",
         }
     ]
 
@@ -454,7 +455,7 @@ def test_latex_renders_nested_tuples_with_shared_options():
         ((sympy.log(x), n ** sympy.Rational(3, 2)), x / 2),
         log_base=2,
         displaystyle=False,
-        simplifyRatioPowers=False,
+        ratio_power_style="stacked",
     )
 
     assert rendered == (
@@ -474,17 +475,121 @@ def test_latex_renders_empty_tuple():
     assert latex(()) == r"\left(\right)"
 
 
-def test_latex_can_keep_ratio_powers():
+@pytest.mark.parametrize(
+    ("style", "positive", "negative"),
+    [
+        (
+            "radical",
+            r"\sqrt{n^{3}}",
+            r"\dfrac{1}{\sqrt{n^{3}}}",
+        ),
+        (
+            "stacked",
+            r"n^{\dfrac{3}{2}}",
+            r"\dfrac{1}{n^{\dfrac{3}{2}}}",
+        ),
+        ("linear", r"n^{3/2}", r"n^{-3/2}"),
+    ],
+)
+def test_latex_renders_ratio_power_styles(
+    style: common_mod.RatioPowerStyle,
+    positive: str,
+    negative: str,
+) -> None:
+    assert latex(n ** sympy.Rational(3, 2), ratio_power_style=style) == positive
+    assert latex(n ** sympy.Rational(-3, 2), ratio_power_style=style) == negative
+
+
+@pytest.mark.parametrize("style", ["radical", "stacked", "linear"])
+def test_latex_ratio_power_styles_preserve_root_notation(
+    style: common_mod.RatioPowerStyle,
+) -> None:
+    reciprocal_root = latex(1 / sympy.sqrt(n), ratio_power_style=style)
+
+    assert latex(sympy.sqrt(n), ratio_power_style=style) == r"\sqrt{n}"
+    assert reciprocal_root == r"\dfrac{1}{\sqrt{n}}"
+
+
+def test_latex_stacked_ratio_powers_follow_displaystyle() -> None:
+    value = n ** sympy.Rational(3, 2)
+
+    assert latex(value, ratio_power_style="stacked") == r"n^{\dfrac{3}{2}}"
     assert (
-        latex(n ** sympy.Rational(3, 2), simplifyRatioPowers=False)
-        == r"n^{\dfrac{3}{2}}"
+        latex(value, ratio_power_style="stacked", displaystyle=False)
+        == r"n^{\frac{3}{2}}"
     )
+
+
+def test_latex_propagates_linear_ratio_powers_through_tuples() -> None:
+    value = (n ** sympy.Rational(3, 2), (x, n ** sympy.Rational(-3, 2)))
+
+    assert latex(value, ratio_power_style="linear") == (
+        r"\left(n^{3/2}, \left(x, n^{-3/2}\right)\right)"
+    )
+
+
+@pytest.mark.parametrize(
+    ("legacy", "style"),
+    [(True, "radical"), (False, "stacked")],
+)
+def test_latex_deprecated_ratio_power_option_silently_maps_to_style(
+    legacy: bool,
+    style: common_mod.RatioPowerStyle,
+    recwarn: pytest.WarningsRecorder,
+) -> None:
+    value = (n ** sympy.Rational(3, 2), n ** sympy.Rational(-3, 2))
+
+    rendered = latex(value, simplifyRatioPowers=legacy)
+
+    assert not recwarn.list
+    assert rendered == latex(value, ratio_power_style=style)
+
+
+def test_latex_rejects_ratio_power_option_conflicts() -> None:
+    with pytest.raises(TypeError, match="either `ratio_power_style`"):
+        cast(Any, latex)(
+            n ** sympy.Rational(3, 2),
+            ratio_power_style="linear",
+            simplifyRatioPowers=False,
+        )
+
+
+def test_latex_rejects_unknown_ratio_power_style() -> None:
+    invalid_style = cast(common_mod.RatioPowerStyle, "diagonal")
+
+    with pytest.raises(ValueError, match="radical.*stacked.*linear"):
+        latex(n ** sympy.Rational(3, 2), ratio_power_style=invalid_style)
 
 
 def test_lim_latex_simplifies_ratio_powers():
     rendered = lim_latex(var=n, val=sympy.oo, body=1 / n ** sympy.Rational(3, 2))
 
     assert rendered == r"\displaystyle \lim_{n \to \infty} {\dfrac{1}{\sqrt{n^{3}}}}"
+
+
+def test_lim_latex_propagates_linear_ratio_power_style() -> None:
+    rendered = lim_latex(
+        var=n,
+        val=sympy.oo,
+        body=n ** sympy.Rational(-3, 2),
+        ratio_power_style="linear",
+    )
+
+    assert rendered == r"\displaystyle \lim_{n \to \infty} {n^{-3/2}}"
+
+
+def test_lim_latex_deprecated_ratio_power_option_silently_maps(
+    recwarn: pytest.WarningsRecorder,
+) -> None:
+    rendered = lim_latex(
+        var=n,
+        val=sympy.oo,
+        body=n ** sympy.Rational(3, 2),
+        simplifyRatioPowers=False,
+    )
+
+    assert not recwarn.list
+    assert rendered == r"\displaystyle \lim_{n \to \infty} {n^{\dfrac{3}{2}}}"
 
 
 def test_lim_latex_renders_two_sided_limit():

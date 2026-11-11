@@ -12,7 +12,7 @@ import numpy as np
 import prairielearn as pl
 import sympy
 
-from .common import latex
+from .common import RatioPowerStyle, latex
 
 type JsonValue = (
     None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
@@ -71,6 +71,7 @@ __all__: Final[tuple[str, ...]] = (
     "JsonValue",
     "Notation",
     "NumberInput",
+    "RatioPowerStyle",
     "RoundingMode",
     "SIPrefix",
     "SignDisplay",

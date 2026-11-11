@@ -12,6 +12,7 @@ import sympy
 from sympy.abc import x
 
 import plutil
+import plutil.common as common_mod
 from plutil import Choice, ChoiceSet, defmt, fmt
 from plutil.diffeq import OdeCheckResult
 from plutil.lenses import MultiDict
@@ -221,6 +222,7 @@ def test_json_rejects_non_string_mapping_keys_and_dataclass_types() -> None:
 
 def test_fmt_reexports_existing_latex_function() -> None:
     assert fmt.latex is plutil.latex
+    assert fmt.RatioPowerStyle is common_mod.RatioPowerStyle
     assert not hasattr(plutil, "number")
     assert not hasattr(plutil, "currency")
 
