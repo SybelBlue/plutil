@@ -395,6 +395,64 @@ def eq[T, R](
 INV_TRIG_OPERATOR_RE: re.Pattern[str] | None = None
 DISPLAY_OPERATOR_RE: re.Pattern[str] | None = None
 type LatexableValue = SympyInput | sympy.Rel | sympy.Tuple | tuple[LatexableValue, ...]
+type RatioPowerStyle = Literal["radical", "stacked", "linear"]
+"""Layout used to render non-unit rational powers as LaTeX."""
+
+_RATIO_POWER_STYLE_UNSET: Final[object] = object()
+_RATIO_POWER_STYLE_DEFAULT: Final[RatioPowerStyle] = cast(
+    RatioPowerStyle, _RATIO_POWER_STYLE_UNSET
+)
+_SIMPLIFY_RATIO_POWERS_UNSET: Final[bool] = cast(bool, _RATIO_POWER_STYLE_UNSET)
+_RATIO_POWER_STYLES: Final = frozenset(("radical", "stacked", "linear"))
+
+
+def _resolve_ratio_power_style(
+    ratio_power_style: RatioPowerStyle | object,
+    simplify_ratio_powers: bool | object,
+) -> RatioPowerStyle:
+    if (
+        ratio_power_style is not _RATIO_POWER_STYLE_UNSET
+        and simplify_ratio_powers is not _RATIO_POWER_STYLE_UNSET
+    ):
+        raise TypeError(
+            "Pass either `ratio_power_style` or deprecated "
+            "`simplifyRatioPowers`, not both"
+        )
+    if simplify_ratio_powers is not _RATIO_POWER_STYLE_UNSET:
+        return "radical" if simplify_ratio_powers else "stacked"
+    if ratio_power_style is _RATIO_POWER_STYLE_UNSET:
+        return "radical"
+    if not isinstance(ratio_power_style, str) or ratio_power_style not in (
+        _RATIO_POWER_STYLES
+    ):
+        raise ValueError("ratio_power_style must be 'radical', 'stacked', or 'linear'")
+    return cast(RatioPowerStyle, ratio_power_style)
+
+
+@overload
+def latex(
+    expr: LatexableValue,
+    *,
+    log_base: ExprInput | None = None,
+    reparse: bool = False,
+    displaystyle: bool = True,
+    ratio_power_style: RatioPowerStyle = "radical",
+) -> str: ...
+
+
+@overload
+@deprecated(
+    "Use `ratio_power_style='radical'` or `ratio_power_style='stacked'` instead.",
+    category=None,
+)
+def latex(
+    expr: LatexableValue,
+    *,
+    log_base: ExprInput | None = None,
+    reparse: bool = False,
+    displaystyle: bool = True,
+    simplifyRatioPowers: bool,
+) -> str: ...
 
 
 def latex(
@@ -403,17 +461,24 @@ def latex(
     log_base: ExprInput | None = None,
     reparse: bool = False,
     displaystyle: bool = True,
-    simplifyRatioPowers: bool = True,
+    ratio_power_style: RatioPowerStyle = _RATIO_POWER_STYLE_DEFAULT,
+    simplifyRatioPowers: bool = _SIMPLIFY_RATIO_POWERS_UNSET,
 ) -> str:
     """Render an expression as display-style LaTeX suitable for PrairieLearn.
 
-    With ``simplifyRatioPowers``, rational powers like ``n**(3/2)`` render as
-    radicals (``\\sqrt{n^{3}}``) instead of placing a fraction in the exponent.
+    ``ratio_power_style`` controls non-unit rational powers such as ``n**(3/2)``:
+    ``"radical"`` renders ``\\sqrt{n^{3}}``, ``"stacked"`` renders
+    ``n^{\\dfrac{3}{2}}``, and ``"linear"`` renders ``n^{3/2}``. Unit-numerator
+    powers such as ``n**(1/2)`` retain root notation in every style.
 
     A tuple (Python or ``sympy.Tuple``) renders as a parenthesized,
     comma-separated list whose entries are each rendered with the same options, e.g. ``(x / 2, 1)`` renders as
     ``\\left(\\dfrac{x}{2}, 1\\right)``.
+
+    ``simplifyRatioPowers`` is deprecated. ``True`` maps to ``"radical"`` and
+    ``False`` maps to ``"stacked"``.
     """
+    style = _resolve_ratio_power_style(ratio_power_style, simplifyRatioPowers)
     if isinstance(expr, (tuple, sympy.Tuple)):
         items = cast(
             tuple[LatexableValue, ...],
@@ -425,7 +490,7 @@ def latex(
                 log_base=log_base,
                 reparse=reparse,
                 displaystyle=displaystyle,
-                simplifyRatioPowers=simplifyRatioPowers,
+                ratio_power_style=style,
             )
             for entry in items
         )
@@ -447,7 +512,7 @@ def latex(
             log_base=log_base,
             reparse=reparse,
             displaystyle=displaystyle,
-            simplifyRatioPowers=simplifyRatioPowers,
+            ratio_power_style=style,
         )
 
     global DISPLAY_OPERATOR_RE, INV_TRIG_OPERATOR_RE
@@ -458,9 +523,9 @@ def latex(
         parsed = to_expr(expr)
     else:
         parsed = sympy.sympify(expr) if reparse else expr
-    if simplifyRatioPowers and isinstance(parsed, sympy.Basic):
+    if style == "radical" and isinstance(parsed, sympy.Basic):
         parsed = parsed.replace(_is_ratio_power, _display_ratio_power)
-    unparsed = str(sympy.latex(parsed))
+    unparsed = str(sympy.latex(parsed, fold_frac_powers=style == "linear"))
     rendered = INV_TRIG_OPERATOR_RE.sub(r"\\operatorname{\1}^{-1}", unparsed).replace(
         r"\int\limits", r"\int"
     )
@@ -497,6 +562,7 @@ def _display_ratio_power(value: sympy.Pow) -> sympy.Expr:
     return sympy.Pow(root, -1, evaluate=False) if exponent.p < 0 else root
 
 
+@overload
 def lim_latex(
     *,
     var: Variable,
@@ -506,23 +572,60 @@ def lim_latex(
     log_base: ExprInput | None = None,
     reparse: bool = False,
     displaystyle: bool = True,
-    simplifyRatioPowers: bool = True,
+    ratio_power_style: RatioPowerStyle = "radical",
+) -> str: ...
+
+
+@overload
+@deprecated(
+    "Use `ratio_power_style='radical'` or `ratio_power_style='stacked'` instead.",
+    category=None,
+)
+def lim_latex(
+    *,
+    var: Variable,
+    val: ExprInput,
+    dir: Literal["+", "-", "+-"] | str | sympy.Symbol | None = None,
+    body: ExprInput,
+    log_base: ExprInput | None = None,
+    reparse: bool = False,
+    displaystyle: bool = True,
+    simplifyRatioPowers: bool,
+) -> str: ...
+
+
+def lim_latex(
+    *,
+    var: Variable,
+    val: ExprInput,
+    dir: Literal["+", "-", "+-"] | str | sympy.Symbol | None = None,
+    body: ExprInput,
+    log_base: ExprInput | None = None,
+    reparse: bool = False,
+    displaystyle: bool = True,
+    ratio_power_style: RatioPowerStyle = _RATIO_POWER_STYLE_DEFAULT,
+    simplifyRatioPowers: bool = _SIMPLIFY_RATIO_POWERS_UNSET,
 ) -> str:
-    """Render a display-style limit expression as a LaTeX fragment."""
+    """Render a display-style limit expression as a LaTeX fragment.
+
+    ``ratio_power_style`` and deprecated ``simplifyRatioPowers`` behave as in
+    :func:`latex`.
+    """
+    style = _resolve_ratio_power_style(ratio_power_style, simplifyRatioPowers)
     direction = rf"^{{{dir}}}" if dir and dir not in ("+-", "-+") else ""
     var_tex = latex(
         var_to_symbol(var),
         log_base=log_base,
         reparse=reparse,
         displaystyle=displaystyle,
-        simplifyRatioPowers=simplifyRatioPowers,
+        ratio_power_style=style,
     )
     val_tex = latex(
         _input_to_expr(val),
         log_base=log_base,
         reparse=reparse,
         displaystyle=displaystyle,
-        simplifyRatioPowers=simplifyRatioPowers,
+        ratio_power_style=style,
     )
     body_expr = _input_to_expr(body)
     body_tex = latex(
@@ -530,7 +633,7 @@ def lim_latex(
         log_base=log_base,
         reparse=reparse,
         displaystyle=displaystyle,
-        simplifyRatioPowers=simplifyRatioPowers,
+        ratio_power_style=style,
     )
     if len(sympy.Add.make_args(body_expr)) > 1:
         body_tex = rf"\left({body_tex}\right)"
@@ -545,7 +648,7 @@ def count_in_latex(
     """Count occurrences of LaTeX fragments in a submitted symbolic answer."""
     if value is None:
         return 0
-    l = latex(value, reparse=False, simplifyRatioPowers=False)
+    l = latex(value, reparse=False, ratio_power_style="stacked")
     return sum(l.count(s) for s in substrings)
 
 

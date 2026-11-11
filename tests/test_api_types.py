@@ -115,6 +115,7 @@ def test_formatting_apis_return_strings() -> None:
     notation: fmt.Notation = "scientific"
     currency_code: fmt.CurrencyCode = "USD"
     prefix: fmt.SIPrefix = "k"
+    ratio_power_style: fmt.RatioPowerStyle = "linear"
 
     assert_type(fmt.number(Decimal("1.25"), notation=notation), str)
     assert_type(fmt.scientific(sympy.pi), str)
@@ -122,6 +123,11 @@ def test_formatting_apis_return_strings() -> None:
     assert_type(fmt.currency(1, currency=currency_code, latex=True), str)
     assert_type(fmt.quantity(1, "V", prefix=prefix), str)
     assert_type(fmt.latex(x + 1), str)
+    assert_type(
+        fmt.latex(x ** sympy.Rational(3, 2), ratio_power_style=ratio_power_style),
+        str,
+    )
+    assert_type(fmt.latex(x + 1, simplifyRatioPowers=False), str)
 
     assert_type(defmt.parse("1.25"), tuple[Decimal, defmt.FormatSpec])
     assert_type(
