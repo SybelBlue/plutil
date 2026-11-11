@@ -30,6 +30,7 @@ from typing import (
 import prairielearn as pl
 
 from . import fmt
+from ._big_operator import load_big_operator_utils
 from .fmt import (
     CompactDisplay,
     CurrencyCode,
@@ -621,7 +622,9 @@ def json(value: JsonValue, *, into: Any = None) -> Any:
 
     PrairieLearn-tagged values (``{"_type": ..., ...}``) are decoded with
     :func:`prairielearn.from_json` wherever they appear, and mappings and lists
-    are rebuilt recursively.
+    are rebuilt recursively. Structured big-operator values are validated by
+    ``pl_big_operator_python`` first and remain dictionaries with decoded
+    SymPy-valued fields.
 
     ``fmt.json`` does not record dataclass or tuple types, so by default they
     come back as dictionaries and lists. Pass ``into`` to rebuild them from type
@@ -652,8 +655,10 @@ def _decode_json(value: object, path: str) -> Any:
     if isinstance(value, dict):
         if "_type" in value:
             try:
+                if value.get("_type") == "big_operator":
+                    return load_big_operator_utils().json_to_big_operator(value)
                 return pl.from_json(value)
-            except ValueError as error:
+            except (TypeError, ValueError) as error:
                 raise ValueError(
                     f"invalid PrairieLearn JSON at {path}: {error}"
                 ) from error

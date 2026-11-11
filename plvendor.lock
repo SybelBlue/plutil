@@ -1,0 +1,5 @@
+version = 4
+
+[[package]]
+name = "pl-big-operator-python"
+revision = "37eba27f37fd259e6522c3c64768d66fd7d47477"

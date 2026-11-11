@@ -215,6 +215,52 @@ def test_json_decodes_nested_prairielearn_values() -> None:
     assert result["nested"][1] == [1, "two"]
 
 
+def test_json_decodes_big_operators_to_canonical_structured_dictionaries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    index = sympy.Symbol("i", integer=True, positive=True)
+    value = sympy.Sum(sympy.Function("f")(index), (index, 1, 4))
+    encoded = fmt.json(value)
+
+    def rejecting_from_json(value: object) -> object:
+        raise AssertionError(f"big operator reached pl.from_json: {value!r}")
+
+    monkeypatch.setattr("plutil.defmt.pl.from_json", rejecting_from_json)
+    result = defmt.json(encoded)
+
+    assert result == {
+        "_type": "big_operator",
+        "_version": 1,
+        "operator": "Sum",
+        "indexing": "bounds",
+        "index": index,
+        "lower": sympy.Integer(1),
+        "upper": sympy.Integer(4),
+        "body": sympy.Function("f")(index),
+    }
+    assert result["index"].is_integer is True
+    assert result["index"].is_positive is True
+
+
+def test_json_reports_paths_for_malformed_big_operator_payloads() -> None:
+    malformed = {
+        "answer": [
+            {
+                "_type": "big_operator",
+                "_version": 1,
+                "operator": "Sum",
+                "indexing": "bounds",
+            }
+        ]
+    }
+
+    with pytest.raises(
+        ValueError,
+        match=r"invalid PrairieLearn JSON at \$\.answer\[0\]: Big operator",
+    ):
+        defmt.json(cast(Any, malformed))
+
+
 @pytest.mark.parametrize("df_encoding_version", [1, 2])
 def test_json_decodes_dataframes(df_encoding_version: int) -> None:
     frame = pd.DataFrame({"a": [1, 2], "b": [3.5, 4.5]})

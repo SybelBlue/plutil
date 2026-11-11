@@ -12,6 +12,7 @@ import numpy as np
 import prairielearn as pl
 import sympy
 
+from ._big_operator import is_sympy_big_operator, load_big_operator_utils
 from .common import RatioPowerStyle, latex
 
 type JsonValue = (
@@ -116,7 +117,9 @@ def json(
     This returns Python data rather than JSON text. PrairieLearn-supported
     scientific values are encoded with :func:`prairielearn.to_json`, mappings
     and sequences are normalized recursively, and dataclass instances are
-    converted with :func:`dataclasses.asdict`.
+    converted with :func:`dataclasses.asdict`. Supported raw SymPy big
+    operators use the optional ``pl_big_operator_python`` structured encoder
+    before PrairieLearn serialization.
 
     Unsupported values raise :class:`TypeError` with their location in the
     input. Both PrairieLearn encoding versions default to their modern v2
@@ -161,11 +164,14 @@ def _json_value(
     df_encoding_version: Literal[1, 2],
     np_encoding_version: Literal[1, 2],
 ) -> JsonValue:
-    converted = pl.to_json(
-        value,
-        df_encoding_version=df_encoding_version,
-        np_encoding_version=np_encoding_version,
-    )
+    if is_sympy_big_operator(value):
+        converted = load_big_operator_utils().sympy_to_big_operator_json(value)
+    else:
+        converted = pl.to_json(
+            value,
+            df_encoding_version=df_encoding_version,
+            np_encoding_version=np_encoding_version,
+        )
     if converted is not value:
         return _json_value(
             converted,

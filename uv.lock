@@ -823,7 +823,7 @@ wheels = [
 
 [[package]]
 name = "pl-vendor"
-version = "0.5.2"
+version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cyclopts" },
@@ -832,9 +832,9 @@ dependencies = [
     { name = "rich" },
     { name = "tomlkit" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a4/bc/69e859a6b0517d188e8202f6e2a733efee9720ae8008c7e8e3afa7903062/pl_vendor-0.5.2.tar.gz", hash = "sha256:f46a65fae4c9ecea3b7a1b9c4e900dbd274a2a5ad5440137519239379c5566e1", size = 90292, upload-time = "2026-10-02T20:42:04.939Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/63/d8/fc1f1ef1e0704ebd835886a409db5d906f5cadc5b97d7902cfa1d03bf22d/pl_vendor-0.7.0.tar.gz", hash = "sha256:1038dccd2bbbf25e42aaa4a8ba5452746c4859a368290adac3c314d72af07053", size = 204352, upload-time = "2026-11-10T23:39:43.612Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e7/2b/f7221aa32578ef299040aa1d66ce4426afd5ffc0f3131da7942b0893b4f6/pl_vendor-0.5.2-py3-none-any.whl", hash = "sha256:80c8034d43a7e18dfeefe9cb808624361bf8e961c5d2be05abf1064b31eb6534", size = 56168, upload-time = "2026-10-02T20:42:03.734Z" },
+    { url = "https://files.pythonhosted.org/packages/eb/9f/85985332cd89cb092260dde59a3e49802493b419fcdf1867ddfcc1061b5d/pl_vendor-0.7.0-py3-none-any.whl", hash = "sha256:603597155df9bf852ad5079c3a4b645f2c6be3aaee5dfb96d006a1a09d7ae041", size = 105978, upload-time = "2026-11-10T23:39:42.094Z" },
 ]
 
 [[package]]

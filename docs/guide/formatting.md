@@ -87,6 +87,50 @@ fmt.json(Prompt(x + 1, True))
 # }
 ```
 
+Raw SymPy `Sum`, `Product`, `Integral`, and `Limit` values use the version 1
+`pl-big-operator-input` structure instead of PrairieLearn's general SymPy
+serializer. The index, body, bounds or domain, and limit target and direction
+are encoded as separate fields, so no SymPy binder tuple reaches
+`prairielearn.to_json`:
+
+```python
+from sympy import Sum
+from sympy.abc import i
+
+fmt.json(Sum(i**2, (i, 1, 4)))
+# {
+#     "_type": "big_operator",
+#     "_version": 1,
+#     "operator": "Sum",
+#     "indexing": "bounds",
+#     "index": {"_type": "sympy", ...},
+#     "lower": {"_type": "sympy", ...},
+#     "upper": {"_type": "sympy", ...},
+#     "body": {"_type": "sympy", ...},
+# }
+```
+
+Bounded `Sum`, `Product`, and `Integral`, domain `Integral`, and left-, right-,
+or two-sided `Limit` are supported. Each value must have one symbolic index.
+Indefinite integrals, multiple binders, nested big operators, and SymPy tuples
+inside individual fields are rejected.
+
+Big-operator support is loaded only when one of these SymPy values is
+serialized. Projects using it must vendor the helper's stable release
+subdirectory into their Python source path:
+
+```toml
+[tool.pl-vendor.packages.pl-big-operator-python]
+path = "src/pl_big_operator_python"
+url = "https://github.com/SybelBlue/pl-big-operator-input.git"
+branch = "release"
+subdirectory = "vendor/pl_big_operator_python"
+```
+
+Without that helper, all other `fmt.json` conversions continue to work;
+requesting big-operator serialization raises an installation error naming the
+required release subdirectory.
+
 `fmt.mustache` performs the same conversion but changes every boolean leaf to
 the lowercase string `"true"` or `"false"`. Use it for interpolated values and
 HTML attributes:
@@ -200,6 +244,14 @@ encoded = fmt.json(Prompt(x + 1, True))
 defmt.json(encoded)
 # {"expression": x + 1, "enabled": True}
 ```
+
+Version 1 dictionaries with `"_type": "big_operator"` are validated and
+decoded by `pl_big_operator_python` before PrairieLearn's generic decoder is
+called. The result remains a canonical structured dictionary rather than being
+rebuilt as a raw SymPy `Sum`, `Product`, `Integral`, or `Limit`; its `index`,
+`body`, bounds or domain, and target fields are SymPy values. This makes
+`defmt.json(fmt.json(operator))` suitable for the element's structured answer
+contract while avoiding binder tuples in both directions.
 
 The encoded data does not record dataclass or tuple types, so by default they
 come back as dictionaries and lists. Pass `into` to rebuild them from type

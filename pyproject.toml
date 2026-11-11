@@ -37,10 +37,21 @@ git = "https://github.com/PrairieLearn/PrairieLearn.git"
 subdirectory = "apps/prairielearn/python"
 
 [tool.pyright]
+exclude = [".venv", "src/pl_big_operator_python"]
 reportUnnecessaryTypeIgnoreComment = "error"
 
+[tool.ruff]
+extend-exclude = ["src/pl_big_operator_python"]
+
 [tool.pl-vendor]
-schema-version = 1
+schema-version = 4
+
+[tool.pl-vendor.packages.pl-big-operator-python]
+path = "src/pl_big_operator_python"
+url = "https://github.com/SybelBlue/pl-big-operator-input.git"
+branch = "release"
+subdirectory = "vendor/pl_big_operator_python"
+patch = ".vendor-patches/pl-big-operator-python.patch"
 
 [tool.pytest.ini_options]
 testpaths = ["src/plutil"]

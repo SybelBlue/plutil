@@ -2,7 +2,7 @@ import json as stdlib_json
 from dataclasses import dataclass
 from decimal import Decimal, localcontext
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import numpy as np
 import pandas as pd
@@ -12,6 +12,7 @@ import sympy
 from sympy.abc import x
 
 import plutil
+import plutil._big_operator as big_operator_mod
 import plutil.common as common_mod
 from plutil import Choice, ChoiceSet, defmt, fmt
 from plutil.diffeq import OdeCheckResult
@@ -85,6 +86,117 @@ def test_json_converts_dataclasses_and_nested_prairielearn_values() -> None:
         "scalar": pl.to_json(np.int64(3), np_encoding_version=2),
     }
     stdlib_json.dumps(result, allow_nan=False)
+
+
+@pytest.mark.parametrize(
+    ("value", "operator", "indexing", "direction"),
+    [
+        (sympy.Sum(x, (x, 1, 3)), "Sum", "bounds", None),
+        (sympy.Product(x, (x, 1, 3)), "Product", "bounds", None),
+        (sympy.Integral(x**2, (x, 0, 1)), "Integral", "bounds", None),
+        (
+            sympy.Integral(x**2, (x, sympy.Symbol("Gamma"))),
+            "Integral",
+            "domain",
+            None,
+        ),
+        (
+            sympy.Limit(sympy.sin(x) / x, x, 0, dir="+-"),
+            "Limit",
+            "approaches",
+            "two-sided",
+        ),
+        (
+            sympy.Limit(sympy.sin(x) / x, x, 0, dir="-"),
+            "Limit",
+            "approaches",
+            "from-left",
+        ),
+        (
+            sympy.Limit(sympy.sin(x) / x, x, 0, dir="+"),
+            "Limit",
+            "approaches",
+            "from-right",
+        ),
+    ],
+)
+def test_json_serializes_supported_sympy_big_operators_without_binder_tuples(
+    value: object,
+    operator: str,
+    indexing: str,
+    direction: str | None,
+) -> None:
+    result = fmt.json(value)
+
+    assert isinstance(result, dict)
+    assert result["_type"] == "big_operator"
+    assert result["_version"] == 1
+    assert result["operator"] == operator
+    assert result["indexing"] == indexing
+    if direction is not None:
+        assert result["direction"] == direction
+    stdlib_json.dumps(result, allow_nan=False)
+
+
+def test_json_bypasses_prairielearn_for_nested_sympy_big_operators(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_to_json = pl.to_json
+
+    def rejecting_to_json(
+        value: Any,
+        *,
+        df_encoding_version: Literal[1, 2] = 1,
+        np_encoding_version: Literal[1, 2] = 1,
+    ) -> Any:
+        if isinstance(value, (sympy.Sum, sympy.Product, sympy.Integral, sympy.Limit)):
+            raise AssertionError("raw SymPy big operator reached pl.to_json")
+        return real_to_json(
+            value,
+            df_encoding_version=df_encoding_version,
+            np_encoding_version=np_encoding_version,
+        )
+
+    monkeypatch.setattr(pl, "to_json", rejecting_to_json)
+
+    result = fmt.json({"nested": [sympy.Sum(x, (x, 1, 3))]})
+
+    assert isinstance(result, dict)
+    nested = result["nested"]
+    assert isinstance(nested, list)
+    operator = nested[0]
+    assert isinstance(operator, dict)
+    assert operator["_type"] == "big_operator"
+
+
+def test_json_loads_big_operator_helper_only_when_requested(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def missing_helper(name: str) -> object:
+        raise ModuleNotFoundError(name=name)
+
+    monkeypatch.setattr(big_operator_mod, "import_module", missing_helper)
+
+    assert fmt.json(x + 1) == pl.to_json(x + 1, np_encoding_version=2)
+    with pytest.raises(
+        ModuleNotFoundError,
+        match=r"requires pl_big_operator_python.*release:vendor/pl_big_operator_python",
+    ):
+        fmt.json(sympy.Sum(x, (x, 1, 3)))
+
+
+@pytest.mark.parametrize(
+    "inner",
+    [
+        sympy.Integral(x, (x, 0, 1)),
+        sympy.Limit(sympy.sin(x) / x, x, 0),
+    ],
+)
+def test_json_rejects_nested_sympy_big_operators(inner: sympy.Basic) -> None:
+    index = sympy.Symbol("i")
+
+    with pytest.raises(ValueError, match="nested big operators"):
+        fmt.json(sympy.Sum(inner, (index, 1, 2)))
 
 
 @pytest.mark.parametrize(
