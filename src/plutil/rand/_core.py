@@ -8,7 +8,7 @@ from functools import wraps
 from math import prod
 from typing import Literal
 
-from ..common import ExprLike, clamp
+from ..common import ExprLike, OneOrMore, _normalize_one_or_more, clamp
 from ..fmt import mbool as _mbool
 from ._progression import number as _number
 
@@ -42,7 +42,7 @@ def int(
     low: py.int,
     high: py.int,
     *,
-    exclude: Sequence[py.int] = (),
+    exclude: OneOrMore[py.int] = (),
     exclude_if: Callable[[py.int], py.bool] | None = None,
     step: py.int = 1,
     randsign: py.bool = False,
@@ -50,10 +50,11 @@ def int(
     """Return a random integer from an inclusive arithmetic progression.
 
     The candidates are ``low, low + step, ...`` through the largest value not
-    greater than ``high``. Values listed in ``exclude`` or accepted by
-    ``exclude_if`` are removed before sampling. When ``randsign`` is true, the
-    sampled value is independently multiplied by either ``-1`` or ``1``;
-    exclusions therefore apply before the sign is chosen.
+    greater than ``high``. Values listed in ``exclude`` (a single value or a
+    sequence of values) or accepted by ``exclude_if`` are removed before
+    sampling. When ``randsign`` is true, the sampled value is independently
+    multiplied by either ``-1`` or ``1``; exclusions therefore apply before the
+    sign is chosen.
 
     A negative ``step`` reverses the bounds, so ``rand.int(5, 1, step=-1)`` is
     equivalent to ``rand.int(1, 5)``.
@@ -75,6 +76,7 @@ def int(
     assert step != 0
     assert low <= high
 
+    exclude = tuple(_normalize_one_or_more(exclude))
     selected_sign = choice((-1, 1)) if randsign else 1
     if exclude_if or exclude:
         opts = tuple(

@@ -75,10 +75,12 @@ rolls = rand.choices(range(1, 7), weights=(1, 1, 1, 1, 1, 3), k=4)
 
 Choose an integer from an inclusive arithmetic progression. Use `exclude` or
 `exclude_if` to remove candidates, `step` to change the spacing, and
-`randsign=True` to choose the result's sign independently.
+`randsign=True` to choose the result's sign independently. `exclude` accepts a
+single value or a sequence of values.
 
 ```python
 a = rand.int(2, 12, exclude=(4, 8), step=2)
+b = rand.int(-5, 5, exclude=0)
 ```
 
 ## `rand.float(low, high, *, exclude=(), exclude_if=None, step=1.0, randsign=False) -> float`
@@ -117,7 +119,7 @@ Choose a value using the same rules as `rand.int`, but return it as an exact
 SymPy `Integer` for use in symbolic expressions.
 
 ```python
-coefficient = rand.sp.int(-5, 5, exclude=(0,))
+coefficient = rand.sp.int(-5, 5, exclude=0)
 ```
 
 ## `rand.sp.rational(low, high, *, exclude=(), exclude_if=None, step=1, randsign=False) -> sympy.Rational`
