@@ -47,8 +47,26 @@ tangent_of(df=3 * x**2, d=x, at=(2, 7))  # -> 12*x - 17
 Use `y0_name` when the dependent variable has another name, such as
 `y0_name="v"` for a point expressed with coordinates `(u, v)`.
 
-The names `df`, `d`, `at`, `y0_name` and `simplify` are reserved, so they cannot
-be used as variable bindings. Mixing the two forms raises `TypeError`.
+### `tangent_of(*, x_t, y_t, out_x="x", **point) -> Expr`
+
+Passing `x_t` and `y_t` switches to the parametric form: the tangent to the curve
+`(x_t, y_t)` at a parameter value, as a function of `out_x`. Bind exactly the
+parameter. Unlike `arc_length_of`, `x_t` is required.
+
+```python
+from sympy import cos, pi, sin
+from sympy.abc import t
+
+tangent_of(x_t=t**2, y_t=t**3, t=1)  # -> 3*x/2 - 1/2
+tangent_of(x_t=cos(t), y_t=sin(t), t=pi / 4)  # -> -x + sqrt(2)
+```
+
+Use `out_x` to give the result's variable another name. `ZeroDivisionError` is
+raised when `dx/dt` is zero at the point, because the tangent is vertical.
+
+The names `df`, `d`, `at`, `y0_name`, `x_t`, `y_t`, `out_x` and `simplify` are
+reserved, so they cannot be used as variable bindings. Mixing forms raises
+`TypeError`.
 
 `tangent_line_of` is a deprecated alias for this form.
 
@@ -70,7 +88,8 @@ either one.
 
 The trailing-underscore forms take every argument except the function itself
 and return a reusable transformation, for example for use in partial-credit
-rules. `tangent_of_` supports both forms.
+rules. `tangent_of_` supports the binding and through-a-point forms, but not the
+parametric form; passing `x_t`, `y_t` or `out_x` to it raises `TypeError`.
 
 ```python
 from plutil.calculus import secant_of_, tangent_of_
