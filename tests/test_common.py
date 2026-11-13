@@ -311,6 +311,48 @@ def test_eq_rejects_unequal_sets(left, right):
     assert not eq(left, right)
 
 
+def test_eq_recognizes_equivalent_symbolic_interval_endpoints_in_both_orders():
+    a = sympy.Integer(5)
+    canonical = sympy.Interval(sympy.log(a), 1 + sympy.log(a))
+    alternate = sympy.Interval(sympy.log(a), sympy.log(a * sympy.E))
+
+    assert eq(canonical, alternate)
+    assert eq(alternate, canonical)
+
+
+def test_eq_rejects_wrong_symbolic_interval_endpoint_in_both_orders():
+    a = sympy.Integer(5)
+    canonical = sympy.Interval(sympy.log(a), 1 + sympy.log(a))
+    wrong_lower = sympy.Interval(1, sympy.log(a * sympy.E))
+
+    assert not eq(canonical, wrong_lower)
+    assert not eq(wrong_lower, canonical)
+
+
+@pytest.mark.parametrize(
+    "alternate",
+    [
+        sympy.Interval(0, 1, left_open=True),
+        sympy.Interval(0, 1, right_open=True),
+    ],
+)
+def test_eq_rejects_intervals_with_different_openness_in_both_orders(alternate):
+    closed = sympy.Interval(0, 1)
+
+    assert not eq(closed, alternate)
+    assert not eq(alternate, closed)
+
+
+def test_eq_returns_false_when_non_interval_set_comparison_is_undecidable():
+    a = sympy.Integer(5)
+    canonical = sympy.Interval(sympy.log(a), 1 + sympy.log(a))
+    wrong_lower = sympy.Interval(1, sympy.log(a * sympy.E))
+    left = sympy.ProductSet(canonical, sympy.FiniteSet(0))
+    right = sympy.ProductSet(wrong_lower, sympy.FiniteSet(0))
+
+    assert not eq(left, right)
+
+
 def test_str_to_sympy_respects_requested_variables():
     expr = str_to_sympy("4 - t/2 + t^2/10", ["t"])
     assert eq(expr, 4 - t / 2 + t**2 / 10)

@@ -369,9 +369,22 @@ def eq[T, R](
         return True
 
     if isinstance(lhs, sympy.Set):
-        return isinstance(rhs, sympy.Set) and bool(
-            lhs.symmetric_difference(rhs).is_empty
-        )
+        if not isinstance(rhs, sympy.Set):
+            return False
+
+        if isinstance(lhs, sympy.Interval) and isinstance(rhs, sympy.Interval):
+            return (
+                lhs.left_open == rhs.left_open
+                and lhs.right_open == rhs.right_open
+                and eq(lhs.start, rhs.start)
+                and eq(lhs.end, rhs.end)
+            )
+
+        try:
+            is_empty = lhs.symmetric_difference(rhs).is_empty
+        except TypeError:
+            return False
+        return is_empty is True
 
     if not isinstance(lhs, (sympy.Basic, int, float)) or not isinstance(
         rhs, (sympy.Basic, int, float)
