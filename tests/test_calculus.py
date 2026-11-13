@@ -10,6 +10,7 @@ from sympy.abc import x, y
 import plutil.lenses as lenses_mod
 from plutil.calculus import (
     approximate_area,
+    arc_length_of,
     award_missing_constant_credit,
     integrate,
     mean_value_theorem,
@@ -382,3 +383,62 @@ def test_tangent_of__supports_through_form():
 def test_tangent_of__rejects_mixed_forms_eagerly():
     with pytest.raises(TypeError, match="not both"):
         tangent_of_(d=x, at=(2, 4), x=1)  # pyright: ignore[reportArgumentType]
+
+
+def test_arc_length_of_graph_of_function():
+    length = arc_length_of(
+        t=x, y_t=sympy.Rational(2, 3) * x ** sympy.Rational(3, 2), bounds=(0, 3)
+    )
+
+    assert eq(length, sympy.Rational(14, 3))
+
+
+def test_arc_length_of_defaults_x_t_to_parameter():
+    t = sympy.Symbol("t")
+
+    assert eq(arc_length_of(t=t, y_t=2 * t, bounds=(0, 1)), sympy.sqrt(5))
+
+
+def test_arc_length_of_parametric_curve():
+    t = sympy.Symbol("t")
+    length = arc_length_of(
+        t=t, x_t=3 * sympy.cos(t), y_t=3 * sympy.sin(t), bounds=(0, 2 * sympy.pi)
+    )
+
+    assert eq(length, 6 * sympy.pi)
+
+
+def test_arc_length_of_accepts_precomputed_derivatives():
+    t = sympy.Symbol("t")
+
+    assert eq(arc_length_of(t=t, dx_t=3, dy_t=4, bounds=(0, 2)), 10)
+
+
+def test_arc_length_of_defaults_dx_t_to_one():
+    length = arc_length_of(t=x, dy_t=sympy.sqrt(x), bounds=(0, 3))
+
+    assert eq(length, sympy.Rational(14, 3))
+
+
+def test_arc_length_of_without_bounds_adds_constant():
+    t = sympy.Symbol("t")
+
+    assert eq(arc_length_of(t=t, dx_t=3, dy_t=4), 5 * t)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"y_t": x**2, "dy_t": 2 * x}, "not both"),
+        ({"x_t": x, "dy_t": 2 * x}, "not both"),
+        ({"y_t": x**2, "dx_t": 1}, "not both"),
+        ({"dx_t": 1}, "`dy_t` is required"),
+        ({"x_t": x}, "`y_t` is required"),
+        ({}, "`y_t` or `dy_t` is required"),
+    ],
+)
+def test_arc_length_of_rejects_mixed_or_incomplete_forms(
+    kwargs: dict[str, Any], message: str
+) -> None:
+    with pytest.raises(TypeError, match=message):
+        arc_length_of(t=x, **kwargs)

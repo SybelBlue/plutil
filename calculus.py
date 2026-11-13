@@ -479,3 +479,72 @@ def secant_of_(
     """Return a callable that takes the secant of its argument over ``endpoints``."""
     _secant_endpoints(endpoints)
     return lambda f: secant_of(f, simplify=simplify, **endpoints)
+
+
+@overload
+def arc_length_of(
+    *,
+    t: Variable,
+    y_t: ExprInput,
+    x_t: ExprInput | None = None,
+    bounds: tuple[ExprLike, ExprLike] | None = None,
+    evaluate: bool = True,
+) -> sympy.Expr: ...
+@overload
+def arc_length_of(
+    *,
+    t: Variable,
+    dy_t: ExprInput,
+    dx_t: ExprInput = 1,
+    bounds: tuple[ExprLike, ExprLike] | None = None,
+    evaluate: bool = True,
+) -> sympy.Expr: ...
+def arc_length_of(
+    *,
+    t: Variable,
+    x_t: ExprInput | None = None,
+    y_t: ExprInput | None = None,
+    dx_t: ExprInput | None = None,
+    dy_t: ExprInput | None = None,
+    bounds: tuple[ExprLike, ExprLike] | None = None,
+    evaluate: bool = True,
+) -> sympy.Expr:
+    """Return the arc length of a curve parametrized by ``t``.
+
+    There are two forms, chosen by whether the curve or its derivatives are
+    given:
+
+    - ``arc_length_of(t=t, x_t=x(t), y_t=y(t), bounds=(a, b))`` integrates
+      ``sqrt(x'(t)**2 + y'(t)**2)`` over ``bounds``. ``x_t`` defaults to ``t``,
+      so ``arc_length_of(t=x, y_t=f, bounds=(a, b))`` is the length of the
+      graph of ``y = f(x)``.
+    - ``arc_length_of(t=t, dx_t=x'(t), dy_t=y'(t), bounds=(a, b))`` integrates
+      ``sqrt(dx_t**2 + dy_t**2)`` when only the derivatives are known.
+      ``dx_t`` defaults to ``1``.
+
+    Without ``bounds``, returns the indefinite integral.
+
+    Raises:
+        TypeError: If the arguments mix the two forms or a form is incomplete.
+    """
+    if (x_t is not None or y_t is not None) and (dx_t is not None or dy_t is not None):
+        raise TypeError("Pass either `x_t`/`y_t` or `dx_t`/`dy_t`, not both")
+    if dy_t is not None:
+        dx = _input_to_expr(1 if dx_t is None else dx_t)
+        dy = _input_to_expr(dy_t)
+    elif y_t is not None:
+        dx = derivative(var_to_symbol(t) if x_t is None else x_t, d=t)
+        dy = derivative(y_t, d=t)
+    elif dx_t is not None:
+        raise TypeError("`dy_t` is required with `dx_t`")
+    elif x_t is not None:
+        raise TypeError("`y_t` is required with `x_t`")
+    else:
+        raise TypeError("`y_t` or `dy_t` is required")
+    return integrate(
+        sympy.sqrt(dx**2 + dy**2),
+        d=t,
+        bounds=bounds,
+        evaluate=evaluate,
+        C=None,
+    )
