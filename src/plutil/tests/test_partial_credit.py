@@ -4,6 +4,7 @@ import sympy
 from sympy.abc import x
 
 import plutil.lenses as lenses_mod
+from plutil.common import eq
 from plutil.functions import eval_at
 from plutil.lenses import SympyQuestion
 from plutil.partial_credit import (
@@ -235,6 +236,87 @@ def test_award_partial_credit_does_nothing_when_no_rule_matches(monkeypatch) -> 
     assert data["partial_scores"]["answer"]["score"] == 0.0
     assert "feedback" not in data["partial_scores"]["answer"]
     assert calls == []
+
+
+def test_award_partial_credit_rejects_interval_with_wrong_symbolic_bound(
+    monkeypatch,
+) -> None:
+    calls = []
+    monkeypatch.setattr(
+        lenses_mod.pl,
+        "set_weighted_score_data",
+        lambda data: calls.append(data),
+    )
+    a = sympy.Integer(5)
+    correct = sympy.Interval(sympy.log(a), 1 + sympy.log(a))
+    wrong_lower = sympy.Interval(1, sympy.log(a * sympy.E))
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(wrong_lower)},
+        correct_answers={"answer": pl.to_json(correct)},
+        partial_scores={"answer": {"score": 0.0}},
+    )
+
+    awarded = award_partial_credit(SympyQuestion(data, "answer"))
+
+    assert awarded is False
+    assert data["partial_scores"]["answer"]["score"] == 0.0
+    assert calls == []
+
+
+def test_award_partial_credit_accepts_equivalent_symbolic_interval_bound(
+    monkeypatch,
+) -> None:
+    calls = []
+    monkeypatch.setattr(
+        lenses_mod.pl,
+        "set_weighted_score_data",
+        lambda data: calls.append(data),
+    )
+    a = sympy.Integer(5)
+    correct = sympy.Interval(sympy.log(a), 1 + sympy.log(a))
+    alternate = sympy.Interval(sympy.log(a), sympy.log(a * sympy.E))
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(alternate)},
+        correct_answers={"answer": pl.to_json(correct)},
+        partial_scores={"answer": {"score": 0.0}},
+    )
+
+    awarded = award_partial_credit(SympyQuestion(data, "answer"))
+
+    assert awarded is True
+    assert data["partial_scores"]["answer"]["score"] == 1.0
+    assert calls == [data]
+
+
+def test_award_partial_credit_can_match_interval_endpoints_despite_openness(
+    monkeypatch,
+) -> None:
+    def same_endpoints(correct: sympy.Interval, submitted: sympy.Interval) -> bool:
+        return eq(correct.start, submitted.start) and eq(correct.end, submitted.end)
+
+    calls = []
+    monkeypatch.setattr(
+        lenses_mod.pl,
+        "set_weighted_score_data",
+        lambda data: calls.append(data),
+    )
+    a = sympy.Integer(5)
+    correct = sympy.Interval(sympy.log(a), 1 + sympy.log(a))
+    wrong_openness = sympy.Interval.open(sympy.log(a), sympy.log(a * sympy.E))
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(wrong_openness)},
+        correct_answers={"answer": pl.to_json(correct)},
+        partial_scores={"answer": {"score": 0.0}},
+    )
+
+    awarded = award_partial_credit(
+        SympyQuestion(data, "answer"),
+        rule(0.5, satisfies=same_endpoints),
+    )
+
+    assert awarded is True
+    assert data["partial_scores"]["answer"]["score"] == 0.5
+    assert calls == [data]
 
 
 def test_award_partial_credit_uses_additional_correct_answers_for_rules(
