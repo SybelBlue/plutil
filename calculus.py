@@ -300,19 +300,54 @@ def _tangent_at(
     return _finish(tangent, simplify)
 
 
-def _require_point(point: Mapping[str, object]) -> None:
-    if not point:
-        raise TypeError("Bind at least one variable to a coordinate, e.g. x=1")
+def _tangent_parametric(
+    *,
+    x_t: ExprInput,
+    y_t: ExprInput,
+    out_x: Variable,
+    simplify: bool,
+    point: Mapping[str, ExprInput],
+) -> sympy.Expr:
+    if len(point) != 1:
+        raise TypeError("Bind exactly the curve parameter to a value, e.g. t=1")
+    ((name, value),) = point.items()
+    x_expr = _input_to_expr(x_t)
+    y_expr = _input_to_expr(y_t)
+    t = _resolve_symbol(sympy.Add(x_expr, y_expr, evaluate=False), name)
+    coordinates = {t: _input_to_expr(value)}
+    x0 = _finite_at(x_expr, coordinates, "x_t")
+    y0 = _finite_at(y_expr, coordinates, "y_t")
+    dx = _finite_at(derivative(x_expr, d=t), coordinates, f"dx/d{t}")
+    dy = _finite_at(derivative(y_expr, d=t), coordinates, f"dy/d{t}")
+    if sympy.simplify(dx).is_zero:
+        raise ZeroDivisionError(
+            f"dx/d{t} is zero at {dict(coordinates)}, so the tangent is vertical "
+            f"and not a function of {var_name(out_x)}"
+        )
+    return _finish(y0 + dy / dx * (var_to_symbol(out_x) - x0), simplify)
 
 
-def _is_through_form(
+_PARAMETRIC_KEYWORDS = ("x_t", "y_t", "out_x")
+
+
+def _through_form(
     *,
     df: ExprInput | None,
     d: Variable | None,
     at: _Point2 | None,
     point: Mapping[str, object],
-) -> bool:
-    """Validate :func:`tangent_of` arguments; True means the ``d``/``at`` form."""
+) -> tuple[Variable, _Point2] | None:
+    """Validate :func:`tangent_of` arguments.
+
+    Returns ``(d, at)`` for the ``d``/``at`` form, or ``None`` for the binding form.
+    """
+    # Only reachable from tangent_of_, where these land in **point.
+    if parametric := [name for name in _PARAMETRIC_KEYWORDS if name in point]:
+        raise TypeError(
+            "The parametric form is not supported here "
+            f"(got {', '.join(f'`{name}`' for name in parametric)}); "
+            "call tangent_of(x_t=..., y_t=..., t=...) directly"
+        )
     if d is not None:
         if point:
             raise TypeError(
@@ -321,11 +356,12 @@ def _is_through_form(
             )
         if at is None:
             raise TypeError("`at` is required with `d`")
-        return True
+        return d, at
     if df is not None or at is not None:
         raise TypeError("`d` is required with `df` or `at`")
-    _require_point(point)
-    return False
+    if not point:
+        raise TypeError("Bind at least one variable to a coordinate, e.g. x=1")
+    return None
 
 
 @overload
@@ -340,7 +376,16 @@ def tangent_of(
 def tangent_of(
     *, df: ExprInput, d: Variable, at: _Point2, y0_name: str = "y"
 ) -> sympy.Expr: ...
-# Overload 1's **point could name `d` or `at`; _is_through_form rejects that at runtime.
+@overload
+def tangent_of(
+    *,
+    x_t: ExprInput,
+    y_t: ExprInput,
+    out_x: Variable = "x",
+    simplify: bool = True,
+    **point: ExprInput,
+) -> sympy.Expr: ...
+# Overload 1's **point could name `d` or `at`; _through_form rejects that at runtime.
 def tangent_of(  # pyright: ignore[reportInconsistentOverload]
     f: ExprInput | None = None,
     *,
@@ -348,12 +393,15 @@ def tangent_of(  # pyright: ignore[reportInconsistentOverload]
     d: Variable | None = None,
     at: _Point2 | None = None,
     y0_name: str = "y",
+    x_t: ExprInput | None = None,
+    y_t: ExprInput | None = None,
+    out_x: Variable = "x",
     simplify: bool = True,
     **point: ExprInput,
 ) -> sympy.Expr:
-    """Return a tangent line (or plane) to a function.
+    """Return a tangent line (or plane) to a function or parametric curve.
 
-    There are two forms, chosen by whether ``d`` is given:
+    There are three forms, chosen by whether ``d`` or ``x_t``/``y_t`` are given:
 
     - ``tangent_of(f, x=a)`` returns the tangent to ``f`` at ``x = a``,
       ``f(a) + f'(a) * (x - a)``. Binding several variables returns the
@@ -363,17 +411,36 @@ def tangent_of(  # pyright: ignore[reportInconsistentOverload]
     - ``tangent_of(f=f, d=x, at=(x0, y0))`` returns the line with slope
       ``f'(x0)`` through ``(x0, y0)``. Pass ``df`` instead of ``f`` when only
       the derivative is known. ``y0_name`` names the dependent coordinate.
+    - ``tangent_of(x_t=x(t), y_t=y(t), t=a)`` returns the tangent to the
+      parametric curve at ``t = a`` as a function of ``x``,
+      ``y(a) + y'(a) / x'(a) * (x - x(a))``. Bind exactly the parameter.
+      ``out_x`` names the variable of the result. The result is simplified
+      unless ``simplify=False``.
 
-    Because the keyword names ``df``, ``d``, ``at``, ``y0_name`` and
-    ``simplify`` are taken, they cannot be used as variable bindings.
+    Because the keyword names ``df``, ``d``, ``at``, ``y0_name``, ``x_t``,
+    ``y_t``, ``out_x`` and ``simplify`` are taken, they cannot be used as
+    variable bindings.
 
     Raises:
-        TypeError: If the arguments mix the two forms or a form is incomplete.
+        TypeError: If the arguments mix forms or a form is incomplete.
         ValueError: If neither ``f`` nor ``df`` is given in the ``d`` form, or
-            if ``f`` or a partial derivative is not finite at the point.
+            if ``f``, a partial derivative, or the curve is not finite at the
+            point.
+        ZeroDivisionError: If the parametric tangent is vertical
+            (``x'(a) = 0``).
     """
-    if _is_through_form(df=df, d=d, at=at, point=point):
-        assert d is not None and at is not None
+    if x_t is not None or y_t is not None:
+        if f is not None or df is not None or d is not None or at is not None:
+            raise TypeError("Pass either `x_t`/`y_t` or `f`/`df`/`d`/`at`, not both")
+        if x_t is None:
+            raise TypeError("`x_t` is required with `y_t`")
+        if y_t is None:
+            raise TypeError("`y_t` is required with `x_t`")
+        return _tangent_parametric(
+            x_t=x_t, y_t=y_t, out_x=out_x, simplify=simplify, point=point
+        )
+    if through := _through_form(df=df, d=d, at=at, point=point):
+        d, at = through
         return _tangent_line_through(f=f, df=df, d=d, at=at, y0_name=y0_name)
     if f is None:
         raise TypeError("`f` is required")
@@ -388,7 +455,7 @@ def tangent_of_(
 def tangent_of_(
     *, d: Variable, at: _Point2, y0_name: str = "y"
 ) -> Callable[[ExprInput], sympy.Expr]: ...
-# Overload 1's **point could name `d` or `at`; _is_through_form rejects that at runtime.
+# Overload 1's **point could name `d` or `at`; _through_form rejects that at runtime.
 def tangent_of_(  # pyright: ignore[reportInconsistentOverload]
     *,
     d: Variable | None = None,
@@ -400,12 +467,19 @@ def tangent_of_(  # pyright: ignore[reportInconsistentOverload]
     """Return a callable that applies :func:`tangent_of` to its argument.
 
     Takes the same keyword arguments as :func:`tangent_of` except ``f`` and
-    ``df``, and checks them right away.
+    ``df``, and checks them right away. Only the binding form and the
+    ``d``/``at`` form are supported; the parametric form (``x_t``, ``y_t``,
+    ``out_x``) is not, since its argument is the curve rather than a single
+    function.
+
+    Raises:
+        TypeError: If ``x_t``, ``y_t`` or ``out_x`` is passed, or the
+            arguments mix forms or a form is incomplete.
     """
-    if _is_through_form(df=None, d=d, at=at, point=point):
-        assert d is not None and at is not None
+    if through := _through_form(df=None, d=d, at=at, point=point):
+        through_d, through_at = through
         return lambda f: _tangent_line_through(
-            f=f, df=None, d=d, at=at, y0_name=y0_name
+            f=f, df=None, d=through_d, at=through_at, y0_name=y0_name
         )
     return lambda f: _tangent_at(f, simplify=simplify, point=point)
 

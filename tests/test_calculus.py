@@ -385,6 +385,91 @@ def test_tangent_of__rejects_mixed_forms_eagerly():
         tangent_of_(d=x, at=(2, 4), x=1)  # pyright: ignore[reportArgumentType]
 
 
+def test_tangent_of_parametric_curve():
+    t = sympy.Symbol("t")
+    line = tangent_of(x_t=t**2, y_t=t**3, t=1)
+
+    assert eq(line, sympy.Rational(3, 2) * x - sympy.Rational(1, 2))
+
+
+def test_tangent_of_parametric_circle():
+    t = sympy.Symbol("t")
+    line = tangent_of(x_t=sympy.cos(t), y_t=sympy.sin(t), t=sympy.pi / 4)
+
+    assert eq(line, sympy.sqrt(2) - x)
+
+
+def test_tangent_of_parametric_allows_horizontal_tangent():
+    t = sympy.Symbol("t")
+
+    assert eq(tangent_of(x_t=t, y_t=t**2, t=0), 0)
+
+
+def test_tangent_of_parametric_supports_custom_output_variable():
+    t, u = sympy.symbols("t u")
+
+    assert eq(tangent_of(x_t=2 * t, y_t=t**2, out_x="u", t=1), u - 1)
+
+
+def test_tangent_of_parametric_accepts_output_symbol_with_assumptions():
+    t = sympy.Symbol("t")
+    real_x = sympy.Symbol("x", real=True)
+    line = tangent_of(x_t=2 * t, y_t=t**2, out_x=real_x, t=1)
+
+    assert line.free_symbols == {real_x}
+    assert eq(line, real_x - 1)
+
+
+def test_tangent_of_parametric_finds_symbols_with_assumptions():
+    t = sympy.Symbol("t", positive=True)
+
+    assert eq(
+        tangent_of(x_t=t**2, y_t=t**3, t=1),
+        sympy.Rational(3, 2) * x - sympy.Rational(1, 2),
+    )
+
+
+def test_tangent_of_parametric_can_skip_simplification():
+    t = sympy.Symbol("t")
+    result = tangent_of(x_t=t**2, y_t=t**3, simplify=False, t=1)
+
+    assert eq(result, sympy.Rational(3, 2) * x - sympy.Rational(1, 2))
+
+
+def test_tangent_of_parametric_rejects_vertical_tangent():
+    t = sympy.Symbol("t")
+
+    with pytest.raises(ZeroDivisionError, match="dx/dt is zero"):
+        tangent_of(x_t=t**2, y_t=t, t=0)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"f": x**2, "y_t": x**2, "x": 1}, "not both"),
+        ({"y_t": x**2, "d": x, "at": (1, 1)}, "not both"),
+        ({"x_t": x, "y_t": x**2, "at": (1, 1), "x": 1}, "not both"),
+        ({"x_t": x}, "`y_t` is required"),
+        ({"y_t": x**2, "x": 1}, "`x_t` is required"),
+        ({"x_t": x, "y_t": x**2}, "Bind exactly the curve parameter"),
+        ({"x_t": x, "y_t": x**2, "x": 1, "y": 2}, "Bind exactly the curve parameter"),
+    ],
+)
+def test_tangent_of_parametric_rejects_mixed_or_incomplete_forms(
+    kwargs: dict[str, Any], message: str
+) -> None:
+    with pytest.raises(TypeError, match=message):
+        tangent_of(**kwargs)
+
+
+@pytest.mark.parametrize("keyword", ["x_t", "y_t", "out_x"])
+def test_tangent_of__rejects_parametric_form_eagerly(keyword: str) -> None:
+    with pytest.raises(
+        TypeError, match=f"parametric form is not supported.*`{keyword}`"
+    ):
+        tangent_of_(**{keyword: x, "t": 1})
+
+
 def test_arc_length_of_graph_of_function():
     length = arc_length_of(
         t=x, y_t=sympy.Rational(2, 3) * x ** sympy.Rational(3, 2), bounds=(0, 3)
