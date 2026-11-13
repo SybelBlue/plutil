@@ -14,7 +14,7 @@ from warnings import deprecated
 import numpy as _numpy
 import sympy
 
-from ..common import ExprLike, Variable
+from ..common import ExprLike, OneOrMore, Variable
 from ..common import spint as _spint
 from . import np, sp
 from ._core import (
@@ -80,7 +80,7 @@ def int_(
     low: py.int,
     high: py.int,
     *,
-    exclude: Sequence[py.int] = (),
+    exclude: OneOrMore[py.int] = (),
     exclude_if: Callable[[py.int], py.bool] | None = None,
     step: py.int = 1,
     randsign: py.bool = False,
@@ -168,7 +168,7 @@ def spint(
     low: py.int,
     high: py.int,
     *,
-    exclude: Sequence[py.int] = (),
+    exclude: OneOrMore[py.int] = (),
     exclude_if: Callable[[py.int], py.bool] | None = None,
     step: py.int = 1,
     randsign: py.bool = False,
@@ -191,7 +191,7 @@ def spint_(
     low: py.int,
     high: py.int,
     *,
-    exclude: Sequence[py.int] = (),
+    exclude: OneOrMore[py.int] = (),
     exclude_if: Callable[[py.int], py.bool] | None = None,
     step: py.int = 1,
     randsign: py.bool = False,

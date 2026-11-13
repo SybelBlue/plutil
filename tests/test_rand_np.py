@@ -154,3 +154,9 @@ def test_scalar_mirrors_preserve_source_metadata_and_array_signatures() -> None:
         is inspect.Parameter.KEYWORD_ONLY
     )
     assert inspect.unwrap(rand.np.normal) is rand.np.normal
+
+
+def test_integer_arrays_accept_single_excluded_value() -> None:
+    values = rand.np.int(1, 3, size=50, exclude=2)
+
+    assert set(values.tolist()) <= {1, 3}

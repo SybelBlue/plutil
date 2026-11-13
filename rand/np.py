@@ -10,6 +10,7 @@ from typing import cast
 import numpy as _np
 import numpy.typing as npt
 
+from ..common import OneOrMore
 from . import _core
 from ._factory import factory
 
@@ -97,7 +98,7 @@ def int(
     high: py.int,
     *,
     size: Shape,
-    exclude: Sequence[py.int] = (),
+    exclude: OneOrMore[py.int] = (),
     exclude_if: Callable[[py.int], py.bool] | None = None,
     step: py.int = 1,
     randsign: py.bool = False,

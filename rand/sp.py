@@ -16,7 +16,7 @@ from sympy.sets.fancysets import (
     Reals,
 )
 
-from ..common import ExprLike, Variable, var_to_symbol
+from ..common import ExprLike, OneOrMore, Variable, var_to_symbol
 from ..common import spint as _spint
 from ..functions import scale_through, translate_through
 from ._core import int as _int
@@ -33,7 +33,7 @@ def int(
     low: py.int,
     high: py.int,
     *,
-    exclude: Sequence[py.int] = (),
+    exclude: OneOrMore[py.int] = (),
     exclude_if: Callable[[py.int], py.bool] | None = None,
     step: py.int = 1,
     randsign: py.bool = False,

@@ -186,6 +186,22 @@ def test_randint_filters_excluded_values(monkeypatch: pytest.MonkeyPatch) -> Non
     assert choices == [(1, 5, 7)]
 
 
+def test_randint_accepts_single_excluded_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    choices: list[tuple[int, ...]] = []
+
+    def choose_last(options: tuple[int, ...]) -> int:
+        choices.append(tuple(options))
+        return options[-1]
+
+    monkeypatch.setattr(rand.base, "choice", choose_last)
+
+    assert rand.int(1, 3, exclude=3) == 2
+    assert rand.sp.int(-1, 1, exclude=1) == sympy.Integer(0)
+    assert choices == [(1, 2), (-1, 0)]
+
+
 def test_randint_applies_random_sign_after_sampling(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
