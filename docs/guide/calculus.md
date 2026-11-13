@@ -84,12 +84,31 @@ secant_of(x**2, x=(1, 3))  # -> 4*x - 3
 `ValueError` is raised when the endpoints coincide or `f` is not finite at
 either one.
 
+### `secant_of(*, x_t, y_t, out_x="x", **endpoints) -> Expr`
+
+Passing `x_t` and `y_t` switches to the parametric form: the line through the
+curve's points at two parameter values, as a function of `out_x`. Bind the
+parameter to the pair of values. Both `x_t` and `y_t` are required.
+
+```python
+from sympy import cos, pi, sin
+from sympy.abc import t
+
+secant_of(x_t=t**2, y_t=t**3, t=(1, 2))  # -> 7*x/3 - 4/3
+secant_of(x_t=cos(t), y_t=sin(t), t=(0, pi / 2))  # -> 1 - x
+```
+
+`ZeroDivisionError` is raised when `x_t` takes the same value at both ends,
+because the secant is vertical. The names `x_t`, `y_t`, `out_x` and `simplify`
+are reserved, so they cannot be used as variable bindings.
+
 ### `tangent_of_(...)` and `secant_of_(...)`
 
 The trailing-underscore forms take every argument except the function itself
 and return a reusable transformation, for example for use in partial-credit
-rules. `tangent_of_` supports the binding and through-a-point forms, but not the
-parametric form; passing `x_t`, `y_t` or `out_x` to it raises `TypeError`.
+rules. `tangent_of_` supports the binding and through-a-point forms. Neither
+supports the parametric form; passing `x_t`, `y_t` or `out_x` to either raises
+`TypeError`.
 
 ```python
 from plutil.calculus import secant_of_, tangent_of_
