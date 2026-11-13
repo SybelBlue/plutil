@@ -351,6 +351,89 @@ def test_secant_of__validates_endpoints_eagerly():
         secant_of_(x=1)  # type: ignore[arg-type]
 
 
+def test_secant_of_parametric_curve():
+    t = sympy.Symbol("t")
+    line = secant_of(x_t=t**2, y_t=t**3, t=(1, 2))
+
+    assert eq(line, sympy.Rational(7, 3) * x - sympy.Rational(4, 3))
+
+
+def test_secant_of_parametric_circle():
+    t = sympy.Symbol("t")
+    line = secant_of(x_t=sympy.cos(t), y_t=sympy.sin(t), t=(0, sympy.pi / 2))
+
+    assert eq(line, 1 - x)
+
+
+def test_secant_of_parametric_supports_custom_output_variable():
+    t, u = sympy.symbols("t u")
+
+    assert eq(secant_of(x_t=2 * t, y_t=t**2, out_x="u", t=(0, 2)), u)
+
+
+def test_secant_of_parametric_finds_symbols_with_assumptions():
+    t = sympy.Symbol("t", positive=True)
+
+    assert eq(
+        secant_of(x_t=t**2, y_t=t**3, t=(1, 2)),
+        sympy.Rational(7, 3) * x - sympy.Rational(4, 3),
+    )
+
+
+def test_secant_of_parametric_can_skip_simplification():
+    t = sympy.Symbol("t")
+    result = secant_of(x_t=t**2, y_t=t**3, simplify=False, t=(1, 2))
+
+    assert eq(result, sympy.Rational(7, 3) * x - sympy.Rational(4, 3))
+
+
+def test_secant_of_parametric_rejects_vertical_secant():
+    t = sympy.Symbol("t")
+
+    with pytest.raises(ZeroDivisionError, match="secant is vertical"):
+        secant_of(x_t=t**2, y_t=t, t=(-1, 1))
+
+
+def test_secant_of_parametric_rejects_coincident_endpoints():
+    t = sympy.Symbol("t")
+
+    with pytest.raises(ValueError, match="distinct"):
+        secant_of(x_t=t**2, y_t=t**3, t=(2, 2))
+
+
+def test_secant_of_parametric_rejects_non_finite_endpoint():
+    t = sympy.Symbol("t")
+
+    with pytest.raises(ValueError, match="not finite"):
+        secant_of(x_t=t, y_t=1 / t, t=(0, 1))
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"f": x**2, "x_t": x, "y_t": x**2, "x": (0, 1)}, "not both"),
+        ({"x_t": x, "x": (0, 1)}, "`y_t` is required"),
+        ({"y_t": x**2, "x": (0, 1)}, "`x_t` is required"),
+        ({"x_t": x, "y_t": x**2}, "Bind exactly one variable"),
+        ({"x_t": x, "y_t": x**2, "x": 1}, "Expected a pair"),
+        ({}, "`f` is required"),
+    ],
+)
+def test_secant_of_rejects_mixed_or_incomplete_forms(
+    kwargs: dict[str, Any], message: str
+) -> None:
+    with pytest.raises(TypeError, match=message):
+        secant_of(**kwargs)
+
+
+@pytest.mark.parametrize("keyword", ["x_t", "y_t", "out_x"])
+def test_secant_of__rejects_parametric_form_eagerly(keyword: str) -> None:
+    with pytest.raises(
+        TypeError, match=f"parametric form is not supported.*`{keyword}`"
+    ):
+        secant_of_(**{keyword: x, "t": (0, 1)})
+
+
 def test_tangent_line_of_is_deprecated_alias_for_through_form():
     with pytest.warns(DeprecationWarning, match=r"tangent_of"):
         line = tangent_line_of(f=x**2, d=x, at=(2, 4))
