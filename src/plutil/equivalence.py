@@ -121,8 +121,15 @@ def _variables(variables: OneOrMore[Variable]) -> tuple[sp.Symbol, ...]:
     symbols = tuple(var_to_symbol(item) for item in _normalize_one_or_more(variables))
     if len({symbol.name for symbol in symbols}) != len(symbols):
         raise _ImplicitInputError("variable names must not contain duplicates")
-    if any(symbol.is_real is False for symbol in symbols):
-        raise _ImplicitInputError("implicit-equation variables must be real")
+    for symbol in symbols:
+        supported_assumptions = (
+            sp.Symbol(symbol.name).assumptions0,
+            sp.Symbol(symbol.name, real=True).assumptions0,
+        )
+        if symbol.assumptions0 not in supported_assumptions:
+            raise _ImplicitInputError(
+                "implicit-equation variables may only carry the real=True assumption"
+            )
     return symbols
 
 

@@ -135,6 +135,26 @@ def test_incorrectly_authored_witness_is_rejected() -> None:
         )
 
 
+def test_variable_assumptions_cannot_silently_narrow_the_real_domain() -> None:
+    positive_x = sp.Symbol("x", positive=True)
+
+    with pytest.raises(ValueError, match="only carry the real=True assumption"):
+        check_implicit_equivalence(
+            positive_x + 1,
+            1,
+            variables=positive_x,
+        )
+
+
+def test_explicit_real_variable_assumption_is_supported() -> None:
+    real_x = sp.Symbol("x", real=True)
+
+    result = check_implicit_equivalence(real_x, 2 * real_x, variables=real_x)
+
+    assert result.verdict == "equivalent"
+    assert result.exact
+
+
 def test_implicit_witnesses_is_keyword_only() -> None:
     fields = ImplicitWitnesses.__dataclass_fields__.values()
 
