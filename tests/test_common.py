@@ -14,6 +14,7 @@ from plutil.common import (
     eq,
     getrec,
     give_triviality_feedback,
+    hypot,
     is_trivial,
     json_to_sympy,
     latex,
@@ -63,6 +64,18 @@ def test_truncate_to_significant_digits(value, digits, expected):
 def test_truncate_to_significant_digits_requires_positive_digits():
     with pytest.raises(ValueError, match="digits must be positive"):
         truncate_to_significant_digits(12.3, 0)
+
+
+def test_hypot_returns_exact_numeric_hypotenuse():
+    assert hypot(3, 4) == 5
+
+
+def test_hypot_preserves_symbolic_inputs():
+    assert hypot(x, y) == sympy.sqrt(x**2 + y**2)
+
+
+def test_hypot_accepts_serialized_prairielearn_inputs():
+    assert hypot(pl.to_json(3), pl.to_json(4)) == 5
 
 
 @pytest.mark.parametrize(

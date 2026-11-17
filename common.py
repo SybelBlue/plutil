@@ -802,3 +802,8 @@ def give_triviality_feedback(
     if trivial and feedback is not None:
         lens.feedback = feedback
     return trivial
+
+
+def hypot(a: ExprInput, b: ExprInput) -> sympy.Expr:
+    """Return the symbolic hypotenuse of perpendicular sides ``a`` and ``b``."""
+    return sympy.sqrt(_input_to_expr(a) ** 2 + _input_to_expr(b) ** 2)
