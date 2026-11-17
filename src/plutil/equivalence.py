@@ -783,13 +783,16 @@ def _cad_decide(
     )
     liftings = None
     equivalent = False
+    timeout = timeout_utils.SignalTimeout(timeout_seconds, swallow_exc=False)
     try:
         from ._vendor.sympy_extras.polys.cad.lifting import _liftings as liftings
         from ._vendor.sympy_extras.polys.cad.qe import decide
 
-        with timeout_utils.SignalTimeout(timeout_seconds, swallow_exc=False):
+        with timeout:
             equivalent = decide(formula, [("forall", variables)])
-    except timeout_utils.TimeoutExceptionError:
+    except timeout_utils.TimeoutExceptionError as exc:
+        if exc.timeout is not timeout:
+            raise
         return _result(
             "inconclusive",
             exact=False,

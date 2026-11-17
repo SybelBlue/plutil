@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from contextlib import AbstractContextManager
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import prairielearn as pl
@@ -252,7 +252,7 @@ def test_domain_witness_must_sample_real_values() -> None:
 
 class _ImmediateTimeout(AbstractContextManager[None]):
     def __enter__(self) -> None:
-        raise equivalence.timeout_utils.TimeoutExceptionError
+        raise equivalence.timeout_utils.TimeoutExceptionError(cast(Any, self))
 
     def __exit__(self, *args: object) -> None:
         return None
@@ -277,6 +277,31 @@ def test_cad_timeout_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     assert not result.exact
     assert result.timed_out
     assert result.reason == "cad-timeout"
+
+
+def test_cad_does_not_swallow_an_enclosing_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    x, y = sp.symbols("x y")
+    enclosing_timeout: Any = object()
+
+    class ForeignTimeout(AbstractContextManager[None]):
+        def __enter__(self) -> None:
+            raise equivalence.timeout_utils.TimeoutExceptionError(enclosing_timeout)
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+    monkeypatch.setattr(
+        equivalence.timeout_utils,
+        "SignalTimeout",
+        lambda *args, **kwargs: ForeignTimeout(),
+    )
+
+    with pytest.raises(equivalence.timeout_utils.TimeoutExceptionError) as exc_info:
+        check_implicit_equivalence(x, x * (y**2 + 1), variables=(x, y))
+
+    assert exc_info.value.timeout is enclosing_timeout
 
 
 def test_cad_timeout_can_use_an_explicit_witness_fallback(
