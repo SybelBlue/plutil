@@ -431,6 +431,29 @@ def test_checker_rejects_inputs_outside_the_bounded_polynomial_contract(
         check_implicit_equivalence(x, candidate(x), variables=x)
 
 
+def test_malformed_expression_is_reported_as_value_error() -> None:
+    x = sp.Symbol("x")
+
+    with pytest.raises(ValueError, match="could not be parsed as an expression"):
+        check_implicit_equivalence(
+            x**2 - 1,
+            cast(Any, "x**2-"),
+            variables=x,
+        )
+
+
+def test_malformed_witness_coordinate_is_reported_as_value_error() -> None:
+    x = sp.Symbol("x")
+
+    with pytest.raises(ValueError, match="witness coordinate could not be parsed"):
+        check_implicit_equivalence(
+            x,
+            x,
+            variables=x,
+            witnesses=ImplicitWitnesses(eq=cast(Any, {x: "("})),
+        )
+
+
 def test_nested_powers_are_rejected_before_polynomial_expansion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

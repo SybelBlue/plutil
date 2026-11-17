@@ -17,7 +17,7 @@ from typing import Literal, TypeIs, cast
 
 import numpy as np
 import sympy as sp
-from prairielearn import timeout_utils
+from prairielearn import sympy_utils, timeout_utils
 from sympy.core.relational import (
     Equality,
     GreaterThan,
@@ -117,6 +117,20 @@ class _ImplicitInputError(ValueError):
     """An implicit-equation input is outside the supported polynomial subset."""
 
 
+def _implicit_input_expr(
+    value: ExprInput,
+    variables: OneOrMore[Variable] = (),
+    *,
+    context: str = "expression",
+) -> sp.Expr:
+    try:
+        return _input_to_expr(value, variables)
+    except (sympy_utils.BaseSympyError, TypeError, ValueError) as exc:
+        raise _ImplicitInputError(
+            f"the {context} could not be parsed as an expression"
+        ) from exc
+
+
 def _variables(variables: OneOrMore[Variable]) -> tuple[sp.Symbol, ...]:
     symbols = tuple(var_to_symbol(item) for item in _normalize_one_or_more(variables))
     if len({symbol.name for symbol in symbols}) != len(symbols):
@@ -210,7 +224,7 @@ def _polynomial(
     max_terms: int | None = None,
     max_coefficient_bits: int | None = None,
 ) -> sp.Poly:
-    expr = _input_to_expr(value, variables)
+    expr = _implicit_input_expr(value, variables)
     if expr.has(sp.Float):
         raise _ImplicitInputError("use exact rational coefficients, not decimals")
     if extra := expr.free_symbols - set(variables):
@@ -484,7 +498,7 @@ def _normalize_witness_point(
         if _is_witness_domain(raw_value):
             value = _sample_witness_coordinate(raw_value, rng)
         else:
-            value = _input_to_expr(raw_value)
+            value = _implicit_input_expr(raw_value, context="witness coordinate")
         if value.free_symbols:
             raise _ImplicitInputError("witness coordinates must be constant")
         if value.has(sp.Float):
@@ -536,7 +550,7 @@ def _sample_witness_coordinate(
             "sampled witness coordinates must be finite real values"
         )
     else:
-        value = _input_to_expr(sample)
+        value = _implicit_input_expr(sample, context="sampled witness coordinate")
 
     if _in_domain(value, domain) is not True:
         raise _ImplicitInputError(
