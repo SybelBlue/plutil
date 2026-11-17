@@ -253,7 +253,8 @@ def validate_implicit_polynomial_input(
     Call this from ``parse(data)`` after any helper which converts permitted
     decimal input to exact rationals. Invalid input receives a format error and
     its parsed submitted answer is cleared. Existing unrelated format errors are
-    preserved.
+    preserved. Configured polynomial limits may be made stricter, but values
+    above the grading checker's fixed limits are capped to match grading.
 
     Returns ``True`` exactly when a present submitted answer is valid.
     """
@@ -274,9 +275,9 @@ def validate_implicit_polynomial_input(
         _polynomial(
             submitted,
             variables,
-            max_total_degree=max_total_degree,
-            max_terms=max_terms,
-            max_coefficient_bits=max_coefficient_bits,
+            max_total_degree=min(max_total_degree, _CAD_MAX_TOTAL_DEGREE),
+            max_terms=min(max_terms, _CAD_MAX_TERMS_PER_POLYNOMIAL),
+            max_coefficient_bits=min(max_coefficient_bits, _CAD_MAX_COEFFICIENT_BITS),
         )
     except _ImplicitInputError as exc:
         lens.format_error = f"Your answer is not a supported polynomial: {exc}."

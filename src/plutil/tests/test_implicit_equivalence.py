@@ -395,6 +395,46 @@ def test_parse_helper_rejects_an_unsupported_polynomial() -> None:
     assert "total degree" in data["format_errors"]["answer"]
 
 
+def test_parse_helper_cannot_raise_the_checker_polynomial_limits() -> None:
+    x, y, z = sp.symbols("x y z")
+
+    def rejected_message(
+        expression: sp.Expr,
+        variables: object,
+        **limits: int,
+    ) -> str:
+        data = question_data(
+            submitted_answers={"answer": pl.to_json(expression)},
+            format_errors={},
+        )
+        assert not validate_implicit_polynomial_input(
+            SympyQuestion(data, "answer", variables=cast(Any, variables)),
+            **limits,
+        )
+        assert data["submitted_answers"]["answer"] is None
+        return data["format_errors"]["answer"]
+
+    assert "total degree" in rejected_message(x**5, x, max_total_degree=6)
+    assert "30 terms" in rejected_message(
+        cast(
+            sp.Expr,
+            sum(
+                x**x_power * y**y_power * z**z_power
+                for x_power in range(5)
+                for y_power in range(5 - x_power)
+                for z_power in range(5 - x_power - y_power)
+            ),
+        ),
+        (x, y, z),
+        max_terms=40,
+    )
+    assert "64 bits" in rejected_message(
+        x + sp.Rational(1, 2**80),
+        x,
+        max_coefficient_bits=128,
+    )
+
+
 def test_parse_helper_accepts_a_supported_polynomial() -> None:
     x, y = sp.symbols("x y")
     data = question_data(
