@@ -130,12 +130,13 @@ def eval_at(
 def _eval_at(
     f: ExprInput, *, simplify: bool, bindings: Mapping[str, ExprInput | None]
 ) -> sympy.Expr:
+    expression = _input_to_expr(f)
     values = (
-        (sympy.Symbol(k), _input_to_expr(v))
+        (_resolve_symbol(expression, k), _input_to_expr(v))
         for k, v in bindings.items()
         if v is not None
     )
-    res = require_expr(_input_to_expr(f).subs(values))
+    res = require_expr(expression.subs(values))
     if simplify:
         res = require_expr(sympy.simplify(res))
     return res
