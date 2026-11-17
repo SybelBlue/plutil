@@ -458,6 +458,30 @@ def test_cad_limits_fail_closed_before_running_cad() -> None:
     assert result.reason == "cad-condition-atom-limit"
 
 
+def test_cad_eligibility_reuses_per_polynomial_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    x = sp.Symbol("x")
+    residuals = (sp.Poly(x, x), sp.Poly(x + 1, x))
+    original_terms = sp.Poly.terms
+    terms_calls = 0
+
+    def counted_terms(poly: sp.Poly, *args: object, **kwargs: object) -> Any:
+        nonlocal terms_calls
+        terms_calls += 1
+        return original_terms(poly, *args, **kwargs)
+
+    def unexpected_limit_recheck(*args: object, **kwargs: object) -> None:
+        pytest.fail("validated per-polynomial limits must not be recomputed")
+
+    monkeypatch.setattr(sp.Poly, "terms", counted_terms)
+    monkeypatch.setattr(sp.Poly, "total_degree", unexpected_limit_recheck)
+    monkeypatch.setattr(equivalence, "_coefficient_bits", unexpected_limit_recheck)
+
+    assert equivalence._cad_eligible(residuals, (), 0, 1) == (True, None)
+    assert terms_calls == len(residuals)
+
+
 @pytest.mark.parametrize(
     ("candidate", "message"),
     [

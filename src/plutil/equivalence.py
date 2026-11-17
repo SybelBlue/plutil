@@ -777,17 +777,8 @@ def _cad_eligible(
     if authored_condition_atoms > _CAD_MAX_CONDITION_ATOMS:
         return False, "cad-condition-atom-limit"
     polynomials = (*residuals, *condition_polys)
-    if any(
-        not poly.is_zero and int(poly.total_degree()) > _CAD_MAX_TOTAL_DEGREE
-        for poly in polynomials
-    ):
-        return False, "cad-degree-limit"
-    if any(len(poly.terms()) > _CAD_MAX_TERMS_PER_POLYNOMIAL for poly in polynomials):
-        return False, "cad-polynomial-term-limit"
     if sum(len(poly.terms()) for poly in polynomials) > _CAD_MAX_AGGREGATE_TERMS:
         return False, "cad-aggregate-term-limit"
-    if any(_coefficient_bits(poly) > _CAD_MAX_COEFFICIENT_BITS for poly in polynomials):
-        return False, "cad-coefficient-limit"
     return True, None
 
 
@@ -809,50 +800,44 @@ def _cad_decide(
             sp.Eq(candidate.as_expr(), 0),
         ),
     )
-    liftings = None
     equivalent = False
     try:
-        try:
-            from ._vendor.sympy_extras.polys.cad.lifting import _liftings as liftings
-            from ._vendor.sympy_extras.polys.cad.qe import decide
-        except Exception as exc:  # noqa: BLE001 - optional CAD backend import
-            return _result(
-                "inconclusive",
-                exact=False,
-                method="cad",
-                accepted=False,
-                reason=f"cad-error:{type(exc).__name__}",
-            )
+        from ._vendor.sympy_extras.polys.cad.qe import decide
+    except Exception as exc:  # noqa: BLE001 - optional CAD backend import
+        return _result(
+            "inconclusive",
+            exact=False,
+            method="cad",
+            accepted=False,
+            reason=f"cad-error:{type(exc).__name__}",
+        )
 
-        timeout = timeout_utils.SignalTimeout(timeout_seconds, swallow_exc=False)
-        try:
-            with timeout:
-                try:
-                    equivalent = decide(formula, [("forall", variables)])
-                except timeout_utils.TimeoutExceptionError:
-                    raise
-                except Exception as exc:  # noqa: BLE001 - isolate CAD backend
-                    return _result(
-                        "inconclusive",
-                        exact=False,
-                        method="cad",
-                        accepted=False,
-                        reason=f"cad-error:{type(exc).__name__}",
-                    )
-        except timeout_utils.TimeoutExceptionError as exc:
-            if exc.timeout is not timeout:
+    timeout = timeout_utils.SignalTimeout(timeout_seconds, swallow_exc=False)
+    try:
+        with timeout:
+            try:
+                equivalent = decide(formula, [("forall", variables)])
+            except timeout_utils.TimeoutExceptionError:
                 raise
-            return _result(
-                "inconclusive",
-                exact=False,
-                method="cad",
-                accepted=False,
-                timed_out=True,
-                reason="cad-timeout",
-            )
-    finally:
-        if liftings is not None:
-            liftings.clear()
+            except Exception as exc:  # noqa: BLE001 - isolate CAD backend
+                return _result(
+                    "inconclusive",
+                    exact=False,
+                    method="cad",
+                    accepted=False,
+                    reason=f"cad-error:{type(exc).__name__}",
+                )
+    except timeout_utils.TimeoutExceptionError as exc:
+        if exc.timeout is not timeout:
+            raise
+        return _result(
+            "inconclusive",
+            exact=False,
+            method="cad",
+            accepted=False,
+            timed_out=True,
+            reason="cad-timeout",
+        )
 
     return _result(
         "equivalent" if equivalent else "different",
