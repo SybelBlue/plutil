@@ -338,6 +338,25 @@ def test_checker_rejects_inputs_outside_the_bounded_polynomial_contract(
         check_implicit_equivalence(x, candidate(x), variables=x)
 
 
+def test_nested_powers_are_rejected_before_polynomial_expansion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    x, y, z = sp.symbols("x y z")
+    expression = ((x + y + z + 1) ** 4 + 1) ** 4 + 1
+
+    def unexpected_poly(*args: object, **kwargs: object) -> None:
+        pytest.fail("sp.Poly must not run for a structurally excessive degree")
+
+    monkeypatch.setattr(equivalence.sp, "Poly", unexpected_poly)
+
+    with pytest.raises(ValueError, match="total degree"):
+        equivalence._polynomial(
+            expression,
+            (x, y, z),
+            max_total_degree=4,
+        )
+
+
 def test_parse_helper_rejects_an_unsupported_polynomial() -> None:
     x = sp.Symbol("x")
     data = question_data(

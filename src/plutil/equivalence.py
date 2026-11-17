@@ -138,6 +138,63 @@ def _coefficient_bits(poly: sp.Poly) -> int:
     return largest
 
 
+def _reject_excess_structural_degree(
+    expr: sp.Expr,
+    variables: set[sp.Symbol],
+    max_total_degree: int,
+) -> None:
+    """Reject expression trees whose polynomial degree is already too large.
+
+    This deliberately runs before ``sp.Poly`` so nested, unexpanded powers
+    cannot make polynomial construction perform an unbounded expansion.
+    Non-polynomial nodes are left for ``sp.Poly`` to reject.
+    """
+
+    def degree(value: sp.Basic) -> int | None:
+        if value.is_Atom:
+            return 1 if value in variables else 0
+        if isinstance(value, sp.Add):
+            result = 0
+            for argument in value.args:
+                argument_degree = degree(argument)
+                if argument_degree is None:
+                    return None
+                result = max(result, argument_degree)
+            return result
+        if isinstance(value, sp.Mul):
+            result = 0
+            for argument in value.args:
+                argument_degree = degree(argument)
+                if argument_degree is None:
+                    return None
+                result += argument_degree
+                if result > max_total_degree:
+                    raise _ImplicitInputError(
+                        f"the total degree must not exceed {max_total_degree}"
+                    )
+            return result
+        if isinstance(value, sp.Pow):
+            exponent = value.exp
+            if exponent.is_Integer is not True or exponent.is_nonnegative is not True:
+                return None
+            base_degree = degree(value.base)
+            if base_degree is None:
+                return None
+            result = base_degree * int(exponent)
+            if result > max_total_degree:
+                raise _ImplicitInputError(
+                    f"the total degree must not exceed {max_total_degree}"
+                )
+            return result
+        return None
+
+    estimated_degree = degree(expr)
+    if estimated_degree is not None and estimated_degree > max_total_degree:
+        raise _ImplicitInputError(
+            f"the total degree must not exceed {max_total_degree}"
+        )
+
+
 def _polynomial(
     value: ExprInput | sp.Expr,
     variables: tuple[sp.Symbol, ...],
@@ -156,14 +213,7 @@ def _polynomial(
         raise _ImplicitInputError("the expression is too large")
 
     if max_total_degree is not None:
-        for power in expr.atoms(sp.Pow):
-            if not (power.base.free_symbols & set(variables)):
-                continue
-            exponent = power.exp
-            if exponent.is_Integer and int(exponent) > max_total_degree:
-                raise _ImplicitInputError(
-                    f"the total degree must not exceed {max_total_degree}"
-                )
+        _reject_excess_structural_degree(expr, set(variables), max_total_degree)
 
     try:
         poly = sp.Poly(expr, *variables, domain=sp.QQ)
