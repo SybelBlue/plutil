@@ -37,11 +37,34 @@ git = "https://github.com/PrairieLearn/PrairieLearn.git"
 subdirectory = "apps/prairielearn/python"
 
 [tool.pyright]
+exclude = [".venv", "**/__pycache__", "docs/_build", "src/plutil/_vendor"]
 reportUnnecessaryTypeIgnoreComment = "error"
+
+[tool.ruff]
+extend-exclude = ["src/plutil/_vendor"]
 
 [tool.pl-vendor]
 schema-version = 1
 
+[tool.pl-vendor.packages.sympy-extras-cad]
+path = "src/plutil/_vendor"
+url = "https://github.com/Upabjojr/sympy-extras.git"
+commit = "2d60199620ac4283ef4bb056c0cf8cf9f2e9ca28"
+sources = [
+    "LICENSE",
+    "sympy_extras/py.typed",
+    "sympy_extras/__init__.py",
+    "sympy_extras/_typing.py",
+    "sympy_extras/polys/__init__.py",
+    "sympy_extras/polys/euclidtools.py",
+    "sympy_extras/polys/cad/__init__.py",
+    "sympy_extras/polys/cad/projection.py",
+    "sympy_extras/polys/cad/samplepoints.py",
+    "sympy_extras/polys/cad/lifting.py",
+    "sympy_extras/polys/cad/qe.py",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["src/plutil"]
 addopts = ["--doctest-modules"]
+norecursedirs = ["src/plutil/_vendor"]

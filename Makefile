@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
 
-.PHONY: venv deps clean test typecheck format check-format check-prairielearn-dependencies profile ci-dryrun docs
+.PHONY: venv deps clean test typecheck format check-format check-prairielearn-dependencies check-vendored profile ci-dryrun docs
 
 venv:
 	uv venv --clear
@@ -28,6 +28,9 @@ check-format:
 check-prairielearn-dependencies:
 	uv run --active pl-vendor check prairielearn python
 
+check-vendored:
+	uv run --active pl-vendor check installed --no-progress --color never
+
 docs:
 	rm -rf docs/_build docs/_autosummary
 	uv run --active --group docs sphinx-build -W --keep-going -b html docs docs/_build/html
@@ -38,4 +41,5 @@ ci-dryrun:
 		"$(MAKE) typecheck" \
 		"$(MAKE) check-format" \
 		"$(MAKE) check-prairielearn-dependencies" \
+		"$(MAKE) check-vendored" \
 		"$(MAKE) docs"

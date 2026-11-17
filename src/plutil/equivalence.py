@@ -1,19 +1,897 @@
-"""Time-bounded symbolic and probabilistic equivalence checks for SymPy values.
+"""Time-bounded equivalence checks for SymPy expressions and implicit equations.
 
 The numerical checks in this module test expressions at randomly sampled points.
 They are useful as grading heuristics, but do not prove mathematical equivalence.
+
+Implicit equations use a separate tiered checker. A residual expression ``f``
+represents the equation ``f = 0``; two residuals are equivalent when their real
+zero sets agree in the requested region.
 """
 
-from typing import cast
+from __future__ import annotations
+
+import random
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from typing import Literal, cast
 
 import numpy as np
 import sympy as sp
 from prairielearn import timeout_utils
+from sympy.core.relational import (
+    Equality,
+    GreaterThan,
+    LessThan,
+    Relational,
+    StrictGreaterThan,
+    StrictLessThan,
+    Unequality,
+)
+from sympy.logic.boolalg import Boolean, BooleanFunction
+from sympy.polys.polyerrors import PolynomialError
 
 from . import rand
-from .common import eq
+from .common import (
+    ExprInput,
+    OneOrMore,
+    Variable,
+    _input_to_expr,
+    _normalize_one_or_more,
+    eq,
+    var_to_symbol,
+)
+from .lenses import SympyQuestion
 
 _SCREENING_SIZE = 256
+
+_CAD_MAX_VARIABLES = 3
+_CAD_MAX_TOTAL_DEGREE = 4
+_CAD_MAX_TERMS_PER_POLYNOMIAL = 30
+_CAD_MAX_AGGREGATE_TERMS = 60
+_CAD_MAX_CONDITION_ATOMS = 4
+_CAD_MAX_COEFFICIENT_BITS = 64
+_MAX_SLICES_PER_VARIABLE = 20
+_MAX_VALIDATION_OPS = 200
+_MIN_HEURISTIC_EQ_WITNESSES = 3
+
+type ImplicitVerdict = Literal["equivalent", "different", "inconclusive"]
+type ImplicitMethod = Literal["canonical", "witness", "cad"]
+type ImplicitStrategy = Literal["auto", "canonical", "witness", "cad"]
+type InconclusivePolicy = Literal["reject", "witness"]
+type WitnessPoint = Mapping[Variable, ExprInput]
+type VariableDomains = Mapping[Variable, sp.Set]
+
+
+@dataclass(frozen=True, slots=True)
+class ImplicitWitnesses:
+    """Exact points where both residuals should be zero or nonzero.
+
+    Every point must bind every declared variable and lie in the requested
+    region. The reference residual is checked against each label so that an
+    incorrectly authored witness fails loudly instead of changing grading.
+    """
+
+    eq: Sequence[WitnessPoint] = ()
+    neq: Sequence[WitnessPoint] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ImplicitEquivalenceResult:
+    """Structured evidence from an implicit-equation equivalence check.
+
+    ``accepted`` includes the caller's inconclusive policy. In particular, a
+    CAD timeout is rejected by default, while an explicitly enabled witness
+    fallback may return ``accepted=True`` with ``exact=False``.
+    """
+
+    verdict: ImplicitVerdict
+    accepted: bool
+    exact: bool
+    method: ImplicitMethod
+    timed_out: bool = False
+    counterexample: Mapping[sp.Symbol, sp.Expr] | None = None
+    reason: str | None = None
+
+    def __bool__(self) -> bool:
+        """Return whether the selected grading policy accepts the answer."""
+        return self.accepted
+
+
+@dataclass(frozen=True, slots=True)
+class _SliceEvidence:
+    counterexample: Mapping[sp.Symbol, sp.Expr] | None
+    eq_points: tuple[Mapping[sp.Symbol, sp.Expr], ...]
+    exact_equivalent: bool = False
+    reason: str | None = None
+
+
+class _ImplicitInputError(ValueError):
+    """An implicit-equation input is outside the supported polynomial subset."""
+
+
+def _variables(variables: OneOrMore[Variable]) -> tuple[sp.Symbol, ...]:
+    symbols = tuple(var_to_symbol(item) for item in _normalize_one_or_more(variables))
+    if len({symbol.name for symbol in symbols}) != len(symbols):
+        raise _ImplicitInputError("variable names must not contain duplicates")
+    if any(symbol.is_real is False for symbol in symbols):
+        raise _ImplicitInputError("implicit-equation variables must be real")
+    return symbols
+
+
+def _coefficient_bits(poly: sp.Poly) -> int:
+    largest = 1
+    for coefficient in poly.coeffs():
+        rational = cast(sp.Rational, sp.Rational(coefficient))
+        largest = max(
+            largest,
+            abs(int(rational.p)).bit_length(),
+            int(rational.q).bit_length(),
+        )
+    return largest
+
+
+def _polynomial(
+    value: ExprInput | sp.Expr,
+    variables: tuple[sp.Symbol, ...],
+    *,
+    max_total_degree: int | None = None,
+    max_terms: int | None = None,
+    max_coefficient_bits: int | None = None,
+) -> sp.Poly:
+    expr = _input_to_expr(value, variables)
+    if expr.has(sp.Float):
+        raise _ImplicitInputError("use exact rational coefficients, not decimals")
+    if extra := expr.free_symbols - set(variables):
+        names = ", ".join(sorted(str(symbol) for symbol in extra))
+        raise _ImplicitInputError(f"undeclared variables: {names}")
+    if sp.count_ops(expr) > _MAX_VALIDATION_OPS:
+        raise _ImplicitInputError("the expression is too large")
+
+    if max_total_degree is not None:
+        for power in expr.atoms(sp.Pow):
+            if not (power.base.free_symbols & set(variables)):
+                continue
+            exponent = power.exp
+            if exponent.is_Integer and int(exponent) > max_total_degree:
+                raise _ImplicitInputError(
+                    f"the total degree must not exceed {max_total_degree}"
+                )
+
+    try:
+        poly = sp.Poly(expr, *variables, domain=sp.QQ)
+    except (PolynomialError, TypeError, ValueError) as exc:
+        raise _ImplicitInputError(
+            "the expression must be a polynomial with rational coefficients"
+        ) from exc
+
+    total_degree = int(poly.total_degree()) if not poly.is_zero else 0
+    if max_total_degree is not None and total_degree > max_total_degree:
+        raise _ImplicitInputError(
+            f"the total degree must not exceed {max_total_degree}"
+        )
+    term_count = len(poly.terms())
+    if max_terms is not None and term_count > max_terms:
+        raise _ImplicitInputError(f"the polynomial must have at most {max_terms} terms")
+    if (
+        max_coefficient_bits is not None
+        and _coefficient_bits(poly) > max_coefficient_bits
+    ):
+        raise _ImplicitInputError(
+            f"coefficient numerators and denominators must fit in {max_coefficient_bits} bits"
+        )
+    return poly
+
+
+def validate_implicit_polynomial_input(
+    lens: SympyQuestion,
+    *,
+    max_variables: int = _CAD_MAX_VARIABLES,
+    max_total_degree: int = _CAD_MAX_TOTAL_DEGREE,
+    max_terms: int = _CAD_MAX_TERMS_PER_POLYNOMIAL,
+    max_coefficient_bits: int = _CAD_MAX_COEFFICIENT_BITS,
+) -> bool:
+    """Validate a submitted PrairieLearn answer as a bounded polynomial.
+
+    Call this from ``parse(data)`` after any helper which converts permitted
+    decimal input to exact rationals. Invalid input receives a format error and
+    its parsed submitted answer is cleared. Existing unrelated format errors are
+    preserved.
+
+    Returns ``True`` exactly when a present submitted answer is valid.
+    """
+    if lens.format_error is not None:
+        return False
+    submitted = lens.submitted_answer
+    if submitted is None:
+        return False
+
+    variables = _variables(lens.variables)
+    try:
+        if len(variables) > max_variables:
+            raise _ImplicitInputError(
+                f"at most {max_variables} variables are supported"
+            )
+        if not isinstance(submitted, sp.Expr):
+            raise _ImplicitInputError("the answer must be an expression")
+        _polynomial(
+            submitted,
+            variables,
+            max_total_degree=max_total_degree,
+            max_terms=max_terms,
+            max_coefficient_bits=max_coefficient_bits,
+        )
+    except _ImplicitInputError as exc:
+        lens.format_error = f"Your answer is not a supported polynomial: {exc}."
+        lens.data["submitted_answers"][lens.answers_name] = None
+        return False
+    return True
+
+
+_RELATION_TYPES = (
+    Equality,
+    Unequality,
+    StrictLessThan,
+    LessThan,
+    StrictGreaterThan,
+    GreaterThan,
+)
+
+
+def _condition_polynomials(
+    condition: Boolean,
+    variables: tuple[sp.Symbol, ...],
+) -> tuple[sp.Poly, ...]:
+    polynomials: list[sp.Poly] = []
+
+    def visit(value: Boolean | sp.Basic) -> None:
+        if value in (sp.true, sp.false):
+            return
+        if isinstance(value, Relational):
+            if not isinstance(value, _RELATION_TYPES):
+                raise _ImplicitInputError(
+                    f"unsupported condition relation: {type(value).__name__}"
+                )
+            lhs = cast(sp.Expr, value.lhs)
+            rhs = cast(sp.Expr, value.rhs)
+            polynomials.append(
+                _polynomial(
+                    lhs - rhs,
+                    variables,
+                    max_total_degree=_CAD_MAX_TOTAL_DEGREE,
+                    max_terms=_CAD_MAX_TERMS_PER_POLYNOMIAL,
+                    max_coefficient_bits=_CAD_MAX_COEFFICIENT_BITS,
+                )
+            )
+            return
+        if isinstance(value, BooleanFunction):
+            for argument in value.args:
+                if not isinstance(argument, (Boolean, bool)):
+                    raise _ImplicitInputError("condition arguments must be Boolean")
+                visit(sp.sympify(argument))
+            return
+        raise _ImplicitInputError(
+            "condition must contain only polynomial relations and Boolean operators"
+        )
+
+    visit(condition)
+    return tuple(polynomials)
+
+
+def _as_condition(value: sp.Basic | bool) -> Boolean:
+    condition = sp.sympify(value)
+    if not isinstance(condition, Boolean):
+        raise _ImplicitInputError("condition must be Boolean")
+    return condition
+
+
+def _normalize_domains(
+    domains: VariableDomains | None,
+    variables: tuple[sp.Symbol, ...],
+) -> dict[sp.Symbol, sp.Set]:
+    normalized = {symbol: sp.Reals for symbol in variables}
+    if domains is None:
+        return normalized
+
+    by_name = {symbol.name: symbol for symbol in variables}
+    seen: set[sp.Symbol] = set()
+    for variable, domain in domains.items():
+        symbol = variable if isinstance(variable, sp.Symbol) else by_name.get(variable)
+        if symbol is None or symbol not in normalized:
+            raise _ImplicitInputError(f"unknown domain variable: {variable}")
+        if symbol in seen:
+            raise _ImplicitInputError(
+                f"domain for {symbol} was provided more than once"
+            )
+        seen.add(symbol)
+        if domain is sp.Reals:
+            normalized[symbol] = domain
+            continue
+        if not isinstance(domain, sp.Interval):
+            raise _ImplicitInputError(
+                f"domain for {symbol} must be Reals or a real interval"
+            )
+        for endpoint in (domain.start, domain.end):
+            if endpoint in (sp.oo, -sp.oo):
+                continue
+            if endpoint.has(sp.Float) or endpoint.is_Rational is not True:
+                raise _ImplicitInputError(
+                    f"domain endpoints for {symbol} must be exact rationals"
+                )
+        normalized[symbol] = domain
+    return normalized
+
+
+def _domain_condition(domains: Mapping[sp.Symbol, sp.Set]) -> Boolean:
+    conditions: list[Boolean] = []
+    for symbol, domain in domains.items():
+        if domain is sp.Reals:
+            continue
+        assert isinstance(domain, sp.Interval)
+        if domain.start != -sp.oo:
+            lower = (
+                symbol > domain.start if domain.left_open else symbol >= domain.start
+            )
+            conditions.append(lower)
+        if domain.end != sp.oo:
+            upper = symbol < domain.end if domain.right_open else symbol <= domain.end
+            conditions.append(upper)
+    return sp.And(*conditions)
+
+
+def _canonical_zero_set(poly: sp.Poly) -> tuple[str, sp.Expr | None]:
+    if poly.is_zero:
+        return ("all", None)
+    if poly.total_degree() == 0:
+        return ("empty", None)
+    return ("polynomial", poly.sqf_part().monic().as_expr())
+
+
+def _result(
+    verdict: ImplicitVerdict,
+    *,
+    exact: bool,
+    method: ImplicitMethod,
+    accepted: bool | None = None,
+    timed_out: bool = False,
+    counterexample: Mapping[sp.Symbol, sp.Expr] | None = None,
+    reason: str | None = None,
+) -> ImplicitEquivalenceResult:
+    return ImplicitEquivalenceResult(
+        verdict=verdict,
+        accepted=verdict == "equivalent" if accepted is None else accepted,
+        exact=exact,
+        method=method,
+        timed_out=timed_out,
+        counterexample=counterexample,
+        reason=reason,
+    )
+
+
+def _point_truth(condition: Boolean, point: Mapping[sp.Symbol, sp.Expr]) -> bool | None:
+    value = sp.simplify(condition.subs(list(point.items())))
+    if value is sp.true:
+        return True
+    if value is sp.false:
+        return False
+    return None
+
+
+def _in_domain(value: sp.Expr, domain: sp.Set) -> bool | None:
+    if domain is sp.Reals:
+        return value.is_real
+    membership = sp.simplify(domain.contains(value))
+    if membership is sp.true:
+        return True
+    if membership is sp.false:
+        return False
+    return None
+
+
+def _point_in_region(
+    point: Mapping[sp.Symbol, sp.Expr],
+    condition: Boolean,
+    domains: Mapping[sp.Symbol, sp.Set],
+) -> bool | None:
+    for symbol, domain in domains.items():
+        if _in_domain(point[symbol], domain) is not True:
+            return False
+    return _point_truth(condition, point)
+
+
+def _point_value(poly: sp.Poly, point: Mapping[sp.Symbol, sp.Expr]) -> sp.Expr:
+    return cast(sp.Expr, sp.simplify(poly.as_expr().subs(list(point.items()))))
+
+
+def _normalize_witness_point(
+    raw: WitnessPoint,
+    variables: tuple[sp.Symbol, ...],
+) -> dict[sp.Symbol, sp.Expr]:
+    by_name = {symbol.name: symbol for symbol in variables}
+    point: dict[sp.Symbol, sp.Expr] = {}
+    for variable, raw_value in raw.items():
+        symbol = variable if isinstance(variable, sp.Symbol) else by_name.get(variable)
+        if symbol is None or symbol not in variables:
+            raise _ImplicitInputError(f"unknown witness variable: {variable}")
+        if symbol in point:
+            raise _ImplicitInputError(f"witness binds {symbol} more than once")
+        value = _input_to_expr(raw_value)
+        if value.free_symbols:
+            raise _ImplicitInputError("witness coordinates must be constant")
+        if value.has(sp.Float):
+            raise _ImplicitInputError("witness coordinates must be exact")
+        if value.is_real is not True or value.is_finite is not True:
+            raise _ImplicitInputError("witness coordinates must be finite real values")
+        point[symbol] = value
+    missing = set(variables) - point.keys()
+    if missing:
+        names = ", ".join(sorted(symbol.name for symbol in missing))
+        raise _ImplicitInputError(f"witness is missing variables: {names}")
+    return point
+
+
+def _check_authored_witnesses(
+    reference: sp.Poly,
+    candidate: sp.Poly,
+    variables: tuple[sp.Symbol, ...],
+    condition: Boolean,
+    domains: Mapping[sp.Symbol, sp.Set],
+    witnesses: ImplicitWitnesses,
+) -> _SliceEvidence:
+    eq_points: list[Mapping[sp.Symbol, sp.Expr]] = []
+    for expected_zero, points in ((True, witnesses.eq), (False, witnesses.neq)):
+        for raw_point in points:
+            point = _normalize_witness_point(raw_point, variables)
+            if _point_in_region(point, condition, domains) is not True:
+                raise _ImplicitInputError(
+                    "every witness must lie in the comparison region"
+                )
+            reference_zero = _point_value(reference, point).is_zero
+            if reference_zero is not expected_zero:
+                label = "eq" if expected_zero else "neq"
+                raise _ImplicitInputError(
+                    f"the reference residual does not match an authored {label} witness"
+                )
+            candidate_zero = _point_value(candidate, point).is_zero
+            if candidate_zero is None:
+                raise _ImplicitInputError(
+                    "could not determine the submitted residual at a witness"
+                )
+            if candidate_zero != expected_zero:
+                return _SliceEvidence(point, tuple(eq_points))
+            if expected_zero:
+                eq_points.append(point)
+    return _SliceEvidence(None, tuple(eq_points))
+
+
+def _rational_samples(
+    domain: sp.Set,
+    count: int,
+    rng: random.Random,
+) -> tuple[sp.Expr, ...]:
+    if count <= 0:
+        return ()
+    if domain is sp.Reals:
+        candidates = [
+            sp.Rational(numerator, denominator)
+            for denominator in (1, 2, 3)
+            for numerator in range(-6, 7)
+        ]
+        rng.shuffle(candidates)
+        return tuple(candidates[:count])
+
+    assert isinstance(domain, sp.Interval)
+    start, end = domain.start, domain.end
+    if start == -sp.oo and end == sp.oo:
+        return _rational_samples(sp.Reals, count, rng)
+    if start == -sp.oo:
+        assert end.is_Rational
+        return tuple(sp.Rational(end) - index for index in range(1, count + 1))
+    if end == sp.oo:
+        assert start.is_Rational
+        return tuple(sp.Rational(start) + index for index in range(1, count + 1))
+    start_q, end_q = sp.Rational(start), sp.Rational(end)
+    return tuple(
+        start_q + (end_q - start_q) * sp.Rational(index, count + 1)
+        for index in range(1, count + 1)
+    )
+
+
+def _line_counterexample(
+    fixed: Mapping[sp.Symbol, sp.Expr],
+    pivot: sp.Symbol,
+    pivot_domain: sp.Set,
+    condition: Boolean,
+    reference: sp.Poly,
+    candidate: sp.Poly,
+    rng: random.Random,
+) -> Mapping[sp.Symbol, sp.Expr] | None:
+    for value in _rational_samples(pivot_domain, 12, rng):
+        point = {**fixed, pivot: value}
+        if _point_truth(condition, point) is not True:
+            continue
+        reference_zero = _point_value(reference, point).is_zero
+        candidate_zero = _point_value(candidate, point).is_zero
+        if (
+            reference_zero is not None
+            and candidate_zero is not None
+            and reference_zero != candidate_zero
+        ):
+            return point
+    return None
+
+
+def _roots(poly: sp.Poly) -> tuple[sp.Expr, ...]:
+    if poly.is_zero or poly.total_degree() == 0:
+        return ()
+    return tuple(root for root, _multiplicity in poly.real_roots(multiple=False))
+
+
+def _slice_evidence(
+    reference: sp.Poly,
+    candidate: sp.Poly,
+    variables: tuple[sp.Symbol, ...],
+    condition: Boolean,
+    domains: Mapping[sp.Symbol, sp.Set],
+    *,
+    seed: int,
+    slices_per_variable: int,
+) -> _SliceEvidence:
+    if slices_per_variable <= 0:
+        raise ValueError("slices_per_variable must be positive")
+    if not variables:
+        return _SliceEvidence(None, (), exact_equivalent=True)
+
+    rng = random.Random(seed)
+    eq_by_key: dict[tuple[str, ...], Mapping[sp.Symbol, sp.Expr]] = {}
+    undecidable_comparison = False
+
+    for pivot_index, pivot in enumerate(variables):
+        fixed_variables = variables[:pivot_index] + variables[pivot_index + 1 :]
+        sample_values = {
+            symbol: _rational_samples(
+                domains[symbol],
+                1 if not fixed_variables else slices_per_variable,
+                rng,
+            )
+            for symbol in fixed_variables
+        }
+        slice_count = 1 if not fixed_variables else slices_per_variable
+        for index in range(slice_count):
+            fixed = {
+                symbol: values[index % len(values)]
+                for symbol, values in sample_values.items()
+            }
+            substitutions = list(fixed.items())
+            reference_line = sp.Poly(
+                reference.as_expr().subs(substitutions), pivot, domain=sp.QQ
+            )
+            candidate_line = sp.Poly(
+                candidate.as_expr().subs(substitutions), pivot, domain=sp.QQ
+            )
+
+            if reference_line.is_zero or candidate_line.is_zero:
+                if reference_line.is_zero != candidate_line.is_zero:
+                    counterexample = _line_counterexample(
+                        fixed,
+                        pivot,
+                        domains[pivot],
+                        condition,
+                        reference,
+                        candidate,
+                        rng,
+                    )
+                    if counterexample is not None:
+                        return _SliceEvidence(counterexample, tuple(eq_by_key.values()))
+                    undecidable_comparison = True
+                continue
+
+            for source_line, other_line in (
+                (reference_line, candidate_line),
+                (candidate_line, reference_line),
+            ):
+                for root in _roots(source_line):
+                    domain_truth = _in_domain(root, domains[pivot])
+                    if domain_truth is None:
+                        undecidable_comparison = True
+                        continue
+                    if not domain_truth:
+                        continue
+                    point = {**fixed, pivot: root}
+                    region_truth = _point_truth(condition, point)
+                    if region_truth is None:
+                        undecidable_comparison = True
+                        continue
+                    if not region_truth:
+                        continue
+                    other_zero = sp.simplify(
+                        other_line.as_expr().subs(pivot, root)
+                    ).is_zero
+                    if other_zero is False:
+                        return _SliceEvidence(point, tuple(eq_by_key.values()))
+                    if other_zero is None:
+                        undecidable_comparison = True
+                        continue
+                    key = tuple(sp.srepr(point[symbol]) for symbol in variables)
+                    eq_by_key[key] = point
+
+    exact = len(variables) == 1 and not undecidable_comparison
+    reason = "undecidable-slice-comparison" if undecidable_comparison else None
+    return _SliceEvidence(None, tuple(eq_by_key.values()), exact, reason)
+
+
+def _cad_eligible(
+    residuals: tuple[sp.Poly, sp.Poly],
+    condition_polys: tuple[sp.Poly, ...],
+    authored_condition_atoms: int,
+    variable_count: int,
+) -> tuple[bool, str | None]:
+    if variable_count > _CAD_MAX_VARIABLES:
+        return False, "cad-variable-limit"
+    if authored_condition_atoms > _CAD_MAX_CONDITION_ATOMS:
+        return False, "cad-condition-atom-limit"
+    polynomials = (*residuals, *condition_polys)
+    if any(
+        not poly.is_zero and int(poly.total_degree()) > _CAD_MAX_TOTAL_DEGREE
+        for poly in polynomials
+    ):
+        return False, "cad-degree-limit"
+    if any(len(poly.terms()) > _CAD_MAX_TERMS_PER_POLYNOMIAL for poly in polynomials):
+        return False, "cad-polynomial-term-limit"
+    if sum(len(poly.terms()) for poly in polynomials) > _CAD_MAX_AGGREGATE_TERMS:
+        return False, "cad-aggregate-term-limit"
+    if any(_coefficient_bits(poly) > _CAD_MAX_COEFFICIENT_BITS for poly in polynomials):
+        return False, "cad-coefficient-limit"
+    return True, None
+
+
+def _cad_decide(
+    reference: sp.Poly,
+    candidate: sp.Poly,
+    variables: tuple[sp.Symbol, ...],
+    region: Boolean,
+    *,
+    timeout_seconds: float,
+) -> ImplicitEquivalenceResult:
+    if timeout_seconds <= 0:
+        raise ValueError("timeout_seconds must be positive")
+
+    formula = sp.Implies(
+        region,
+        sp.Equivalent(
+            sp.Eq(reference.as_expr(), 0),
+            sp.Eq(candidate.as_expr(), 0),
+        ),
+    )
+    liftings = None
+    equivalent = False
+    try:
+        from ._vendor.sympy_extras.polys.cad.lifting import _liftings as liftings
+        from ._vendor.sympy_extras.polys.cad.qe import decide
+
+        with timeout_utils.SignalTimeout(timeout_seconds, swallow_exc=False):
+            equivalent = decide(formula, [("forall", variables)])
+    except timeout_utils.TimeoutExceptionError:
+        return _result(
+            "inconclusive",
+            exact=False,
+            method="cad",
+            accepted=False,
+            timed_out=True,
+            reason="cad-timeout",
+        )
+    except Exception as exc:  # noqa: BLE001 - isolate the optional CAD backend
+        return _result(
+            "inconclusive",
+            exact=False,
+            method="cad",
+            accepted=False,
+            reason=f"cad-error:{type(exc).__name__}",
+        )
+    finally:
+        if liftings is not None:
+            liftings.clear()
+
+    return _result(
+        "equivalent" if equivalent else "different",
+        exact=True,
+        method="cad",
+        reason="cad-decision",
+    )
+
+
+def check_implicit_equivalence(
+    reference: ExprInput,
+    candidate: ExprInput,
+    *,
+    variables: OneOrMore[Variable],
+    condition: sp.Basic | bool = True,
+    domains: VariableDomains | None = None,
+    witnesses: ImplicitWitnesses | None = None,
+    strategy: ImplicitStrategy = "auto",
+    on_inconclusive: InconclusivePolicy = "reject",
+    timeout_seconds: float = 1.0,
+    seed: int = 0,
+    slices_per_variable: int = 5,
+) -> ImplicitEquivalenceResult:
+    """Compare the real zero sets of two polynomial residuals.
+
+    ``reference`` and ``candidate`` represent equations equal to zero. The
+    default ``auto`` strategy first proves easy equivalences canonically, then
+    searches exact univariate slices for a counterexample, and finally runs a
+    guarded cylindrical algebraic decomposition (CAD). Residuals and region
+    relations must be rational polynomials of degree at most four with at most
+    30 terms each and 64-bit coefficients. CAD is additionally limited to
+    three variables, four authored region relations, and 60 terms overall.
+
+    Exact checks fail closed. Pass ``on_inconclusive="witness"`` to allow
+    heuristic acceptance after at least three distinct zero-set points agree.
+    Multivariate slice agreement is evidence, not a proof. The number of
+    slices per variable must be between one and 20.
+
+    Raises:
+        ValueError: If an expression, condition, domain, witness, option, or
+            limit is outside the supported contract.
+    """
+    if strategy not in ("auto", "canonical", "witness", "cad"):
+        raise ValueError("strategy must be 'auto', 'canonical', 'witness', or 'cad'")
+    if on_inconclusive not in ("reject", "witness"):
+        raise ValueError("on_inconclusive must be 'reject' or 'witness'")
+    if timeout_seconds <= 0:
+        raise ValueError("timeout_seconds must be positive")
+    if (
+        isinstance(slices_per_variable, bool)
+        or not isinstance(slices_per_variable, int)
+        or not 1 <= slices_per_variable <= _MAX_SLICES_PER_VARIABLE
+    ):
+        raise ValueError(
+            f"slices_per_variable must be between 1 and {_MAX_SLICES_PER_VARIABLE}"
+        )
+
+    symbols = _variables(variables)
+    reference_poly = _polynomial(
+        reference,
+        symbols,
+        max_total_degree=_CAD_MAX_TOTAL_DEGREE,
+        max_terms=_CAD_MAX_TERMS_PER_POLYNOMIAL,
+        max_coefficient_bits=_CAD_MAX_COEFFICIENT_BITS,
+    )
+    candidate_poly = _polynomial(
+        candidate,
+        symbols,
+        max_total_degree=_CAD_MAX_TOTAL_DEGREE,
+        max_terms=_CAD_MAX_TERMS_PER_POLYNOMIAL,
+        max_coefficient_bits=_CAD_MAX_COEFFICIENT_BITS,
+    )
+    base_condition = _as_condition(condition)
+    condition_polys = _condition_polynomials(base_condition, symbols)
+    normalized_domains = _normalize_domains(domains, symbols)
+    domain_condition = _domain_condition(normalized_domains)
+    region = sp.And(base_condition, domain_condition)
+    domain_polys = _condition_polynomials(domain_condition, symbols)
+    authored_condition_atoms = len(base_condition.atoms(Relational))
+
+    witness_spec = witnesses or ImplicitWitnesses()
+    authored = _check_authored_witnesses(
+        reference_poly,
+        candidate_poly,
+        symbols,
+        base_condition,
+        normalized_domains,
+        witness_spec,
+    )
+    if authored.counterexample is not None:
+        return _result(
+            "different",
+            exact=True,
+            method="witness",
+            counterexample=authored.counterexample,
+            reason="authored-witness-counterexample",
+        )
+
+    if region is sp.false:
+        return _result(
+            "equivalent", exact=True, method="canonical", reason="empty-region"
+        )
+
+    reference_canonical = _canonical_zero_set(reference_poly)
+    candidate_canonical = _canonical_zero_set(candidate_poly)
+    if reference_canonical == candidate_canonical:
+        return _result(
+            "equivalent",
+            exact=True,
+            method="canonical",
+            reason="matching-square-free-normal-form",
+        )
+    if region is sp.true and {
+        reference_canonical[0],
+        candidate_canonical[0],
+    } <= {"all", "empty"}:
+        return _result(
+            "different",
+            exact=True,
+            method="canonical",
+            reason="different-degenerate-zero-sets",
+        )
+    if strategy == "canonical":
+        return _result(
+            "inconclusive",
+            exact=False,
+            method="canonical",
+            accepted=False,
+            reason="canonical-forms-differ",
+        )
+
+    slices = _slice_evidence(
+        reference_poly,
+        candidate_poly,
+        symbols,
+        base_condition,
+        normalized_domains,
+        seed=seed,
+        slices_per_variable=slices_per_variable,
+    )
+    if slices.counterexample is not None:
+        return _result(
+            "different",
+            exact=True,
+            method="witness",
+            counterexample=slices.counterexample,
+            reason="slice-counterexample",
+        )
+    if slices.exact_equivalent:
+        return _result(
+            "equivalent",
+            exact=True,
+            method="witness",
+            reason="complete-univariate-root-comparison",
+        )
+
+    eq_points = {
+        tuple(sp.srepr(point[symbol]) for symbol in symbols)
+        for point in (*authored.eq_points, *slices.eq_points)
+    }
+    heuristic_ready = len(eq_points) >= _MIN_HEURISTIC_EQ_WITNESSES
+    allow_heuristic = strategy == "witness" or on_inconclusive == "witness"
+
+    cad_reason: str | None = None
+    cad_timed_out = False
+    if strategy in ("auto", "cad"):
+        eligible, cad_reason = _cad_eligible(
+            (reference_poly, candidate_poly),
+            (*condition_polys, *domain_polys),
+            authored_condition_atoms,
+            len(symbols),
+        )
+        if eligible:
+            cad_result = _cad_decide(
+                reference_poly,
+                candidate_poly,
+                symbols,
+                region,
+                timeout_seconds=timeout_seconds,
+            )
+            if cad_result.verdict != "inconclusive":
+                return cad_result
+            cad_reason = cad_result.reason
+            cad_timed_out = cad_result.timed_out
+
+    if allow_heuristic and heuristic_ready:
+        return _result(
+            "equivalent",
+            exact=False,
+            method="witness",
+            reason="heuristic-witness-agreement",
+        )
+
+    reason = cad_reason or slices.reason or "insufficient-witness-evidence"
+    return _result(
+        "inconclusive",
+        exact=False,
+        method="cad" if strategy in ("auto", "cad") else "witness",
+        accepted=False,
+        timed_out=cad_timed_out,
+        reason=reason,
+    )
 
 
 def equivalent(

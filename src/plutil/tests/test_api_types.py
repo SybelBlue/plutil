@@ -16,6 +16,8 @@ from plutil import (
     ChoiceSet,
     ExprInput,
     ExprLike,
+    ImplicitEquivalenceResult,
+    ImplicitWitnesses,
     MultipleChoiceOption,
     MultipleChoiceQuestion,
     PlValue,
@@ -24,6 +26,7 @@ from plutil import (
     SympyInput,
     SympyValue,
     defmt,
+    check_implicit_equivalence,
     domain,
     fmt,
     function_names,
@@ -109,6 +112,11 @@ def test_expression_apis_return_sympy_expressions() -> None:
         approximate_area(value, d=x, bounds=(0, 1), n=2, method="left"),
         ExprLike,
     )
+    assert_type(
+        check_implicit_equivalence(x, x, variables=x),
+        ImplicitEquivalenceResult,
+    )
+    assert_type(ImplicitWitnesses(eq=({x: 0},)), ImplicitWitnesses)
 
 
 def test_formatting_apis_return_strings() -> None:
