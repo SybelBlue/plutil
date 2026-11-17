@@ -25,8 +25,8 @@ from plutil import (
     SetLike,
     SympyInput,
     SympyValue,
-    defmt,
     check_implicit_equivalence,
+    defmt,
     domain,
     fmt,
     function_names,
@@ -117,6 +117,7 @@ def test_expression_apis_return_sympy_expressions() -> None:
         ImplicitEquivalenceResult,
     )
     assert_type(ImplicitWitnesses(eq=({x: 0},)), ImplicitWitnesses)
+    assert_type(ImplicitWitnesses(eq={x: sympy.Integers}), ImplicitWitnesses)
 
 
 def test_formatting_apis_return_strings() -> None:

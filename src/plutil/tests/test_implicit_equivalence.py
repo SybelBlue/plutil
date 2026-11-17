@@ -1,5 +1,8 @@
 from collections.abc import Callable
 from contextlib import AbstractContextManager
+from typing import Any
+
+import numpy as np
 import prairielearn as pl
 import pytest
 import sympy as sp
@@ -9,9 +12,9 @@ from plutil import (
     ImplicitWitnesses,
     SympyQuestion,
     check_implicit_equivalence,
+    equivalence,
     validate_implicit_polynomial_input,
 )
-from plutil import equivalence
 from plutil.tests.helpers import question_data
 
 
@@ -112,7 +115,7 @@ def test_authored_neq_witness_detects_an_isolated_extra_solution() -> None:
         reference,
         candidate,
         variables=(x, y),
-        witnesses=ImplicitWitnesses(neq=({x: 1, y: 0},)),
+        witnesses=ImplicitWitnesses(neq={x: 1, y: 0}),
     )
 
     assert result.verdict == "different"
@@ -128,7 +131,122 @@ def test_incorrectly_authored_witness_is_rejected() -> None:
             x**2 + y**2,
             x**2 + y**2,
             variables=(x, y),
-            witnesses=ImplicitWitnesses(eq=({x: 1, y: 0},)),
+            witnesses=ImplicitWitnesses(eq={x: 1, y: 0}),
+        )
+
+
+def test_implicit_witnesses_is_keyword_only() -> None:
+    fields = ImplicitWitnesses.__dataclass_fields__.values()
+
+    assert all(field.kw_only for field in fields)
+
+
+def test_eq_accepts_multiple_witness_points() -> None:
+    x, y = sp.symbols("x y")
+
+    result = check_implicit_equivalence(
+        x,
+        x + y,
+        variables=(x, y),
+        witnesses=ImplicitWitnesses(eq=({x: 0, y: 0}, {x: 0, y: 1})),
+    )
+
+    assert result.counterexample == {x: sp.Integer(0), y: sp.Integer(1)}
+    assert result.reason == "authored-witness-counterexample"
+
+
+def test_witness_coordinate_can_be_sampled_from_a_domain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    x, y = sp.symbols("x y")
+    domain = sp.Interval.open(2, 3)
+    calls: list[tuple[object, int, np.random.Generator]] = []
+
+    def fake_in_domain(
+        received_domain: object,
+        *,
+        k: int,
+        rng: np.random.Generator,
+    ) -> np.ndarray[Any, Any]:
+        calls.append((received_domain, k, rng))
+        return np.array([2.5])
+
+    monkeypatch.setattr(equivalence.rand.sp, "in_domain", fake_in_domain)
+
+    result = check_implicit_equivalence(
+        x,
+        x + y,
+        variables=(x, y),
+        witnesses=ImplicitWitnesses(eq={x: 0, y: domain}),
+        seed=1234,
+    )
+
+    assert result.verdict == "different"
+    assert result.exact
+    assert result.counterexample == {x: sp.Integer(0), y: sp.Rational(5, 2)}
+    assert len(calls) == 1
+    assert calls[0][:2] == (domain, 1)
+    assert isinstance(calls[0][2], np.random.Generator)
+
+
+def test_domain_witness_sampling_uses_the_checker_seed() -> None:
+    x, y = sp.symbols("x y")
+    witnesses = ImplicitWitnesses(eq={x: 0, y: sp.Reals})
+
+    first = check_implicit_equivalence(
+        x,
+        x + y,
+        variables=(x, y),
+        witnesses=witnesses,
+        seed=1234,
+    )
+    second = check_implicit_equivalence(
+        x,
+        x + y,
+        variables=(x, y),
+        witnesses=witnesses,
+        seed=1234,
+    )
+
+    assert first.counterexample == second.counterexample
+
+
+def test_domain_witness_sampling_inherits_the_shared_random_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    x, y = sp.symbols("x y")
+    calls: list[tuple[object, int]] = []
+
+    def fake_in_domain(
+        domain: object,
+        *,
+        k: int,
+    ) -> np.ndarray[Any, Any]:
+        calls.append((domain, k))
+        return np.array([2.5])
+
+    monkeypatch.setattr(equivalence.rand.sp, "in_domain", fake_in_domain)
+
+    result = check_implicit_equivalence(
+        x,
+        x + y,
+        variables=(x, y),
+        witnesses=ImplicitWitnesses(eq={x: 0, y: sp.Reals}),
+    )
+
+    assert result.counterexample == {x: sp.Integer(0), y: sp.Rational(5, 2)}
+    assert calls == [(sp.Reals, 1)]
+
+
+def test_domain_witness_must_sample_real_values() -> None:
+    x = sp.Symbol("x")
+
+    with pytest.raises(ValueError, match="sampled witness coordinates.*real"):
+        check_implicit_equivalence(
+            0,
+            x,
+            variables=x,
+            witnesses=ImplicitWitnesses(eq={x: sp.Complexes}),
         )
 
 

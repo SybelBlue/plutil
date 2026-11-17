@@ -11,9 +11,9 @@ zero sets agree in the requested region.
 from __future__ import annotations
 
 import random
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import Literal, TypeIs, cast
 
 import numpy as np
 import sympy as sp
@@ -58,21 +58,29 @@ type ImplicitVerdict = Literal["equivalent", "different", "inconclusive"]
 type ImplicitMethod = Literal["canonical", "witness", "cad"]
 type ImplicitStrategy = Literal["auto", "canonical", "witness", "cad"]
 type InconclusivePolicy = Literal["reject", "witness"]
-type WitnessPoint = Mapping[Variable, ExprInput]
+type WitnessCoordinate = ExprInput | rand.sp.Domain
+type WitnessPoint = Mapping[Variable, WitnessCoordinate]
 type VariableDomains = Mapping[Variable, sp.Set]
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ImplicitWitnesses:
-    """Exact points where both residuals should be zero or nonzero.
+    """Points where both residuals should be zero or nonzero.
 
     Every point must bind every declared variable and lie in the requested
     region. The reference residual is checked against each label so that an
     incorrectly authored witness fails loudly instead of changing grading.
+
+    A coordinate may be a supported real-valued ``rand.sp.Domain`` instead of
+    an exact value. Such coordinates are sampled once with
+    :func:`plutil.rand.sp.in_domain` when the witness is checked. Sampling uses
+    the surrounding :mod:`plutil.rand` state unless the implicit checker is
+    given an explicit seed. Numeric samples are converted to exact SymPy values
+    before the residuals are evaluated.
     """
 
-    eq: Sequence[WitnessPoint] = ()
-    neq: Sequence[WitnessPoint] = ()
+    eq: OneOrMore[WitnessPoint] = ()
+    neq: OneOrMore[WitnessPoint] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -405,6 +413,7 @@ def _point_value(poly: sp.Poly, point: Mapping[sp.Symbol, sp.Expr]) -> sp.Expr:
 def _normalize_witness_point(
     raw: WitnessPoint,
     variables: tuple[sp.Symbol, ...],
+    rng: np.random.Generator | None,
 ) -> dict[sp.Symbol, sp.Expr]:
     by_name = {symbol.name: symbol for symbol in variables}
     point: dict[sp.Symbol, sp.Expr] = {}
@@ -414,7 +423,10 @@ def _normalize_witness_point(
             raise _ImplicitInputError(f"unknown witness variable: {variable}")
         if symbol in point:
             raise _ImplicitInputError(f"witness binds {symbol} more than once")
-        value = _input_to_expr(raw_value)
+        if _is_witness_domain(raw_value):
+            value = _sample_witness_coordinate(raw_value, rng)
+        else:
+            value = _input_to_expr(raw_value)
         if value.free_symbols:
             raise _ImplicitInputError("witness coordinates must be constant")
         if value.has(sp.Float):
@@ -429,6 +441,52 @@ def _normalize_witness_point(
     return point
 
 
+def _is_witness_domain(value: WitnessCoordinate) -> TypeIs[rand.sp.Domain]:
+    return isinstance(value, sp.Interval) or any(
+        value is domain
+        for domain in (
+            sp.Complexes,
+            sp.Reals,
+            sp.Integers,
+            sp.Naturals,
+            sp.Naturals0,
+            sp.Rationals,
+        )
+    )
+
+
+def _sample_witness_coordinate(
+    domain: rand.sp.Domain,
+    rng: np.random.Generator | None,
+) -> sp.Expr:
+    samples = (
+        rand.sp.in_domain(domain, k=1)
+        if rng is None
+        else rand.sp.in_domain(domain, k=1, rng=rng)
+    )
+    sample = samples[0]
+    if isinstance(sample, np.integer):
+        value: sp.Expr = sp.Integer(int(sample))
+    elif isinstance(sample, np.floating):
+        if not np.isfinite(sample):
+            raise _ImplicitInputError(
+                "sampled witness coordinates must be finite real values"
+            )
+        value = sp.Rational(str(sample))
+    elif isinstance(sample, np.complexfloating):
+        raise _ImplicitInputError(
+            "sampled witness coordinates must be finite real values"
+        )
+    else:
+        value = _input_to_expr(sample)
+
+    if _in_domain(value, domain) is not True:
+        raise _ImplicitInputError(
+            "could not represent a sampled witness coordinate exactly in its domain"
+        )
+    return value
+
+
 def _check_authored_witnesses(
     reference: sp.Poly,
     candidate: sp.Poly,
@@ -436,11 +494,22 @@ def _check_authored_witnesses(
     condition: Boolean,
     domains: Mapping[sp.Symbol, sp.Set],
     witnesses: ImplicitWitnesses,
+    *,
+    seed: int | None,
 ) -> _SliceEvidence:
     eq_points: list[Mapping[sp.Symbol, sp.Expr]] = []
-    for expected_zero, points in ((True, witnesses.eq), (False, witnesses.neq)):
+    rng = (
+        None
+        if seed is None
+        else np.random.default_rng(random.Random(seed).getrandbits(128))
+    )
+    for expected_zero, point_spec in (
+        (True, witnesses.eq),
+        (False, witnesses.neq),
+    ):
+        points = (point_spec,) if isinstance(point_spec, Mapping) else point_spec
         for raw_point in points:
-            point = _normalize_witness_point(raw_point, variables)
+            point = _normalize_witness_point(raw_point, variables, rng)
             if _point_in_region(point, condition, domains) is not True:
                 raise _ImplicitInputError(
                     "every witness must lie in the comparison region"
@@ -533,7 +602,7 @@ def _slice_evidence(
     condition: Boolean,
     domains: Mapping[sp.Symbol, sp.Set],
     *,
-    seed: int,
+    seed: int | None,
     slices_per_variable: int,
 ) -> _SliceEvidence:
     if slices_per_variable <= 0:
@@ -541,7 +610,7 @@ def _slice_evidence(
     if not variables:
         return _SliceEvidence(None, (), exact_equivalent=True)
 
-    rng = random.Random(seed)
+    rng = random.Random(rand.base.getrandbits(128) if seed is None else seed)
     eq_by_key: dict[tuple[str, ...], Mapping[sp.Symbol, sp.Expr]] = {}
     undecidable_comparison = False
 
@@ -710,7 +779,7 @@ def check_implicit_equivalence(
     strategy: ImplicitStrategy = "auto",
     on_inconclusive: InconclusivePolicy = "reject",
     timeout_seconds: float = 1.0,
-    seed: int = 0,
+    seed: int | None = None,
     slices_per_variable: int = 5,
 ) -> ImplicitEquivalenceResult:
     """Compare the real zero sets of two polynomial residuals.
@@ -726,7 +795,9 @@ def check_implicit_equivalence(
     Exact checks fail closed. Pass ``on_inconclusive="witness"`` to allow
     heuristic acceptance after at least three distinct zero-set points agree.
     Multivariate slice agreement is evidence, not a proof. The number of
-    slices per variable must be between one and 20.
+    slices per variable must be between one and 20. Random sampling inherits
+    the surrounding :mod:`plutil.rand` state by default; pass ``seed`` to use
+    an isolated, reproducible stream instead.
 
     Raises:
         ValueError: If an expression, condition, domain, witness, option, or
@@ -778,6 +849,7 @@ def check_implicit_equivalence(
         base_condition,
         normalized_domains,
         witness_spec,
+        seed=seed,
     )
     if authored.counterexample is not None:
         return _result(

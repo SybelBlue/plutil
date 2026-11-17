@@ -38,6 +38,7 @@ subdirectory = "apps/prairielearn/python"
 
 [tool.pyright]
 exclude = [".venv", "**/__pycache__", "docs/_build", "src/plutil/_vendor"]
+ignore = ["src/plutil/_vendor"]
 reportUnnecessaryTypeIgnoreComment = "error"
 
 [tool.ruff]

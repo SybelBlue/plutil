@@ -129,10 +129,30 @@ instead of silently changing grading.
 from plutil import ImplicitWitnesses
 
 witnesses = ImplicitWitnesses(
-    eq=({x: 0, y: 0},),
-    neq=({x: 1, y: 0},),
+    eq={x: 0, y: 0},
+    neq={x: 1, y: 0},
 )
 ```
+
+`ImplicitWitnesses` is keyword-only. Both `eq` and `neq` accept either one
+point mapping, as above, or a sequence of point mappings.
+
+To sample a coordinate, use any domain supported by `rand.sp.in_domain` in
+place of its exact value. This is useful when fixed coordinates already force
+a point onto or off the reference zero set. The checker draws one value for
+each domain coordinate, converts it to an exact SymPy value, and then performs
+the same region and label validation as it does for a fully authored point:
+
+```python
+witnesses = ImplicitWitnesses(
+    eq={x: 0, y: sp.Interval(-5, 5)},
+)
+```
+
+By default, sampling inherits the surrounding `plutil.rand` state, including
+the seed established by PrairieLearn. Pass
+`check_implicit_equivalence(seed=...)` to use an isolated, reproducible stream.
+Repeat a witness template in `eq` or `neq` to draw more than one point.
 
 Witnesses are particularly useful for isolated points and components that a
 small deterministic family of slices might miss.
