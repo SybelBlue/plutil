@@ -328,6 +328,34 @@ def test_cad_timeout_can_use_an_explicit_witness_fallback(
     assert result.reason == "heuristic-witness-agreement"
 
 
+def test_witness_strategy_still_requires_explicit_heuristic_acceptance() -> None:
+    x, y, z = sp.symbols("x y z")
+    candidate = x**2 + y * z - 3
+    reference = (x**2 + y**2 + z**2) * candidate
+
+    rejected = check_implicit_equivalence(
+        reference,
+        candidate,
+        variables=(x, y, z),
+        strategy="witness",
+        seed=1234,
+    )
+    accepted = check_implicit_equivalence(
+        reference,
+        candidate,
+        variables=(x, y, z),
+        strategy="witness",
+        on_inconclusive="witness",
+        seed=1234,
+    )
+
+    assert rejected.verdict == "inconclusive"
+    assert not rejected.accepted
+    assert accepted.verdict == "equivalent"
+    assert accepted.accepted
+    assert not accepted.exact
+
+
 def test_cad_limits_fail_closed_before_running_cad() -> None:
     x, y = sp.symbols("x y")
     condition = sp.And(x > -10, x < 10, y > -10, y < 10, x + y > -20)

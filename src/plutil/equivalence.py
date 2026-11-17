@@ -977,7 +977,7 @@ def check_implicit_equivalence(
         for point in (*authored.eq_points, *slices.eq_points)
     }
     heuristic_ready = len(eq_points) >= _MIN_HEURISTIC_EQ_WITNESSES
-    allow_heuristic = strategy == "witness" or on_inconclusive == "witness"
+    allow_heuristic = on_inconclusive == "witness"
 
     cad_reason: str | None = None
     cad_timed_out = False
