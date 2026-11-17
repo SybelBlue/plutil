@@ -48,6 +48,40 @@ def test_univariate_root_comparison_is_an_exact_fallback() -> None:
     assert result.method == "witness"
 
 
+def test_univariate_root_comparison_uses_polynomial_gcd_for_rootof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    x = sp.Symbol("x")
+    polynomial = sp.Poly(x**4 - x - 1, x, domain=sp.QQ)
+    original_simplify = equivalence.sp.simplify
+
+    def reject_rootof_simplification(
+        value: Any, *args: object, **kwargs: object
+    ) -> Any:
+        expression = sp.sympify(value)
+        if expression.has(sp.CRootOf):
+            pytest.fail(
+                "slice agreement must not simplify expressions at CRootOf roots"
+            )
+        return original_simplify(value, *args, **kwargs)
+
+    monkeypatch.setattr(equivalence.sp, "simplify", reject_rootof_simplification)
+
+    evidence = equivalence._slice_evidence(
+        polynomial,
+        polynomial,
+        (x,),
+        sp.true,
+        {x: sp.Reals},
+        seed=1234,
+        slices_per_variable=5,
+    )
+
+    assert evidence.exact_equivalent
+    assert evidence.counterexample is None
+    assert len(evidence.eq_points) == 2
+
+
 def test_slices_return_an_exact_counterexample() -> None:
     x, y = sp.symbols("x y")
 

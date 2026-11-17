@@ -731,11 +731,18 @@ def _slice_evidence(
                     undecidable_comparison = True
                 continue
 
-            for source_line, other_line in (
-                (reference_line, candidate_line),
-                (candidate_line, reference_line),
+            reference_roots = reference_line.sqf_part()
+            candidate_roots = candidate_line.sqf_part()
+            shared_roots = reference_roots.gcd(candidate_roots)
+            reference_only = reference_roots.exquo(shared_roots)
+            candidate_only = candidate_roots.exquo(shared_roots)
+
+            for root_poly, is_counterexample in (
+                (reference_only, True),
+                (candidate_only, True),
+                (shared_roots, False),
             ):
-                for root in _roots(source_line):
+                for root in _roots(root_poly):
                     domain_truth = _in_domain(root, domains[pivot])
                     if domain_truth is None:
                         undecidable_comparison = True
@@ -749,14 +756,8 @@ def _slice_evidence(
                         continue
                     if not region_truth:
                         continue
-                    other_zero = sp.simplify(
-                        other_line.as_expr().subs(pivot, root)
-                    ).is_zero
-                    if other_zero is False:
+                    if is_counterexample:
                         return _SliceEvidence(point, tuple(eq_by_key.values()))
-                    if other_zero is None:
-                        undecidable_comparison = True
-                        continue
                     key = tuple(sp.srepr(point[symbol]) for symbol in variables)
                     eq_by_key[key] = point
 
