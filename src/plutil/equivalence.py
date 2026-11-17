@@ -791,32 +791,45 @@ def _cad_decide(
     )
     liftings = None
     equivalent = False
-    timeout = timeout_utils.SignalTimeout(timeout_seconds, swallow_exc=False)
     try:
-        from ._vendor.sympy_extras.polys.cad.lifting import _liftings as liftings
-        from ._vendor.sympy_extras.polys.cad.qe import decide
+        try:
+            from ._vendor.sympy_extras.polys.cad.lifting import _liftings as liftings
+            from ._vendor.sympy_extras.polys.cad.qe import decide
+        except Exception as exc:  # noqa: BLE001 - optional CAD backend import
+            return _result(
+                "inconclusive",
+                exact=False,
+                method="cad",
+                accepted=False,
+                reason=f"cad-error:{type(exc).__name__}",
+            )
 
-        with timeout:
-            equivalent = decide(formula, [("forall", variables)])
-    except timeout_utils.TimeoutExceptionError as exc:
-        if exc.timeout is not timeout:
-            raise
-        return _result(
-            "inconclusive",
-            exact=False,
-            method="cad",
-            accepted=False,
-            timed_out=True,
-            reason="cad-timeout",
-        )
-    except Exception as exc:  # noqa: BLE001 - isolate the optional CAD backend
-        return _result(
-            "inconclusive",
-            exact=False,
-            method="cad",
-            accepted=False,
-            reason=f"cad-error:{type(exc).__name__}",
-        )
+        timeout = timeout_utils.SignalTimeout(timeout_seconds, swallow_exc=False)
+        try:
+            with timeout:
+                try:
+                    equivalent = decide(formula, [("forall", variables)])
+                except timeout_utils.TimeoutExceptionError:
+                    raise
+                except Exception as exc:  # noqa: BLE001 - isolate CAD backend
+                    return _result(
+                        "inconclusive",
+                        exact=False,
+                        method="cad",
+                        accepted=False,
+                        reason=f"cad-error:{type(exc).__name__}",
+                    )
+        except timeout_utils.TimeoutExceptionError as exc:
+            if exc.timeout is not timeout:
+                raise
+            return _result(
+                "inconclusive",
+                exact=False,
+                method="cad",
+                accepted=False,
+                timed_out=True,
+                reason="cad-timeout",
+            )
     finally:
         if liftings is not None:
             liftings.clear()

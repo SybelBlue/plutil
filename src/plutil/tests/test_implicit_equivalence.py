@@ -324,6 +324,26 @@ def test_cad_does_not_swallow_an_enclosing_timeout(
     assert exc_info.value.timeout is enclosing_timeout
 
 
+def test_cad_timeout_setup_errors_propagate(monkeypatch: pytest.MonkeyPatch) -> None:
+    x, y = sp.symbols("x y")
+
+    class BrokenTimeout(AbstractContextManager[None]):
+        def __enter__(self) -> None:
+            raise RuntimeError("existing timer")
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+    monkeypatch.setattr(
+        equivalence.timeout_utils,
+        "SignalTimeout",
+        lambda *args, **kwargs: BrokenTimeout(),
+    )
+
+    with pytest.raises(RuntimeError, match="existing timer"):
+        check_implicit_equivalence(x, x * (y**2 + 1), variables=(x, y))
+
+
 def test_cad_timeout_can_use_an_explicit_witness_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
