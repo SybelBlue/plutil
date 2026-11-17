@@ -612,11 +612,13 @@ def _rational_samples(
     if count <= 0:
         return ()
     if domain is sp.Reals:
-        candidates = [
-            sp.Rational(numerator, denominator)
-            for denominator in (1, 2, 3)
-            for numerator in range(-6, 7)
-        ]
+        candidates = sorted(
+            {
+                sp.Rational(numerator, denominator)
+                for denominator in (1, 2, 3)
+                for numerator in range(-6, 7)
+            }
+        )
         rng.shuffle(candidates)
         return tuple(candidates[:count])
 
@@ -626,15 +628,18 @@ def _rational_samples(
         return _rational_samples(sp.Reals, count, rng)
     if start == -sp.oo:
         assert end.is_Rational
-        return tuple(sp.Rational(end) - index for index in range(1, count + 1))
-    if end == sp.oo:
+        candidates = [sp.Rational(end) - index for index in range(1, count + 1)]
+    elif end == sp.oo:
         assert start.is_Rational
-        return tuple(sp.Rational(start) + index for index in range(1, count + 1))
-    start_q, end_q = sp.Rational(start), sp.Rational(end)
-    return tuple(
-        start_q + (end_q - start_q) * sp.Rational(index, count + 1)
-        for index in range(1, count + 1)
-    )
+        candidates = [sp.Rational(start) + index for index in range(1, count + 1)]
+    else:
+        start_q, end_q = sp.Rational(start), sp.Rational(end)
+        candidates = [
+            start_q + (end_q - start_q) * sp.Rational(index, count + 1)
+            for index in range(1, count + 1)
+        ]
+    rng.shuffle(candidates)
+    return tuple(candidates)
 
 
 def _line_counterexample(

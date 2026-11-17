@@ -396,6 +396,18 @@ def test_witness_strategy_still_requires_explicit_heuristic_acceptance() -> None
     assert not accepted.exact
 
 
+def test_slice_samples_are_unique_and_independently_shuffled() -> None:
+    rng = equivalence.random.Random(1234)
+
+    real_samples = equivalence._rational_samples(sp.Reals, 20, rng)
+    first_interval_samples = equivalence._rational_samples(sp.Interval(0, 1), 5, rng)
+    second_interval_samples = equivalence._rational_samples(sp.Interval(0, 1), 5, rng)
+
+    assert len(real_samples) == len(set(real_samples))
+    assert set(first_interval_samples) == set(second_interval_samples)
+    assert first_interval_samples != second_interval_samples
+
+
 def test_cad_limits_fail_closed_before_running_cad() -> None:
     x, y = sp.symbols("x y")
     condition = sp.And(x > -10, x < 10, y > -10, y < 10, x + y > -20)
