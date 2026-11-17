@@ -141,6 +141,12 @@ def test_eval_at_substitutes_numeric_values_and_simplifies() -> None:
     assert eval_at(x**2 - y**2, x=y) == 0
 
 
+def test_eval_at_matches_symbols_with_assumptions() -> None:
+    real_x = sympy.Symbol("x", real=True)
+
+    assert eval_at(real_x**2 + 1, x=3) == 10
+
+
 @pytest.mark.parametrize(
     "value",
     [sympy.FiniteSet(1), sympy.true, sympy.Tuple(1, 2)],
