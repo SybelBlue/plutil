@@ -39,6 +39,21 @@ from plutil import require_expr
 substituted = require_expr(expr.subs(x, 2))
 ```
 
+## `hypot(a, b) -> Expr`
+
+Return the exact symbolic hypotenuse of two perpendicular sides. Unlike
+`math.hypot`, this preserves SymPy expressions and accepts any `ExprInput`,
+including serialized PrairieLearn symbolic values.
+
+```python
+from sympy.abc import x, y
+
+from plutil.common import hypot
+
+hypot(3, 4)  # -> 5
+hypot(x, y)  # -> sqrt(x**2 + y**2)
+```
+
 ## `eq(left, right) -> bool`
 
 Check symbolic equality after simplification (`simplify(left - right) == 0`).
