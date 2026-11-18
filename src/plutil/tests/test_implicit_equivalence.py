@@ -103,11 +103,13 @@ def test_point_evaluation_does_not_call_simplify(
     assert equivalence._point_value(sp.sqrt(x), {x: sp.Integer(4)}) == 2
 
 
-def test_point_zero_falls_back_when_is_zero_is_unknown() -> None:
-    value = sp.UnevaluatedExpr(0)
+def test_point_zero_is_inconclusive_for_non_algebraic_identity() -> None:
+    x = sp.sin(1) ** 2 + sp.cos(1) ** 2
+    value = sp.sqrt(x) - 1
 
     assert value.is_zero is None
-    assert equivalence._point_is_zero(value, {}, timeout_seconds=1.0) is True
+    assert value.equals(0)
+    assert equivalence._point_is_zero(value, {}, timeout_seconds=1.0) is None
 
 
 def test_slices_return_an_exact_counterexample() -> None:

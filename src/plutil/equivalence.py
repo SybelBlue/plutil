@@ -873,7 +873,7 @@ def _point_is_zero(
             try:
                 minimum = sp.minimal_polynomial(value, indeterminate)
             except (NotAlgebraic, PolynomialError, TypeError, ValueError):
-                return value.equals(0)
+                return None
             minimum_at_zero = cast(sp.Expr, minimum.subs(indeterminate, 0))
             return minimum_at_zero.is_zero
     except timeout_utils.TimeoutExceptionError as exc:
