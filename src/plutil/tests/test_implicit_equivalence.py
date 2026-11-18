@@ -1017,6 +1017,36 @@ def test_polynomial_residual_runs_one_structural_degree_walk(
     assert calls == 1
 
 
+def test_polynomial_residual_runs_one_input_validation_prelude(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    x = sp.Symbol("x")
+    calls = 0
+    original_validate = equivalence._validated_implicit_expr
+
+    def counted_validate(*args: Any, **kwargs: Any) -> sp.Expr:
+        nonlocal calls
+        calls += 1
+        return original_validate(*args, **kwargs)
+
+    monkeypatch.setattr(
+        equivalence,
+        "_validated_implicit_expr",
+        counted_validate,
+    )
+
+    residual = equivalence._residual(
+        x**2 - 1,
+        (x,),
+        max_total_degree=4,
+        max_terms=30,
+        max_coefficient_bits=64,
+    )
+
+    assert isinstance(residual, sp.Poly)
+    assert calls == 1
+
+
 def test_non_polynomial_branches_are_rejected_before_polynomial_expansion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

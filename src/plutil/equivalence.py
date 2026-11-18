@@ -175,6 +175,27 @@ def _implicit_input_expr(
         ) from exc
 
 
+def _validated_implicit_expr(
+    value: ExprInput | sp.Expr,
+    variables: tuple[sp.Symbol, ...],
+    *,
+    align_symbols: bool = True,
+) -> sp.Expr:
+    expr = (
+        _implicit_input_expr(value, variables)
+        if align_symbols
+        else cast(sp.Expr, value)
+    )
+    if expr.has(sp.Float):
+        raise _ImplicitInputError("use exact rational coefficients, not decimals")
+    if extra := expr.free_symbols - set(variables):
+        names = ", ".join(sorted(str(symbol) for symbol in extra))
+        raise _ImplicitInputError(f"undeclared variables: {names}")
+    if sp.count_ops(expr) > _MAX_VALIDATION_OPS:
+        raise _ImplicitInputError("the expression is too large")
+    return expr
+
+
 def _variables(variables: OneOrMore[Variable]) -> tuple[sp.Symbol, ...]:
     symbols = tuple(var_to_symbol(item) for item in _normalize_one_or_more(variables))
     if len({symbol.name for symbol in symbols}) != len(symbols):
@@ -313,14 +334,7 @@ def _residual(
     max_terms: int,
     max_coefficient_bits: int,
 ) -> sp.Poly | sp.Expr:
-    expr = _implicit_input_expr(value, variables)
-    if expr.has(sp.Float):
-        raise _ImplicitInputError("use exact rational coefficients, not decimals")
-    if extra := expr.free_symbols - set(variables):
-        names = ", ".join(sorted(str(symbol) for symbol in extra))
-        raise _ImplicitInputError(f"undeclared variables: {names}")
-    if sp.count_ops(expr) > _MAX_VALIDATION_OPS:
-        raise _ImplicitInputError("the expression is too large")
+    expr = _validated_implicit_expr(value, variables)
 
     powered = _validate_polynomial_structure(
         expr,
@@ -333,6 +347,7 @@ def _residual(
     return _polynomial(
         expr,
         variables,
+        input_validated=True,
         structure_validated=True,
         max_total_degree=max_total_degree,
         max_terms=max_terms,
@@ -345,23 +360,21 @@ def _polynomial(
     variables: tuple[sp.Symbol, ...],
     *,
     align_symbols: bool = True,
+    input_validated: bool = False,
     structure_validated: bool = False,
     max_total_degree: int | None = None,
     max_terms: int | None = None,
     max_coefficient_bits: int | None = None,
 ) -> sp.Poly:
     expr = (
-        _implicit_input_expr(value, variables)
-        if align_symbols
-        else cast(sp.Expr, value)
+        cast(sp.Expr, value)
+        if input_validated
+        else _validated_implicit_expr(
+            value,
+            variables,
+            align_symbols=align_symbols,
+        )
     )
-    if expr.has(sp.Float):
-        raise _ImplicitInputError("use exact rational coefficients, not decimals")
-    if extra := expr.free_symbols - set(variables):
-        names = ", ".join(sorted(str(symbol) for symbol in extra))
-        raise _ImplicitInputError(f"undeclared variables: {names}")
-    if sp.count_ops(expr) > _MAX_VALIDATION_OPS:
-        raise _ImplicitInputError("the expression is too large")
 
     if max_total_degree is not None and not structure_validated:
         _validate_polynomial_structure(expr, set(variables), max_total_degree)
