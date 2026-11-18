@@ -25,41 +25,75 @@ assert result.accepted
 assert result.exact
 ```
 
-## Supported polynomial contract
+## Supported exact contract
 
 This API intentionally supports a bounded subset so a student submission
 cannot start an unbounded symbolic calculation. Every residual and individual
 region polynomial must satisfy these limits:
 
-- residuals are polynomials over exact rational coefficients;
+- residuals are polynomials over exact rational coefficients or use supported
+  noninteger rational powers;
 - variables are real;
-- residual and region polynomials have total degree at most four;
+- residual, region, and generated defining polynomials have total degree at
+  most four;
 - each polynomial has at most 30 terms; and
 - coefficient numerators and denominators fit in 64 bits.
 
-The exact CAD tier additionally accepts at most three variables, four authored
-region relations, and 60 terms across the complete request. A request outside
-that CAD envelope can still find an exact slice counterexample or use the
-explicit witness policy, but it otherwise returns inconclusive.
+The exact CAD tier additionally accepts at most three original plus generated
+variables, four authored region relations, and 60 terms across the complete
+request. Each distinct rational-power expression introduces one generated
+variable; an identical expression shared by the residuals is reused.
+
+Rational powers follow SymPy's principal-real convention. A noninteger power
+requires a nonnegative base, including powers with odd denominators, and a
+negative noninteger power requires a strictly positive base. The checker proves
+these requirements over the entire region before comparing zero sets. Put the
+needed guards in `condition` or `domains`:
+
+```python
+result = check_implicit_equivalence(
+    sp.sqrt(x) + y,
+    x - y**2,
+    variables=(x, y),
+    condition=sp.And(x >= 0, y <= 0),
+)
+
+assert result.verdict == "equivalent"
+assert result.exact
+```
+
+Positive and negative fractional powers use the same exact lowering. For
+example, `x**sp.Rational(3, 2)` is supported where `x >= 0`, and
+`x**sp.Rational(-1, 2)` is supported where `x > 0`. Rational powers are only
+supported in residuals; region conditions remain polynomial, interval
+endpoints remain rational, and negative integer powers remain unsupported.
 
 Decimals are not silently rationalized. If a question permits decimal input,
 run `parse_symbolic_decimals` first and then validate the resulting exact
-expression. Call `validate_implicit_polynomial_input` from `parse(data)` so an
-unsupported student answer becomes a format error before grading:
+expression. Call `validate_implicit_expression_input` from `parse(data)` when
+the question admits rational powers. Pass the same region used for grading so
+the helper can prove that every submitted power is defined:
 
 ```python
+import sympy as sp
+
 from plutil import (
     SympyQuestion,
     parse_symbolic_decimals,
-    validate_implicit_polynomial_input,
+    validate_implicit_expression_input,
 )
 
 
 def parse(data):
-    answer = SympyQuestion(data, "curve", variables=("x", "y"))
+    x, y = sp.symbols("x y")
+    answer = SympyQuestion(data, "curve", variables=(x, y))
     parse_symbolic_decimals(answer)
-    validate_implicit_polynomial_input(answer)
+    validate_implicit_expression_input(answer, condition=x >= 0)
 ```
+
+Use `validate_implicit_polynomial_input` instead when the question intentionally
+requires a strict polynomial answer; that API continues to reject rational
+powers.
 
 The checker enforces the residual limits again. The parse helper is still
 important because it gives students an actionable format error and prevents a
@@ -69,13 +103,15 @@ known-unsupported answer from reaching grading.
 
 The default `strategy="auto"` is tiered:
 
-1. Normalize square-free polynomial factors. This exactly proves common cases
+1. For polynomial residuals, normalize square-free factors. This exactly proves common cases
    such as scalar multiples and repeated factors.
 2. Compare exact roots on randomly sampled univariate slices. A mismatch is an
    exact counterexample; in one variable, a complete root comparison is an
    exact decision. Pass `seed` for reproducible slice selection.
 3. Run a vendored pure-Python CAD implementation inside a one-second signal
-   timeout and the complexity envelope above.
+   timeout and the complexity envelope above. Powered residuals skip the first
+   two polynomial-only tiers, are converted to exact polynomial constraints,
+   and use CAD for both definedness and equivalence.
 
 A CAD timeout, unsupported CAD region, or backend failure returns
 `verdict="inconclusive"` and `accepted=False`. This is the safe default for

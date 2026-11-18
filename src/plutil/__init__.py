@@ -46,6 +46,7 @@ from .equivalence import (
     ImplicitWitnesses,
     check_implicit_equivalence,
     equivalent,
+    validate_implicit_expression_input,
     validate_implicit_polynomial_input,
 )
 from .functions import (
@@ -140,5 +141,6 @@ __all__: Final[tuple[str, ...]] = (
     "spint",
     "to_expr",
     "truncate_to_significant_digits",
+    "validate_implicit_expression_input",
     "validate_implicit_polynomial_input",
 )

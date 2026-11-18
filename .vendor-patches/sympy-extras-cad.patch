@@ -21,6 +21,15 @@ index 9b22d17..2a47c1c 100644
 -    'sample_points', 'solution_set', 'truth_tables', 'IndexedRoot',
 -    'cylindrical_formula', 'cylindrical_set', 'cylindrical_cases', 'augmented_projection_sets']
 +    'sample_points', 'solution_set', 'truth_tables', 'augmented_projection_sets']
+diff --git a/sympy_extras/assumptions/bounds.py b/sympy_extras/assumptions/bounds.py
+index 5ecc363..d618bc6 100644
+--- a/sympy_extras/assumptions/bounds.py
++++ b/sympy_extras/assumptions/bounds.py
+@@ -41,3 +41,2 @@
+-from sympy_extras._typing import as_boolean, as_expr, free_symbols
++from plutil._vendor.sympy_extras._typing import as_boolean, as_expr, free_symbols
+-
+ __all__ = ['polynomial_abstraction', 'Abstraction']
 diff --git a/sympy_extras/polys/cad/lifting.py b/sympy_extras/polys/cad/lifting.py
 index b321b7d..16ac58c 100644
 --- a/sympy_extras/polys/cad/lifting.py

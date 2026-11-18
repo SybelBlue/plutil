@@ -13,6 +13,7 @@ from plutil import (
     SympyQuestion,
     check_implicit_equivalence,
     equivalence,
+    validate_implicit_expression_input,
     validate_implicit_polynomial_input,
 )
 from plutil.tests.helpers import question_data
@@ -613,7 +614,7 @@ def test_checker_rejects_inputs_outside_the_bounded_polynomial_contract(
         check_implicit_equivalence(x, candidate(x), variables=x)
 
 
-@pytest.mark.parametrize("coefficient", [sp.pi, sp.sqrt(2), sp.I])
+@pytest.mark.parametrize("coefficient", [sp.pi, sp.I])
 def test_checker_reports_unsupported_coefficients_as_value_errors(
     coefficient: sp.Expr,
 ) -> None:
@@ -621,6 +622,191 @@ def test_checker_reports_unsupported_coefficients_as_value_errors(
 
     with pytest.raises(ValueError, match="polynomial with rational coefficients"):
         check_implicit_equivalence(coefficient * x, x, variables=x)
+
+
+def test_exact_algebraic_constant_is_supported_as_a_rational_power() -> None:
+    x = sp.Symbol("x")
+
+    result = check_implicit_equivalence(sp.sqrt(2) * x, x, variables=x)
+
+    assert result.verdict == "equivalent"
+    assert result.exact
+    assert result.method == "cad"
+
+
+@pytest.mark.parametrize(
+    ("reference", "candidate", "condition"),
+    [
+        (
+            lambda x, y: sp.sqrt(x) + y,
+            lambda x, y: x - y**2,
+            lambda x, y: sp.And(x >= 0, y <= 0),
+        ),
+        (
+            lambda x, y: x ** sp.Rational(3, 2) - y,
+            lambda x, y: x**3 - y**2,
+            lambda x, y: sp.And(x >= 0, y >= 0),
+        ),
+        (
+            lambda x, y: x ** sp.Rational(-1, 2) - y,
+            lambda x, y: x * y**2 - 1,
+            lambda x, y: sp.And(x > 0, y > 0),
+        ),
+    ],
+)
+def test_cad_proves_supported_rational_power_equivalences(
+    reference: Callable[[sp.Symbol, sp.Symbol], sp.Expr],
+    candidate: Callable[[sp.Symbol, sp.Symbol], sp.Expr],
+    condition: Callable[[sp.Symbol, sp.Symbol], sp.Basic],
+) -> None:
+    x, y = sp.symbols("x y")
+
+    result = check_implicit_equivalence(
+        reference(x, y),
+        candidate(x, y),
+        variables=(x, y),
+        condition=condition(x, y),
+    )
+
+    assert result.verdict == "equivalent"
+    assert result.exact
+    assert result.method == "cad"
+
+
+def test_cad_detects_the_wrong_square_root_branch() -> None:
+    x, y = sp.symbols("x y")
+
+    result = check_implicit_equivalence(
+        sp.sqrt(x) + y,
+        x - y**2,
+        variables=(x, y),
+        condition=x >= 0,
+    )
+
+    assert result.verdict == "different"
+    assert result.exact
+
+
+@pytest.mark.parametrize(
+    ("expression", "condition"),
+    [
+        (lambda x: sp.sqrt(x), lambda x: sp.true),
+        (lambda x: x ** sp.Rational(-1, 2), lambda x: x >= 0),
+        (lambda x: x ** sp.Rational(1, 3), lambda x: x < 0),
+    ],
+)
+def test_powered_residual_must_be_defined_throughout_the_region(
+    expression: Callable[[sp.Symbol], sp.Expr],
+    condition: Callable[[sp.Symbol], sp.Basic],
+) -> None:
+    x = sp.Symbol("x")
+    residual = expression(x)
+
+    with pytest.raises(ValueError, match="real and defined throughout"):
+        check_implicit_equivalence(
+            residual,
+            residual,
+            variables=x,
+            condition=condition(x),
+        )
+
+
+def test_powered_residual_counts_generated_variables_in_the_cad_limit() -> None:
+    x, y = sp.symbols("x y")
+    residual = sp.sqrt(x) + sp.sqrt(y)
+
+    with pytest.raises(ValueError, match="at most 3 original and generated"):
+        check_implicit_equivalence(
+            residual,
+            residual,
+            variables=(x, y),
+            condition=sp.And(x >= 0, y >= 0),
+        )
+
+
+def test_nested_rational_powers_are_supported_within_the_variable_limit() -> None:
+    x = sp.Symbol("x")
+    residual = sp.Pow(sp.sqrt(x), sp.Rational(1, 2), evaluate=False)
+
+    result = check_implicit_equivalence(
+        residual,
+        residual,
+        variables=x,
+        condition=x >= 0,
+    )
+
+    assert result.verdict == "equivalent"
+    assert result.exact
+
+
+def test_powered_solver_abstracts_once_and_shares_one_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from plutil._vendor.sympy_extras.assumptions import bounds
+    from plutil._vendor.sympy_extras.polys.cad import qe
+
+    x, y = sp.symbols("x y")
+    abstraction_calls = 0
+    decide_calls = 0
+    timeout_calls = 0
+    original_abstraction = bounds.polynomial_abstraction
+    original_decide = qe.decide
+    original_timeout = equivalence.timeout_utils.SignalTimeout
+
+    def counted_abstraction(*args: Any, **kwargs: Any) -> Any:
+        nonlocal abstraction_calls
+        abstraction_calls += 1
+        return original_abstraction(*args, **kwargs)
+
+    def counted_decide(*args: Any, **kwargs: Any) -> Any:
+        nonlocal decide_calls
+        decide_calls += 1
+        return original_decide(*args, **kwargs)
+
+    def counted_timeout(*args: Any, **kwargs: Any) -> Any:
+        nonlocal timeout_calls
+        timeout_calls += 1
+        return original_timeout(*args, **kwargs)
+
+    monkeypatch.setattr(bounds, "polynomial_abstraction", counted_abstraction)
+    monkeypatch.setattr(qe, "decide", counted_decide)
+    monkeypatch.setattr(equivalence.timeout_utils, "SignalTimeout", counted_timeout)
+
+    result = check_implicit_equivalence(
+        sp.sqrt(x) + y,
+        x - y**2,
+        variables=(x, y),
+        condition=sp.And(x >= 0, y <= 0),
+    )
+
+    assert result.verdict == "equivalent"
+    assert abstraction_calls == 1
+    assert decide_calls == 2
+    assert timeout_calls == 1
+
+
+def test_rational_power_degree_is_rejected_before_abstraction() -> None:
+    x = sp.Symbol("x")
+
+    with pytest.raises(ValueError, match="defining polynomial"):
+        check_implicit_equivalence(
+            x ** sp.Rational(5, 2),
+            x,
+            variables=x,
+            condition=x >= 0,
+        )
+
+
+def test_rational_powers_remain_unsupported_in_region_conditions() -> None:
+    x = sp.Symbol("x")
+
+    with pytest.raises(ValueError, match="polynomial with rational coefficients"):
+        check_implicit_equivalence(
+            sp.sqrt(x),
+            sp.sqrt(x),
+            variables=x,
+            condition=sp.sqrt(x) > 1,
+        )
 
 
 def test_parse_helper_reports_an_unsupported_coefficient_as_a_format_error() -> None:
@@ -772,6 +958,47 @@ def test_parse_helper_accepts_a_supported_polynomial() -> None:
         SympyQuestion(data, "answer", variables=(x, y))
     )
     assert data["format_errors"] == {}
+
+
+def test_expression_parse_helper_accepts_a_defined_rational_power() -> None:
+    x = sp.Symbol("x")
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(sp.sqrt(x))},
+        format_errors={},
+    )
+
+    assert validate_implicit_expression_input(
+        SympyQuestion(data, "answer", variables=x),
+        condition=x >= 0,
+    )
+    assert data["format_errors"] == {}
+
+
+def test_expression_parse_helper_rejects_an_unproved_rational_power_domain() -> None:
+    x = sp.Symbol("x")
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(sp.sqrt(x))},
+        format_errors={},
+    )
+
+    assert not validate_implicit_expression_input(
+        SympyQuestion(data, "answer", variables=x)
+    )
+    assert data["submitted_answers"]["answer"] is None
+    assert "real and defined throughout" in data["format_errors"]["answer"]
+
+
+def test_strict_polynomial_parse_helper_still_rejects_rational_powers() -> None:
+    x = sp.Symbol("x")
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(sp.sqrt(x))},
+        format_errors={},
+    )
+
+    assert not validate_implicit_polynomial_input(
+        SympyQuestion(data, "answer", variables=x)
+    )
+    assert "polynomial with rational coefficients" in data["format_errors"]["answer"]
 
 
 def test_parse_helper_accepts_a_real_variable_with_plain_serialized_symbols() -> None:

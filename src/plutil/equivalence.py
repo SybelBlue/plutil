@@ -113,8 +113,24 @@ class _SliceEvidence:
     reason: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class _PoweredCadDecision:
+    domain_valid: bool
+    equivalent: bool | None = None
+    timed_out: bool = False
+    reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _PoweredProblem:
+    formula: Boolean
+    constraints: tuple[Boolean, ...]
+    variables: tuple[sp.Symbol, ...]
+    polynomials: tuple[sp.Poly, ...]
+
+
 class _ImplicitInputError(ValueError):
-    """An implicit-equation input is outside the supported polynomial subset."""
+    """An implicit-equation input is outside the supported exact subset."""
 
 
 def _align_symbols_by_name[T: sp.Basic](
@@ -247,6 +263,120 @@ def _validate_polynomial_structure(
         raise _ImplicitInputError(
             f"the total degree must not exceed {max_total_degree}"
         )
+
+
+def _validate_residual_structure(
+    expr: sp.Expr,
+    variables: set[sp.Symbol],
+    max_total_degree: int,
+) -> bool:
+    """Validate the first-party exact-expression subset before abstraction.
+
+    The returned flag says whether the expression contains a noninteger
+    rational power. Such a power is treated as a fresh degree-one variable,
+    while its defining polynomial is checked separately. This prevents the
+    vendored abstraction helper from expanding an expression beyond the CAD
+    envelope.
+    """
+
+    has_rational_power = False
+
+    def degree(value: sp.Basic) -> int:
+        nonlocal has_rational_power
+        if value.is_Atom:
+            if value in variables:
+                return 1
+            if isinstance(value, sp.Rational):
+                return 0
+            raise _ImplicitInputError(
+                "the expression must be a polynomial with rational coefficients "
+                "or supported rational powers"
+            )
+        if isinstance(value, sp.Add):
+            result = max((degree(argument) for argument in value.args), default=0)
+        elif isinstance(value, sp.Mul):
+            result = 0
+            for argument in value.args:
+                result += degree(argument)
+                if result > max_total_degree:
+                    break
+        elif isinstance(value, sp.Pow):
+            exponent = value.exp
+            if not isinstance(exponent, sp.Rational):
+                raise _ImplicitInputError("power exponents must be exact rationals")
+            base_degree = degree(value.base)
+            if exponent.q == 1:
+                if exponent < 0:
+                    raise _ImplicitInputError(
+                        "negative integer powers are not supported"
+                    )
+                result = base_degree * int(exponent)
+            else:
+                has_rational_power = True
+                numerator = int(exponent.p)
+                denominator = int(exponent.q)
+                if abs(numerator) > max_total_degree:
+                    raise _ImplicitInputError(
+                        "a rational-power defining polynomial would exceed "
+                        f"total degree {max_total_degree}"
+                    )
+                defining_degree = (
+                    max(denominator, base_degree * numerator)
+                    if numerator > 0
+                    else denominator + base_degree * -numerator
+                )
+                if defining_degree > max_total_degree:
+                    raise _ImplicitInputError(
+                        "a rational-power defining polynomial would exceed "
+                        f"total degree {max_total_degree}"
+                    )
+                result = 1
+        else:
+            raise _ImplicitInputError(
+                "the expression must be a polynomial with rational coefficients "
+                "or supported rational powers"
+            )
+        if result > max_total_degree:
+            raise _ImplicitInputError(
+                f"the total degree must not exceed {max_total_degree}"
+            )
+        return result
+
+    degree(expr)
+    return has_rational_power
+
+
+def _residual(
+    value: ExprInput | sp.Expr,
+    variables: tuple[sp.Symbol, ...],
+    *,
+    max_total_degree: int,
+    max_terms: int,
+    max_coefficient_bits: int,
+) -> sp.Poly | sp.Expr:
+    expr = _implicit_input_expr(value, variables)
+    if expr.has(sp.Float):
+        raise _ImplicitInputError("use exact rational coefficients, not decimals")
+    if extra := expr.free_symbols - set(variables):
+        names = ", ".join(sorted(str(symbol) for symbol in extra))
+        raise _ImplicitInputError(f"undeclared variables: {names}")
+    if sp.count_ops(expr) > _MAX_VALIDATION_OPS:
+        raise _ImplicitInputError("the expression is too large")
+
+    powered = _validate_residual_structure(
+        expr,
+        set(variables),
+        max_total_degree,
+    )
+    if powered:
+        return expr
+    return _polynomial(
+        expr,
+        variables,
+        max_total_degree=max_total_degree,
+        max_terms=max_terms,
+        max_coefficient_bits=max_coefficient_bits,
+    )
 
 
 def _polynomial(
@@ -391,6 +521,111 @@ def _condition_polynomials(
     return tuple(polynomials)
 
 
+def _formula_polynomials(
+    formula: Boolean,
+    variables: tuple[sp.Symbol, ...],
+    *,
+    max_total_degree: int,
+    max_terms: int,
+    max_coefficient_bits: int,
+) -> tuple[sp.Poly, ...]:
+    """Validate and collect every polynomial relation in a Boolean formula."""
+    polynomials: list[sp.Poly] = []
+
+    def visit(value: Boolean | sp.Basic) -> None:
+        if value in (sp.true, sp.false):
+            return
+        if isinstance(value, Relational):
+            if not isinstance(value, _RELATION_TYPES):
+                raise _ImplicitInputError(
+                    f"unsupported generated relation: {type(value).__name__}"
+                )
+            lhs = cast(sp.Expr, value.lhs)
+            rhs = cast(sp.Expr, value.rhs)
+            polynomials.append(
+                _polynomial(
+                    lhs - rhs,
+                    variables,
+                    max_total_degree=max_total_degree,
+                    max_terms=max_terms,
+                    max_coefficient_bits=max_coefficient_bits,
+                )
+            )
+            return
+        if isinstance(value, BooleanFunction):
+            for argument in value.args:
+                if not isinstance(argument, (Boolean, bool)):
+                    raise _ImplicitInputError(
+                        "generated formula arguments must be Boolean"
+                    )
+                visit(sp.sympify(argument))
+            return
+        raise _ImplicitInputError(
+            "the generated formula must contain only polynomial relations"
+        )
+
+    visit(formula)
+    return tuple(polynomials)
+
+
+def _abstract_powered_formula(
+    formula: Boolean,
+    variables: tuple[sp.Symbol, ...],
+    *,
+    max_variables: int,
+    max_total_degree: int,
+    max_terms: int,
+    max_coefficient_bits: int,
+) -> _PoweredProblem:
+    """Apply the vendored helper through the exact first-party proxy."""
+    try:
+        from ._vendor.sympy_extras.assumptions.bounds import polynomial_abstraction
+    except Exception as exc:
+        raise RuntimeError(f"cad-error:{type(exc).__name__}") from exc
+
+    abstraction = polynomial_abstraction(
+        formula,
+        set(variables),
+        max_variables=max_variables,
+    )
+    if abstraction is None:
+        raise _ImplicitInputError(
+            f"at most {max_variables} original and generated variables are supported"
+        )
+
+    generated = tuple(abstraction.variables)
+    all_variables = (*variables, *generated)
+    if len(all_variables) > max_variables:
+        raise _ImplicitInputError(
+            f"at most {max_variables} original and generated variables are supported"
+        )
+    constraints = tuple(abstraction.constraints)
+    relation_polynomials = _formula_polynomials(
+        abstraction.formula,
+        all_variables,
+        max_total_degree=max_total_degree,
+        max_terms=max_terms,
+        max_coefficient_bits=max_coefficient_bits,
+    )
+    constraint_polynomials: list[sp.Poly] = []
+    for constraint in constraints:
+        constraint_polynomials.extend(
+            _formula_polynomials(
+                constraint,
+                all_variables,
+                max_total_degree=max_total_degree,
+                max_terms=max_terms,
+                max_coefficient_bits=max_coefficient_bits,
+            )
+        )
+    return _PoweredProblem(
+        formula=abstraction.formula,
+        constraints=constraints,
+        variables=generated,
+        polynomials=(*relation_polynomials, *constraint_polynomials),
+    )
+
+
 def _as_condition(
     value: sp.Basic | bool,
     variables: tuple[sp.Symbol, ...],
@@ -450,6 +685,105 @@ def _domain_condition(domains: Mapping[sp.Symbol, sp.Set]) -> Boolean:
             upper = symbol < domain.end if domain.right_open else symbol <= domain.end
             conditions.append(upper)
     return sp.And(*conditions)
+
+
+def validate_implicit_expression_input(
+    lens: SympyQuestion,
+    *,
+    condition: sp.Basic | bool = True,
+    domains: VariableDomains | None = None,
+    timeout_seconds: float = 1.0,
+    max_variables: int = _CAD_MAX_VARIABLES,
+    max_total_degree: int = _CAD_MAX_TOTAL_DEGREE,
+    max_terms: int = _CAD_MAX_TERMS_PER_POLYNOMIAL,
+    max_coefficient_bits: int = _CAD_MAX_COEFFICIENT_BITS,
+) -> bool:
+    """Validate a bounded polynomial or exact rational-power submission.
+
+    Rational powers are accepted only when CAD proves that they are real and
+    defined everywhere in the supplied region. This helper is intended for a
+    PrairieLearn ``parse(data)`` function; invalid or unproved input receives a
+    format error and its submitted answer is cleared.
+    """
+    if lens.format_error is not None:
+        return False
+    submitted = lens.submitted_answer
+    if submitted is None:
+        return False
+
+    try:
+        if timeout_seconds <= 0:
+            raise _ImplicitInputError("timeout_seconds must be positive")
+        variables = _variables(lens.variables)
+        variable_limit = min(max_variables, _CAD_MAX_VARIABLES)
+        if len(variables) > variable_limit:
+            raise _ImplicitInputError(
+                f"at most {variable_limit} variables are supported"
+            )
+        if not isinstance(submitted, sp.Expr):
+            raise _ImplicitInputError("the answer must be an expression")
+
+        total_degree_limit = min(max_total_degree, _CAD_MAX_TOTAL_DEGREE)
+        term_limit = min(max_terms, _CAD_MAX_TERMS_PER_POLYNOMIAL)
+        coefficient_limit = min(
+            max_coefficient_bits,
+            _CAD_MAX_COEFFICIENT_BITS,
+        )
+        residual = _residual(
+            submitted,
+            variables,
+            max_total_degree=total_degree_limit,
+            max_terms=term_limit,
+            max_coefficient_bits=coefficient_limit,
+        )
+        base_condition = _as_condition(condition, variables)
+        condition_polys = _condition_polynomials(base_condition, variables)
+        normalized_domains = _normalize_domains(domains, variables)
+        domain_condition = _domain_condition(normalized_domains)
+        domain_polys = _condition_polynomials(domain_condition, variables)
+        if isinstance(residual, sp.Poly):
+            return True
+
+        region = sp.And(base_condition, domain_condition)
+        zero_relation = cast(Boolean, sp.Eq(residual, 0, evaluate=False))
+        problem = _abstract_powered_formula(
+            zero_relation,
+            variables,
+            max_variables=variable_limit,
+            max_total_degree=total_degree_limit,
+            max_terms=term_limit,
+            max_coefficient_bits=coefficient_limit,
+        )
+        eligible, reason = _cad_polynomials_eligible(
+            (*problem.polynomials, *condition_polys, *domain_polys),
+            len(base_condition.atoms(Relational)),
+            len(variables) + len(problem.variables),
+        )
+        if not eligible:
+            raise _ImplicitInputError(
+                f"the powered expression exceeds the CAD envelope ({reason})"
+            )
+        if region is not sp.false:
+            decision = _powered_cad_decide(
+                problem,
+                variables,
+                region,
+                prove_equivalence=False,
+                timeout_seconds=timeout_seconds,
+            )
+            if not decision.domain_valid:
+                detail = decision.reason or "cad-domain-unproved"
+                raise _ImplicitInputError(
+                    "could not prove that rational powers are defined throughout "
+                    f"the comparison region ({detail})"
+                )
+    except (RuntimeError, _ImplicitInputError) as exc:
+        lens.format_error = (
+            f"Your answer is not a supported implicit expression: {exc}."
+        )
+        lens.data["submitted_answers"][lens.answers_name] = None
+        return False
+    return True
 
 
 def _canonical_zero_set(poly: sp.Poly) -> tuple[str, sp.Expr | None]:
@@ -512,8 +846,18 @@ def _point_in_region(
     return _point_truth(condition, point)
 
 
-def _point_value(poly: sp.Poly, point: Mapping[sp.Symbol, sp.Expr]) -> sp.Expr:
-    return cast(sp.Expr, poly.eval(dict(point)))
+def _point_value(
+    residual: sp.Poly | sp.Expr,
+    point: Mapping[sp.Symbol, sp.Expr],
+) -> sp.Expr:
+    if isinstance(residual, sp.Poly):
+        return cast(sp.Expr, residual.eval(dict(point)))
+    value = cast(sp.Expr, sp.simplify(residual.subs(list(point.items()))))
+    if value.is_real is not True or value.is_finite is not True:
+        raise _ImplicitInputError(
+            "a powered residual is not a finite real value at a witness"
+        )
+    return value
 
 
 def _normalize_witness_point(
@@ -583,8 +927,8 @@ def _sample_witness_coordinate(
 
 
 def _check_authored_witnesses(
-    reference: sp.Poly,
-    candidate: sp.Poly,
+    reference: sp.Poly | sp.Expr,
+    candidate: sp.Poly | sp.Expr,
     variables: tuple[sp.Symbol, ...],
     condition: Boolean,
     domains: Mapping[sp.Symbol, sp.Set],
@@ -790,14 +1134,98 @@ def _cad_eligible(
     authored_condition_atoms: int,
     variable_count: int,
 ) -> tuple[bool, str | None]:
+    return _cad_polynomials_eligible(
+        (*residuals, *condition_polys),
+        authored_condition_atoms,
+        variable_count,
+    )
+
+
+def _cad_polynomials_eligible(
+    polynomials: tuple[sp.Poly, ...],
+    authored_condition_atoms: int,
+    variable_count: int,
+) -> tuple[bool, str | None]:
     if variable_count > _CAD_MAX_VARIABLES:
         return False, "cad-variable-limit"
     if authored_condition_atoms > _CAD_MAX_CONDITION_ATOMS:
         return False, "cad-condition-atom-limit"
-    polynomials = (*residuals, *condition_polys)
     if sum(len(poly.terms()) for poly in polynomials) > _CAD_MAX_AGGREGATE_TERMS:
         return False, "cad-aggregate-term-limit"
     return True, None
+
+
+def _powered_cad_decide(
+    problem: _PoweredProblem,
+    variables: tuple[sp.Symbol, ...],
+    region: Boolean,
+    *,
+    prove_equivalence: bool,
+    timeout_seconds: float,
+) -> _PoweredCadDecision:
+    """Prove powered-expression definedness, then optionally equivalence."""
+    try:
+        from ._vendor.sympy_extras.polys.cad.qe import decide
+    except Exception as exc:  # noqa: BLE001 - optional CAD backend import
+        return _PoweredCadDecision(
+            domain_valid=False,
+            reason=f"cad-error:{type(exc).__name__}",
+        )
+
+    constraints = sp.And(*problem.constraints)
+    domain_formula = sp.Implies(region, constraints)
+    domain_quantifiers: list[
+        tuple[Literal["exists", "forall"], sp.Symbol | tuple[sp.Symbol, ...]]
+    ] = []
+    if variables:
+        domain_quantifiers.append(("forall", variables))
+    domain_quantifiers.append(("exists", problem.variables))
+
+    timeout = timeout_utils.SignalTimeout(timeout_seconds, swallow_exc=False)
+    domain_valid = False
+    try:
+        with timeout:
+            try:
+                powers_defined = decide(domain_formula, domain_quantifiers)
+                if not powers_defined:
+                    raise _ImplicitInputError(
+                        "rational powers must be real and defined throughout "
+                        "the comparison region"
+                    )
+                domain_valid = True
+                if not prove_equivalence:
+                    return _PoweredCadDecision(domain_valid=True)
+                equivalence_formula = sp.Implies(
+                    sp.And(region, constraints),
+                    problem.formula,
+                )
+                equivalent = decide(
+                    equivalence_formula,
+                    [("forall", (*variables, *problem.variables))],
+                )
+            except timeout_utils.TimeoutExceptionError:
+                raise
+            except _ImplicitInputError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - isolate CAD backend
+                return _PoweredCadDecision(
+                    domain_valid=domain_valid,
+                    reason=f"cad-error:{type(exc).__name__}",
+                )
+    except timeout_utils.TimeoutExceptionError as exc:
+        if exc.timeout is not timeout:
+            raise
+        return _PoweredCadDecision(
+            domain_valid=domain_valid,
+            timed_out=True,
+            reason="cad-timeout",
+        )
+    else:
+        return _PoweredCadDecision(
+            domain_valid=True,
+            equivalent=equivalent,  # pyright: ignore[reportPossiblyUnboundVariable]
+            reason="cad-decision",
+        )
 
 
 def _cad_decide(
@@ -863,6 +1291,133 @@ def _cad_decide(
         )
 
 
+def _residual_expr(residual: sp.Poly | sp.Expr) -> sp.Expr:
+    return residual.as_expr() if isinstance(residual, sp.Poly) else residual
+
+
+def _check_powered_equivalence(
+    reference: sp.Poly | sp.Expr,
+    candidate: sp.Poly | sp.Expr,
+    variables: tuple[sp.Symbol, ...],
+    region: Boolean,
+    condition_polys: tuple[sp.Poly, ...],
+    domain_polys: tuple[sp.Poly, ...],
+    authored_condition_atoms: int,
+    authored: _SliceEvidence,
+    *,
+    strategy: ImplicitStrategy,
+    on_inconclusive: InconclusivePolicy,
+    timeout_seconds: float,
+) -> ImplicitEquivalenceResult:
+    if strategy == "canonical":
+        return _result(
+            "inconclusive",
+            exact=False,
+            method="canonical",
+            accepted=False,
+            reason="rational-power-requires-cad",
+        )
+
+    reference_expr = _residual_expr(reference)
+    candidate_expr = _residual_expr(candidate)
+    structurally_equal = reference_expr == candidate_expr
+    if structurally_equal:
+        formula = cast(Boolean, sp.Eq(reference_expr, 0, evaluate=False))
+    else:
+        formula = cast(
+            Boolean,
+            sp.Equivalent(
+                sp.Eq(reference_expr, 0, evaluate=False),
+                sp.Eq(candidate_expr, 0, evaluate=False),
+                evaluate=False,
+            ),
+        )
+
+    try:
+        problem = _abstract_powered_formula(
+            formula,
+            variables,
+            max_variables=_CAD_MAX_VARIABLES,
+            max_total_degree=_CAD_MAX_TOTAL_DEGREE,
+            max_terms=_CAD_MAX_TERMS_PER_POLYNOMIAL,
+            max_coefficient_bits=_CAD_MAX_COEFFICIENT_BITS,
+        )
+    except RuntimeError as exc:
+        return _result(
+            "inconclusive",
+            exact=False,
+            method="cad",
+            accepted=False,
+            reason=str(exc),
+        )
+
+    eligible, reason = _cad_polynomials_eligible(
+        (*problem.polynomials, *condition_polys, *domain_polys),
+        authored_condition_atoms,
+        len(variables) + len(problem.variables),
+    )
+    if not eligible:
+        return _result(
+            "inconclusive",
+            exact=False,
+            method="cad" if strategy in ("auto", "cad") else "witness",
+            accepted=False,
+            reason=reason,
+        )
+
+    prove_equivalence = strategy in ("auto", "cad") and not structurally_equal
+    decision = _powered_cad_decide(
+        problem,
+        variables,
+        region,
+        prove_equivalence=prove_equivalence,
+        timeout_seconds=timeout_seconds,
+    )
+    if not decision.domain_valid:
+        return _result(
+            "inconclusive",
+            exact=False,
+            method="cad",
+            accepted=False,
+            timed_out=decision.timed_out,
+            reason=decision.reason,
+        )
+    if structurally_equal:
+        return _result(
+            "equivalent",
+            exact=True,
+            method="cad",
+            reason="cad-decision",
+        )
+    if decision.equivalent is not None:
+        return _result(
+            "equivalent" if decision.equivalent else "different",
+            exact=True,
+            method="cad",
+            reason="cad-decision",
+        )
+
+    eq_points = {
+        tuple(sp.srepr(point[symbol]) for symbol in variables)
+        for point in authored.eq_points
+    }
+    if on_inconclusive == "witness" and len(eq_points) >= _MIN_HEURISTIC_EQ_WITNESSES:
+        return _result(
+            "equivalent",
+            exact=False,
+            method="witness",
+            reason="heuristic-witness-agreement",
+        )
+    return _result(
+        "inconclusive",
+        exact=False,
+        method="cad" if strategy in ("auto", "cad") else "witness",
+        accepted=False,
+        timed_out=decision.timed_out,
+        reason=decision.reason or "insufficient-witness-evidence",
+    )
+
+
 def check_implicit_equivalence(
     reference: ExprInput,
     candidate: ExprInput,
@@ -877,15 +1432,18 @@ def check_implicit_equivalence(
     seed: int | None = None,
     slices_per_variable: int = 5,
 ) -> ImplicitEquivalenceResult:
-    """Compare the real zero sets of two polynomial residuals.
+    """Compare the real zero sets of two exact algebraic residuals.
 
     ``reference`` and ``candidate`` represent equations equal to zero. The
     default ``auto`` strategy first proves easy equivalences canonically, then
     searches exact univariate slices for a counterexample, and finally runs a
-    guarded cylindrical algebraic decomposition (CAD). Residuals and region
-    relations must be rational polynomials of degree at most four with at most
-    30 terms each and 64-bit coefficients. CAD is additionally limited to
-    three variables, four authored region relations, and 60 terms overall.
+    guarded cylindrical algebraic decomposition (CAD). Residuals may be
+    rational polynomials or use supported noninteger rational powers. Powered
+    residuals use SymPy's principal-real semantics and must be real and defined
+    throughout the comparison region. Region relations remain polynomial.
+    Every generated polynomial has degree at most four, at most 30 terms, and
+    64-bit coefficients. CAD is additionally limited to three original plus
+    generated variables, four authored region relations, and 60 terms overall.
 
     Exact checks fail closed. Pass ``on_inconclusive="witness"`` to allow
     heuristic acceptance after at least three distinct zero-set points agree.
@@ -914,14 +1472,14 @@ def check_implicit_equivalence(
         )
 
     symbols = _variables(variables)
-    reference_poly = _polynomial(
+    reference_residual = _residual(
         reference,
         symbols,
         max_total_degree=_CAD_MAX_TOTAL_DEGREE,
         max_terms=_CAD_MAX_TERMS_PER_POLYNOMIAL,
         max_coefficient_bits=_CAD_MAX_COEFFICIENT_BITS,
     )
-    candidate_poly = _polynomial(
+    candidate_residual = _residual(
         candidate,
         symbols,
         max_total_degree=_CAD_MAX_TOTAL_DEGREE,
@@ -938,8 +1496,8 @@ def check_implicit_equivalence(
 
     witness_spec = witnesses or ImplicitWitnesses()
     authored = _check_authored_witnesses(
-        reference_poly,
-        candidate_poly,
+        reference_residual,
+        candidate_residual,
         symbols,
         base_condition,
         normalized_domains,
@@ -959,6 +1517,26 @@ def check_implicit_equivalence(
         return _result(
             "equivalent", exact=True, method="canonical", reason="empty-region"
         )
+
+    if not isinstance(reference_residual, sp.Poly) or not isinstance(
+        candidate_residual, sp.Poly
+    ):
+        return _check_powered_equivalence(
+            reference_residual,
+            candidate_residual,
+            symbols,
+            region,
+            condition_polys,
+            domain_polys,
+            authored_condition_atoms,
+            authored,
+            strategy=strategy,
+            on_inconclusive=on_inconclusive,
+            timeout_seconds=timeout_seconds,
+        )
+
+    reference_poly = reference_residual
+    candidate_poly = candidate_residual
 
     reference_canonical = _canonical_zero_set(reference_poly)
     candidate_canonical = _canonical_zero_set(candidate_poly)
