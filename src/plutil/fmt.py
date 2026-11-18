@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, is_dataclass
 from decimal import Decimal, localcontext
 from typing import Any, Final, Literal, cast
@@ -12,7 +12,7 @@ import numpy as np
 import prairielearn as pl
 import sympy
 
-from .common import RatioPowerStyle, latex
+from .common import LatexableValue, RatioPowerStyle, latex
 
 type JsonValue = (
     None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
@@ -23,6 +23,13 @@ type NumberInput = (
     int | float | Decimal | np.integer[Any] | np.floating[Any] | sympy.Expr
 )
 """A real numeric value accepted by the display formatters."""
+
+type MatrixInput = (
+    Sequence[Sequence[LatexableValue | np.generic]] | np.ndarray[Any, Any]
+)
+"""A rectangular nested sequence or two-dimensional NumPy array."""
+type MatrixFormat = Literal["bmatrix", "pmatrix"]
+"""LaTeX environment used to delimit a matrix."""
 
 type Notation = Literal["standard", "scientific", "engineering", "compact"]
 type ExponentStyle = Literal["e", "times"]
@@ -69,6 +76,8 @@ __all__: Final[tuple[str, ...]] = (
     "ExponentStyle",
     "Grouping",
     "JsonValue",
+    "MatrixFormat",
+    "MatrixInput",
     "Notation",
     "NumberInput",
     "RatioPowerStyle",
@@ -79,6 +88,7 @@ __all__: Final[tuple[str, ...]] = (
     "currency",
     "json",
     "latex",
+    "matrix_latex",
     "mbool",
     "mustache",
     "number",
@@ -98,11 +108,60 @@ _SIGN_DISPLAYS: Final = frozenset(("auto", "always", "except_zero", "never"))
 _CURRENCY_DISPLAYS: Final = frozenset(("symbol", "code", "name"))
 _CURRENCY_SIGNS: Final = frozenset(("standard", "accounting"))
 _UNCERTAINTY_STYLES: Final = frozenset(("plus_minus", "parenthetical"))
+_MATRIX_FORMATS: Final = frozenset(("bmatrix", "pmatrix"))
 
 
 def mbool(value: Any) -> Literal["true", "false"]:
     """Return a Mustache boolean string from the truthiness of ``value``."""
     return "true" if value else "false"
+
+
+def matrix_latex(
+    value: MatrixInput,
+    *,
+    format: MatrixFormat = "bmatrix",
+    transpose: bool = False,
+) -> str:
+    r"""Render a rectangular collection as a LaTeX matrix.
+
+    ``format`` selects square brackets (``"bmatrix"``) or parentheses
+    (``"pmatrix"``). Set ``transpose`` to render the transposed collection.
+    """
+    _typecheck("format", format, _MATRIX_FORMATS)
+
+    if isinstance(value, np.ndarray):
+        if value.ndim != 2:
+            raise ValueError("value must be a two-dimensional array")
+        rows = cast(list[list[object]], value.tolist())
+    else:
+        if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+            raise TypeError("value must be a sequence of row sequences")
+        rows = []
+        for index, row in enumerate(value):
+            if isinstance(row, (str, bytes)) or not isinstance(row, Sequence):
+                raise TypeError(f"row {index} must be a sequence")
+            rows.append(list(row))
+
+    column_count = len(rows[0]) if rows else 0
+    if any(len(row) != column_count for row in rows):
+        raise ValueError("matrix rows must all have the same length")
+
+    if transpose:
+        rows = [list(row) for row in zip(*rows, strict=True)]
+
+    body = r" \\ ".join(
+        " & ".join(
+            latex(
+                cast(
+                    LatexableValue,
+                    item.item() if isinstance(item, np.generic) else item,
+                )
+            )
+            for item in row
+        )
+        for row in rows
+    )
+    return rf"\begin{{{format}}}{body}\end{{{format}}}"
 
 
 def json(

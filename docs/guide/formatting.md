@@ -59,6 +59,23 @@ becomes `\int_{0}^{5 / 2} x\, dx`; the other styles follow `displaystyle`
 replace `True` with `ratio_power_style="radical"` and `False` with
 `ratio_power_style="stacked"`.
 
+### Matrix LaTeX
+
+`fmt.matrix_latex` renders rectangular nested sequences and two-dimensional
+NumPy arrays. It uses `format="bmatrix"` and square brackets by default; pass
+`format="pmatrix"` for parentheses. `transpose=True` transposes the values
+before rendering them.
+
+```python
+import numpy as np
+
+fmt.matrix_latex([[1, x], [0, 1]])
+# r"\begin{bmatrix}1 & x \\ 0 & 1\end{bmatrix}"
+
+fmt.matrix_latex(np.array([[1, 2], [3, 4]]), format="pmatrix", transpose=True)
+# r"\begin{pmatrix}1 & 3 \\ 2 & 4\end{pmatrix}"
+```
+
 ### Structured JSON and Mustache values
 
 `fmt.json` recursively converts a value to JSON-ready Python data; it does not

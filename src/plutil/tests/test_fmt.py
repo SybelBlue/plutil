@@ -227,6 +227,48 @@ def test_fmt_reexports_existing_latex_function() -> None:
     assert not hasattr(plutil, "currency")
 
 
+def test_matrix_latex_renders_nested_sequences() -> None:
+    assert fmt.matrix_latex(((x / 2, 1), (0, x + 1))) == (
+        r"\begin{bmatrix}\dfrac{x}{2} & 1 \\ 0 & x + 1\end{bmatrix}"
+    )
+
+
+def test_matrix_latex_supports_parentheses() -> None:
+    value = [[1, 2], [3, 4]]
+
+    assert fmt.matrix_latex(value, format="pmatrix") == (
+        r"\begin{pmatrix}1 & 2 \\ 3 & 4\end{pmatrix}"
+    )
+
+
+def test_matrix_latex_transposes_numpy_arrays_and_normalizes_scalars() -> None:
+    value = np.array([[1, 2], [3, 4]], dtype=np.int64)
+
+    assert fmt.matrix_latex(value, transpose=True) == (
+        r"\begin{bmatrix}1 & 3 \\ 2 & 4\end{bmatrix}"
+    )
+
+
+def test_matrix_latex_rejects_unknown_format() -> None:
+    with pytest.raises(ValueError, match="format must be one of: bmatrix, pmatrix"):
+        fmt.matrix_latex([[1]], format="matrix")  # pyright: ignore[reportArgumentType]
+
+
+@pytest.mark.parametrize(
+    ("value", "error", "message"),
+    [
+        ([[1, 2], [3]], ValueError, "same length"),
+        (np.array([1, 2]), ValueError, "two-dimensional"),
+        ([1, 2], TypeError, "row 0"),
+    ],
+)
+def test_matrix_latex_rejects_non_rectangular_inputs(
+    value: Any, error: type[Exception], message: str
+) -> None:
+    with pytest.raises(error, match=message):
+        fmt.matrix_latex(value)
+
+
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
