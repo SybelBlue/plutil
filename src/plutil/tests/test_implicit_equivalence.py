@@ -501,6 +501,30 @@ def test_checker_rejects_inputs_outside_the_bounded_polynomial_contract(
         check_implicit_equivalence(x, candidate(x), variables=x)
 
 
+@pytest.mark.parametrize("coefficient", [sp.pi, sp.sqrt(2), sp.I])
+def test_checker_reports_unsupported_coefficients_as_value_errors(
+    coefficient: sp.Expr,
+) -> None:
+    x = sp.Symbol("x")
+
+    with pytest.raises(ValueError, match="polynomial with rational coefficients"):
+        check_implicit_equivalence(coefficient * x, x, variables=x)
+
+
+def test_parse_helper_reports_an_unsupported_coefficient_as_a_format_error() -> None:
+    x = sp.Symbol("x")
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(sp.pi * x)},
+        format_errors={},
+    )
+
+    assert not validate_implicit_polynomial_input(
+        SympyQuestion(data, "answer", variables=x)
+    )
+    assert data["submitted_answers"]["answer"] is None
+    assert "rational coefficients" in data["format_errors"]["answer"]
+
+
 def test_malformed_expression_is_reported_as_value_error() -> None:
     x = sp.Symbol("x")
 

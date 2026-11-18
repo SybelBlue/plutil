@@ -28,7 +28,7 @@ from sympy.core.relational import (
     Unequality,
 )
 from sympy.logic.boolalg import Boolean, BooleanFunction
-from sympy.polys.polyerrors import PolynomialError
+from sympy.polys.polyerrors import CoercionFailed, PolynomialError
 
 from . import rand
 from .common import (
@@ -238,7 +238,7 @@ def _polynomial(
 
     try:
         poly = sp.Poly(expr, *variables, domain=sp.QQ)
-    except (PolynomialError, TypeError, ValueError) as exc:
+    except (CoercionFailed, PolynomialError, TypeError, ValueError) as exc:
         raise _ImplicitInputError(
             "the expression must be a polynomial with rational coefficients"
         ) from exc
