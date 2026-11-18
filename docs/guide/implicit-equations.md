@@ -81,6 +81,7 @@ import sympy as sp
 
 from plutil import (
     SympyQuestion,
+    check_implicit_equivalence,
     parse_symbolic_decimals,
     validate_implicit_expression_input,
 )
@@ -91,7 +92,25 @@ def parse(data):
     answer = SympyQuestion(data, "curve", variables=(x, y))
     parse_symbolic_decimals(answer)
     validate_implicit_expression_input(answer, condition=x >= 0)
+
+
+def grade(data):
+    x, y = sp.symbols("x y")
+    answer = SympyQuestion(data, "curve", variables=(x, y))
+    result = check_implicit_equivalence(
+        x - y**2,
+        answer,
+        variables=(x, y),
+        condition=x >= 0,
+    )
+    answer.score = float(result.accepted)
 ```
+
+Passing the same answer lens to the checker lets it reuse the parse helper's
+successful powered-domain proof when the submitted residual and region match.
+The checker verifies an internal fingerprint before reuse; a changed answer or
+region triggers a fresh proof. A separately powered reference is also proved
+unless it is structurally identical to the validated submission.
 
 Use `validate_implicit_polynomial_input` instead when the question intentionally
 requires a strict polynomial answer; that API continues to reject rational

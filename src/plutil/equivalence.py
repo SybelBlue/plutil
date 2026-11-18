@@ -10,6 +10,7 @@ zero sets agree in the requested region.
 
 from __future__ import annotations
 
+import hashlib
 import random
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -53,6 +54,7 @@ _CAD_MAX_COEFFICIENT_BITS = 64
 _MAX_SLICES_PER_VARIABLE = 20
 _MAX_VALIDATION_OPS = 200
 _MIN_HEURISTIC_EQ_WITNESSES = 3
+_DOMAIN_PROOF_EXTENSION_KEY = "plutil_implicit_expression_domain_proofs"
 
 type ImplicitVerdict = Literal["equivalent", "different", "inconclusive"]
 type ImplicitMethod = Literal["canonical", "witness", "cad"]
@@ -127,6 +129,19 @@ class _PoweredProblem:
     constraints: tuple[Boolean, ...]
     variables: tuple[sp.Symbol, ...]
     polynomials: tuple[sp.Poly, ...]
+
+
+type _CadQuantifier = tuple[
+    Literal["exists", "forall"], sp.Symbol | tuple[sp.Symbol, ...]
+]
+type _CadRequest = tuple[Boolean, tuple[_CadQuantifier, ...]]
+
+
+@dataclass(frozen=True, slots=True)
+class _CadRunResult:
+    results: tuple[bool, ...] = ()
+    timed_out: bool = False
+    reason: str | None = None
 
 
 class _ImplicitInputError(ValueError):
@@ -668,6 +683,61 @@ def _domain_condition(domains: Mapping[sp.Symbol, sp.Set]) -> Boolean:
     return sp.And(*conditions)
 
 
+def _domain_proof_fingerprint(
+    residual: sp.Expr,
+    variables: tuple[sp.Symbol, ...],
+    region: Boolean,
+) -> str:
+    payload = "\0".join(
+        (
+            sp.srepr(residual),
+            sp.srepr(sp.Tuple(*variables)),
+            sp.srepr(region),
+        )
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _domain_proof_records(lens: SympyQuestion) -> dict[str, str]:
+    extensions = lens.data.setdefault("extensions", {})
+    records = extensions.get(_DOMAIN_PROOF_EXTENSION_KEY)
+    if not isinstance(records, dict) or not all(
+        isinstance(key, str) and isinstance(value, str)
+        for key, value in records.items()
+    ):
+        records = {}
+        extensions[_DOMAIN_PROOF_EXTENSION_KEY] = records
+    return cast(dict[str, str], records)
+
+
+def _clear_domain_proof(lens: SympyQuestion) -> None:
+    _domain_proof_records(lens).pop(lens.answers_name, None)
+
+
+def _record_domain_proof(
+    lens: SympyQuestion,
+    residual: sp.Expr,
+    variables: tuple[sp.Symbol, ...],
+    region: Boolean,
+) -> None:
+    _domain_proof_records(lens)[lens.answers_name] = _domain_proof_fingerprint(
+        residual,
+        variables,
+        region,
+    )
+
+
+def _has_domain_proof(
+    lens: SympyQuestion,
+    residual: sp.Expr,
+    variables: tuple[sp.Symbol, ...],
+    region: Boolean,
+) -> bool:
+    return _domain_proof_records(lens).get(
+        lens.answers_name
+    ) == _domain_proof_fingerprint(residual, variables, region)
+
+
 def validate_implicit_expression_input(
     lens: SympyQuestion,
     *,
@@ -686,6 +756,7 @@ def validate_implicit_expression_input(
     PrairieLearn ``parse(data)`` function; invalid or unproved input receives a
     format error and its submitted answer is cleared.
     """
+    _clear_domain_proof(lens)
     if lens.format_error is not None:
         return False
     submitted = lens.submitted_answer
@@ -759,6 +830,7 @@ def validate_implicit_expression_input(
                     "could not prove that rational powers are real and defined "
                     f"throughout the comparison region ({detail})"
                 )
+            _record_domain_proof(lens, residual, variables, region)
     except (RuntimeError, _ImplicitInputError) as exc:
         lens.format_error = (
             f"Your answer is not a supported implicit expression: {exc}."
@@ -1187,77 +1259,105 @@ def _cad_polynomials_eligible(
     return True, None
 
 
+def _run_cad(
+    requests: tuple[_CadRequest, ...],
+    *,
+    timeout_seconds: float,
+) -> _CadRunResult:
+    """Run one or more CAD decisions behind one timeout and error boundary."""
+    try:
+        from ._vendor.sympy_extras.polys.cad.qe import decide
+    except Exception as exc:  # noqa: BLE001 - optional CAD backend import
+        return _CadRunResult(reason=f"cad-error:{type(exc).__name__}")
+
+    results: list[bool] = []
+    timeout = timeout_utils.SignalTimeout(timeout_seconds, swallow_exc=False)
+    try:
+        with timeout:
+            for formula, quantifiers in requests:
+                try:
+                    results.append(decide(formula, list(quantifiers)))
+                except timeout_utils.TimeoutExceptionError:
+                    raise
+                except Exception as exc:  # noqa: BLE001 - isolate CAD backend
+                    return _CadRunResult(
+                        results=tuple(results),
+                        reason=f"cad-error:{type(exc).__name__}",
+                    )
+    except timeout_utils.TimeoutExceptionError as exc:
+        if exc.timeout is not timeout:
+            raise
+        return _CadRunResult(
+            results=tuple(results),
+            timed_out=True,
+            reason="cad-timeout",
+        )
+    return _CadRunResult(results=tuple(results), reason="cad-decision")
+
+
 def _powered_cad_decide(
     problem: _PoweredProblem,
     variables: tuple[sp.Symbol, ...],
     region: Boolean,
     *,
     prove_equivalence: bool,
+    domain_validated: bool = False,
     timeout_seconds: float,
 ) -> _PoweredCadDecision:
     """Prove powered-expression definedness, then optionally equivalence."""
-    try:
-        from ._vendor.sympy_extras.polys.cad.qe import decide
-    except Exception as exc:  # noqa: BLE001 - optional CAD backend import
-        return _PoweredCadDecision(
-            domain_valid=False,
-            reason=f"cad-error:{type(exc).__name__}",
-        )
 
     constraints = sp.And(*problem.constraints)
     domain_formula = sp.Implies(region, constraints)
-    domain_quantifiers: list[
-        tuple[Literal["exists", "forall"], sp.Symbol | tuple[sp.Symbol, ...]]
-    ] = []
+    domain_quantifiers: list[_CadQuantifier] = []
     if variables:
         domain_quantifiers.append(("forall", variables))
     domain_quantifiers.append(("exists", problem.variables))
 
-    timeout = timeout_utils.SignalTimeout(timeout_seconds, swallow_exc=False)
-    domain_valid = False
-    try:
-        with timeout:
-            try:
-                powers_defined = decide(domain_formula, domain_quantifiers)
-                if not powers_defined:
-                    return _PoweredCadDecision(
-                        domain_valid=False,
-                        reason="cad-domain-invalid",
-                    )
-                domain_valid = True
-                if not prove_equivalence:
-                    return _PoweredCadDecision(domain_valid=True)
-                equivalence_formula = sp.Implies(
-                    sp.And(region, constraints),
-                    problem.formula,
-                )
-                equivalent = decide(
-                    equivalence_formula,
-                    [("forall", (*variables, *problem.variables))],
-                )
-            except timeout_utils.TimeoutExceptionError:
-                raise
-            except _ImplicitInputError:
-                raise
-            except Exception as exc:  # noqa: BLE001 - isolate CAD backend
-                return _PoweredCadDecision(
-                    domain_valid=domain_valid,
-                    reason=f"cad-error:{type(exc).__name__}",
-                )
-    except timeout_utils.TimeoutExceptionError as exc:
-        if exc.timeout is not timeout:
-            raise
-        return _PoweredCadDecision(
-            domain_valid=domain_valid,
-            timed_out=True,
-            reason="cad-timeout",
+    requests: list[_CadRequest] = []
+    if not domain_validated:
+        requests.append((domain_formula, tuple(domain_quantifiers)))
+    if prove_equivalence:
+        equivalence_formula = sp.Implies(
+            sp.And(region, constraints),
+            problem.formula,
         )
-    else:
+        requests.append(
+            (
+                equivalence_formula,
+                (("forall", (*variables, *problem.variables)),),
+            )
+        )
+
+    if not requests:
+        return _PoweredCadDecision(domain_valid=True)
+    run = _run_cad(tuple(requests), timeout_seconds=timeout_seconds)
+    result_index = 0
+    if not domain_validated:
+        if not run.results:
+            return _PoweredCadDecision(
+                domain_valid=False,
+                timed_out=run.timed_out,
+                reason=run.reason,
+            )
+        if not run.results[0]:
+            return _PoweredCadDecision(
+                domain_valid=False,
+                reason="cad-domain-invalid",
+            )
+        result_index = 1
+    if not prove_equivalence:
+        return _PoweredCadDecision(domain_valid=True)
+    if len(run.results) <= result_index:
         return _PoweredCadDecision(
             domain_valid=True,
-            equivalent=equivalent,  # pyright: ignore[reportPossiblyUnboundVariable]
-            reason="cad-decision",
+            timed_out=run.timed_out,
+            reason=run.reason,
         )
+    return _PoweredCadDecision(
+        domain_valid=True,
+        equivalent=run.results[result_index],
+        reason="cad-decision",
+    )
 
 
 def _cad_decide(
@@ -1275,52 +1375,25 @@ def _cad_decide(
             sp.Eq(candidate.as_expr(), 0),
         ),
     )
-    try:
-        from ._vendor.sympy_extras.polys.cad.qe import decide
-    except Exception as exc:  # noqa: BLE001 - optional CAD backend import
+    run = _run_cad(
+        ((formula, (("forall", variables),)),),
+        timeout_seconds=timeout_seconds,
+    )
+    if not run.results:
         return _result(
             "inconclusive",
             exact=False,
             method="cad",
             accepted=False,
-            reason=f"cad-error:{type(exc).__name__}",
+            timed_out=run.timed_out,
+            reason=run.reason,
         )
-
-    timeout = timeout_utils.SignalTimeout(timeout_seconds, swallow_exc=False)
-    try:
-        with timeout:
-            try:
-                equivalent = decide(formula, [("forall", variables)])
-            except timeout_utils.TimeoutExceptionError:
-                raise
-            except Exception as exc:  # noqa: BLE001 - isolate CAD backend
-                return _result(
-                    "inconclusive",
-                    exact=False,
-                    method="cad",
-                    accepted=False,
-                    reason=f"cad-error:{type(exc).__name__}",
-                )
-    except timeout_utils.TimeoutExceptionError as exc:
-        if exc.timeout is not timeout:
-            raise
-        return _result(
-            "inconclusive",
-            exact=False,
-            method="cad",
-            accepted=False,
-            timed_out=True,
-            reason="cad-timeout",
-        )
-    else:
-        return _result(
-            # Every surviving path through the non-suppressing timeout context
-            # assigns this value, though Pyright cannot prove that across ``with``.
-            "equivalent" if equivalent else "different",  # pyright: ignore[reportPossiblyUnboundVariable]
-            exact=True,
-            method="cad",
-            reason="cad-decision",
-        )
+    return _result(
+        "equivalent" if run.results[0] else "different",
+        exact=True,
+        method="cad",
+        reason="cad-decision",
+    )
 
 
 def _residual_expr(residual: sp.Poly | sp.Expr) -> sp.Expr:
@@ -1339,6 +1412,7 @@ def _check_powered_equivalence(
     *,
     strategy: ImplicitStrategy,
     on_inconclusive: InconclusivePolicy,
+    candidate_domain_validated: bool,
     timeout_seconds: float,
 ) -> ImplicitEquivalenceResult:
     if strategy == "canonical":
@@ -1411,6 +1485,8 @@ def _check_powered_equivalence(
         variables,
         region,
         prove_equivalence=prove_equivalence,
+        domain_validated=candidate_domain_validated
+        and (isinstance(reference, sp.Poly) or structurally_equal),
         timeout_seconds=timeout_seconds,
     )
     if not decision.domain_valid:
@@ -1460,7 +1536,7 @@ def _check_powered_equivalence(
 
 def check_implicit_equivalence(
     reference: ExprInput,
-    candidate: ExprInput,
+    candidate: ExprInput | SympyQuestion,
     *,
     variables: OneOrMore[Variable],
     condition: sp.Basic | bool = True,
@@ -1474,7 +1550,10 @@ def check_implicit_equivalence(
 ) -> ImplicitEquivalenceResult:
     """Compare the real zero sets of two exact algebraic residuals.
 
-    ``reference`` and ``candidate`` represent equations equal to zero. The
+    ``reference`` and ``candidate`` represent equations equal to zero. Pass the
+    same :class:`SympyQuestion` used with
+    :func:`validate_implicit_expression_input` as ``candidate`` to reuse its
+    successful powered-domain proof when the region matches. The
     default ``auto`` strategy first proves easy equivalences canonically, then
     searches exact univariate slices for a counterexample, and finally runs a
     guarded cylindrical algebraic decomposition (CAD). Residuals may be
@@ -1511,6 +1590,13 @@ def check_implicit_equivalence(
             f"slices_per_variable must be between 1 and {_MAX_SLICES_PER_VARIABLE}"
         )
 
+    candidate_lens = candidate if isinstance(candidate, SympyQuestion) else None
+    candidate_value = (
+        candidate_lens.submitted_answer if candidate_lens is not None else candidate
+    )
+    if candidate_value is None:
+        raise ValueError("candidate answer is missing")
+
     symbols = _variables(variables)
     reference_residual = _residual(
         reference,
@@ -1520,7 +1606,7 @@ def check_implicit_equivalence(
         max_coefficient_bits=_CAD_MAX_COEFFICIENT_BITS,
     )
     candidate_residual = _residual(
-        candidate,
+        cast(ExprInput, candidate_value),
         symbols,
         max_total_degree=_CAD_MAX_TOTAL_DEGREE,
         max_terms=_CAD_MAX_TERMS_PER_POLYNOMIAL,
@@ -1533,6 +1619,16 @@ def check_implicit_equivalence(
     region = sp.And(base_condition, domain_condition)
     domain_polys = _condition_polynomials(domain_condition, symbols)
     authored_condition_atoms = len(base_condition.atoms(Relational))
+    candidate_domain_validated = (
+        candidate_lens is not None
+        and not isinstance(candidate_residual, sp.Poly)
+        and _has_domain_proof(
+            candidate_lens,
+            candidate_residual,
+            symbols,
+            region,
+        )
+    )
 
     witness_spec = witnesses or ImplicitWitnesses()
     authored = _check_authored_witnesses(
@@ -1573,6 +1669,7 @@ def check_implicit_equivalence(
             authored,
             strategy=strategy,
             on_inconclusive=on_inconclusive,
+            candidate_domain_validated=candidate_domain_validated,
             timeout_seconds=timeout_seconds,
         )
 

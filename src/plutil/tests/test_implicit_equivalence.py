@@ -907,6 +907,49 @@ def test_powered_solver_abstracts_once_and_shares_one_timeout(
     assert timeout_calls == 1
 
 
+@pytest.mark.parametrize(
+    ("grade_condition", "expected_decide_calls"),
+    [
+        (lambda x: x >= 0, 2),
+        (lambda x: x >= 1, 3),
+    ],
+)
+def test_grading_reuses_only_a_matching_parse_domain_proof(
+    monkeypatch: pytest.MonkeyPatch,
+    grade_condition: Callable[[sp.Symbol], sp.Basic],
+    expected_decide_calls: int,
+) -> None:
+    from plutil._vendor.sympy_extras.polys.cad import qe
+
+    x = sp.Symbol("x")
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(sp.sqrt(x))},
+        format_errors={},
+    )
+    answer = SympyQuestion(data, "answer", variables=x)
+    decide_calls = 0
+    original_decide = qe.decide
+
+    def counted_decide(*args: Any, **kwargs: Any) -> Any:
+        nonlocal decide_calls
+        decide_calls += 1
+        return original_decide(*args, **kwargs)
+
+    monkeypatch.setattr(qe, "decide", counted_decide)
+
+    assert validate_implicit_expression_input(answer, condition=x >= 0)
+    result = check_implicit_equivalence(
+        x,
+        answer,
+        variables=x,
+        condition=grade_condition(x),
+    )
+
+    assert result.verdict == "equivalent"
+    assert result.exact
+    assert decide_calls == expected_decide_calls
+
+
 def test_rational_power_degree_is_rejected_before_abstraction() -> None:
     x = sp.Symbol("x")
 
