@@ -218,76 +218,21 @@ def _validate_polynomial_structure(
     expr: sp.Expr,
     variables: set[sp.Symbol],
     max_total_degree: int,
-) -> None:
-    """Validate polynomial structure and bound its degree before expansion.
+    *,
+    allow_rational_powers: bool = False,
+) -> bool:
+    """Validate exact residual structure and bound degree before expansion.
 
     This deliberately runs before ``sp.Poly`` so unsupported nodes and nested,
     unexpanded powers cannot make polynomial construction perform an unbounded
-    expansion.
-    """
-
-    def degree(value: sp.Basic) -> int:
-        if value.is_Atom:
-            if value in variables:
-                return 1
-            if isinstance(value, sp.Rational):
-                return 0
-            raise _ImplicitInputError(
-                "the expression must be a polynomial with rational coefficients"
-            )
-        if isinstance(value, sp.Add):
-            result = 0
-            for argument in value.args:
-                result = max(result, degree(argument))
-            return result
-        if isinstance(value, sp.Mul):
-            result = 0
-            for argument in value.args:
-                result += degree(argument)
-                if result > max_total_degree:
-                    raise _ImplicitInputError(
-                        f"the total degree must not exceed {max_total_degree}"
-                    )
-            return result
-        if isinstance(value, sp.Pow):
-            exponent = value.exp
-            if exponent.is_Integer is not True or exponent.is_nonnegative is not True:
-                raise _ImplicitInputError(
-                    "the expression must be a polynomial with rational coefficients"
-                )
-            base_degree = degree(value.base)
-            result = base_degree * int(exponent)
-            if result > max_total_degree:
-                raise _ImplicitInputError(
-                    f"the total degree must not exceed {max_total_degree}"
-                )
-            return result
-        raise _ImplicitInputError(
-            "the expression must be a polynomial with rational coefficients"
-        )
-
-    estimated_degree = degree(expr)
-    if estimated_degree > max_total_degree:
-        raise _ImplicitInputError(
-            f"the total degree must not exceed {max_total_degree}"
-        )
-
-
-def _validate_residual_structure(
-    expr: sp.Expr,
-    variables: set[sp.Symbol],
-    max_total_degree: int,
-) -> bool:
-    """Validate the first-party exact-expression subset before abstraction.
-
-    The returned flag says whether the expression contains a noninteger
-    rational power. Such a power is treated as a fresh degree-one variable,
-    while its defining polynomial is checked separately. This prevents the
-    vendored abstraction helper from expanding an expression beyond the CAD
-    envelope.
+    expansion. The result says whether a supported noninteger rational power
+    was present.
     """
 
     has_rational_power = False
+    supported_description = "a polynomial with rational coefficients"
+    if allow_rational_powers:
+        supported_description += " or supported rational powers"
 
     def degree(value: sp.Basic) -> int:
         nonlocal has_rational_power
@@ -296,10 +241,7 @@ def _validate_residual_structure(
                 return 1
             if isinstance(value, sp.Rational):
                 return 0
-            raise _ImplicitInputError(
-                "the expression must be a polynomial with rational coefficients "
-                "or supported rational powers"
-            )
+            raise _ImplicitInputError(f"the expression must be {supported_description}")
         if isinstance(value, sp.Add):
             result = max((degree(argument) for argument in value.args), default=0)
         elif isinstance(value, sp.Mul):
@@ -311,15 +253,23 @@ def _validate_residual_structure(
         elif isinstance(value, sp.Pow):
             exponent = value.exp
             if not isinstance(exponent, sp.Rational):
-                raise _ImplicitInputError("power exponents must be exact rationals")
+                if allow_rational_powers:
+                    raise _ImplicitInputError("power exponents must be exact rationals")
+                raise _ImplicitInputError(
+                    f"the expression must be {supported_description}"
+                )
             base_degree = degree(value.base)
             if exponent.q == 1:
                 if exponent < 0:
+                    if allow_rational_powers:
+                        raise _ImplicitInputError(
+                            "negative integer powers are not supported"
+                        )
                     raise _ImplicitInputError(
-                        "negative integer powers are not supported"
+                        f"the expression must be {supported_description}"
                     )
                 result = base_degree * int(exponent)
-            else:
+            elif allow_rational_powers:
                 has_rational_power = True
                 numerator = int(exponent.p)
                 denominator = int(exponent.q)
@@ -339,11 +289,12 @@ def _validate_residual_structure(
                         f"total degree {max_total_degree}"
                     )
                 result = 1
+            else:
+                raise _ImplicitInputError(
+                    f"the expression must be {supported_description}"
+                )
         else:
-            raise _ImplicitInputError(
-                "the expression must be a polynomial with rational coefficients "
-                "or supported rational powers"
-            )
+            raise _ImplicitInputError(f"the expression must be {supported_description}")
         if result > max_total_degree:
             raise _ImplicitInputError(
                 f"the total degree must not exceed {max_total_degree}"
@@ -371,16 +322,18 @@ def _residual(
     if sp.count_ops(expr) > _MAX_VALIDATION_OPS:
         raise _ImplicitInputError("the expression is too large")
 
-    powered = _validate_residual_structure(
+    powered = _validate_polynomial_structure(
         expr,
         set(variables),
         max_total_degree,
+        allow_rational_powers=True,
     )
     if powered:
         return expr
     return _polynomial(
         expr,
         variables,
+        structure_validated=True,
         max_total_degree=max_total_degree,
         max_terms=max_terms,
         max_coefficient_bits=max_coefficient_bits,
@@ -392,6 +345,7 @@ def _polynomial(
     variables: tuple[sp.Symbol, ...],
     *,
     align_symbols: bool = True,
+    structure_validated: bool = False,
     max_total_degree: int | None = None,
     max_terms: int | None = None,
     max_coefficient_bits: int | None = None,
@@ -409,7 +363,7 @@ def _polynomial(
     if sp.count_ops(expr) > _MAX_VALIDATION_OPS:
         raise _ImplicitInputError("the expression is too large")
 
-    if max_total_degree is not None:
+    if max_total_degree is not None and not structure_validated:
         _validate_polynomial_structure(expr, set(variables), max_total_degree)
 
     try:
