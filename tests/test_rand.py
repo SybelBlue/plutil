@@ -753,6 +753,28 @@ def test_randpoly_roots_factory_delays_and_repeats_evaluation(
     assert calls[0][1]["expand"] is True
 
 
+def test_randordering_returns_shuffled_copy_without_mutating_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(rand.base, "shuffle", lambda values: values.reverse())
+    values = [1, 2, 3]
+
+    assert rand.ordering(values) == [3, 2, 1]
+    assert values == [1, 2, 3]
+    assert rand.ordering(range(3)) == [2, 1, 0]
+
+
+def test_randordering_factory_returns_fresh_ordering_each_call() -> None:
+    rand.base.seed(1234)
+    generate = rand.factory(rand.ordering, tuple(range(10)))
+
+    orderings = [generate() for _ in range(20)]
+
+    assert all(sorted(order) == list(range(10)) for order in orderings)
+    assert len({tuple(order) for order in orderings}) > 1
+    assert orderings[0] is not orderings[1]
+
+
 def test_randpartitions_samples_ranges_before_splitting_remaining_values(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
