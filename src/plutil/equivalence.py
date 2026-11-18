@@ -10,7 +10,6 @@ zero sets agree in the requested region.
 
 from __future__ import annotations
 
-import hashlib
 import random
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -54,8 +53,6 @@ _CAD_MAX_COEFFICIENT_BITS = 64
 _MAX_SLICES_PER_VARIABLE = 20
 _MAX_VALIDATION_OPS = 200
 _MIN_HEURISTIC_EQ_WITNESSES = 3
-_DOMAIN_PROOF_EXTENSION_KEY = "plutil_implicit_expression_domain_proofs"
-
 type ImplicitVerdict = Literal["equivalent", "different", "inconclusive"]
 type ImplicitMethod = Literal["canonical", "witness", "cad"]
 type ImplicitStrategy = Literal["auto", "canonical", "witness", "cad"]
@@ -683,61 +680,6 @@ def _domain_condition(domains: Mapping[sp.Symbol, sp.Set]) -> Boolean:
     return sp.And(*conditions)
 
 
-def _domain_proof_fingerprint(
-    residual: sp.Expr,
-    variables: tuple[sp.Symbol, ...],
-    region: Boolean,
-) -> str:
-    payload = "\0".join(
-        (
-            sp.srepr(residual),
-            sp.srepr(sp.Tuple(*variables)),
-            sp.srepr(region),
-        )
-    )
-    return hashlib.sha256(payload.encode()).hexdigest()
-
-
-def _domain_proof_records(lens: SympyQuestion) -> dict[str, str]:
-    extensions = lens.data.setdefault("extensions", {})
-    records = extensions.get(_DOMAIN_PROOF_EXTENSION_KEY)
-    if not isinstance(records, dict) or not all(
-        isinstance(key, str) and isinstance(value, str)
-        for key, value in records.items()
-    ):
-        records = {}
-        extensions[_DOMAIN_PROOF_EXTENSION_KEY] = records
-    return cast(dict[str, str], records)
-
-
-def _clear_domain_proof(lens: SympyQuestion) -> None:
-    _domain_proof_records(lens).pop(lens.answers_name, None)
-
-
-def _record_domain_proof(
-    lens: SympyQuestion,
-    residual: sp.Expr,
-    variables: tuple[sp.Symbol, ...],
-    region: Boolean,
-) -> None:
-    _domain_proof_records(lens)[lens.answers_name] = _domain_proof_fingerprint(
-        residual,
-        variables,
-        region,
-    )
-
-
-def _has_domain_proof(
-    lens: SympyQuestion,
-    residual: sp.Expr,
-    variables: tuple[sp.Symbol, ...],
-    region: Boolean,
-) -> bool:
-    return _domain_proof_records(lens).get(
-        lens.answers_name
-    ) == _domain_proof_fingerprint(residual, variables, region)
-
-
 def validate_implicit_expression_input(
     lens: SympyQuestion,
     *,
@@ -756,7 +698,6 @@ def validate_implicit_expression_input(
     PrairieLearn ``parse(data)`` function; invalid or unproved input receives a
     format error and its submitted answer is cleared.
     """
-    _clear_domain_proof(lens)
     if lens.format_error is not None:
         return False
     submitted = lens.submitted_answer
@@ -830,7 +771,6 @@ def validate_implicit_expression_input(
                     "could not prove that rational powers are real and defined "
                     f"throughout the comparison region ({detail})"
                 )
-            _record_domain_proof(lens, residual, variables, region)
     except (RuntimeError, _ImplicitInputError) as exc:
         lens.format_error = (
             f"Your answer is not a supported implicit expression: {exc}."
@@ -1279,6 +1219,8 @@ def _run_cad(
                     results.append(decide(formula, list(quantifiers)))
                 except timeout_utils.TimeoutExceptionError:
                     raise
+                except _ImplicitInputError:
+                    raise
                 except Exception as exc:  # noqa: BLE001 - isolate CAD backend
                     return _CadRunResult(
                         results=tuple(results),
@@ -1301,7 +1243,6 @@ def _powered_cad_decide(
     region: Boolean,
     *,
     prove_equivalence: bool,
-    domain_validated: bool = False,
     timeout_seconds: float,
 ) -> _PoweredCadDecision:
     """Prove powered-expression definedness, then optionally equivalence."""
@@ -1313,9 +1254,7 @@ def _powered_cad_decide(
         domain_quantifiers.append(("forall", variables))
     domain_quantifiers.append(("exists", problem.variables))
 
-    requests: list[_CadRequest] = []
-    if not domain_validated:
-        requests.append((domain_formula, tuple(domain_quantifiers)))
+    requests: list[_CadRequest] = [(domain_formula, tuple(domain_quantifiers))]
     if prove_equivalence:
         equivalence_formula = sp.Implies(
             sp.And(region, constraints),
@@ -1328,26 +1267,21 @@ def _powered_cad_decide(
             )
         )
 
-    if not requests:
-        return _PoweredCadDecision(domain_valid=True)
     run = _run_cad(tuple(requests), timeout_seconds=timeout_seconds)
-    result_index = 0
-    if not domain_validated:
-        if not run.results:
-            return _PoweredCadDecision(
-                domain_valid=False,
-                timed_out=run.timed_out,
-                reason=run.reason,
-            )
-        if not run.results[0]:
-            return _PoweredCadDecision(
-                domain_valid=False,
-                reason="cad-domain-invalid",
-            )
-        result_index = 1
+    if not run.results:
+        return _PoweredCadDecision(
+            domain_valid=False,
+            timed_out=run.timed_out,
+            reason=run.reason,
+        )
+    if not run.results[0]:
+        return _PoweredCadDecision(
+            domain_valid=False,
+            reason="cad-domain-invalid",
+        )
     if not prove_equivalence:
         return _PoweredCadDecision(domain_valid=True)
-    if len(run.results) <= result_index:
+    if len(run.results) <= 1:
         return _PoweredCadDecision(
             domain_valid=True,
             timed_out=run.timed_out,
@@ -1355,7 +1289,7 @@ def _powered_cad_decide(
         )
     return _PoweredCadDecision(
         domain_valid=True,
-        equivalent=run.results[result_index],
+        equivalent=run.results[1],
         reason="cad-decision",
     )
 
@@ -1412,7 +1346,6 @@ def _check_powered_equivalence(
     *,
     strategy: ImplicitStrategy,
     on_inconclusive: InconclusivePolicy,
-    candidate_domain_validated: bool,
     timeout_seconds: float,
 ) -> ImplicitEquivalenceResult:
     if strategy == "canonical":
@@ -1485,8 +1418,6 @@ def _check_powered_equivalence(
         variables,
         region,
         prove_equivalence=prove_equivalence,
-        domain_validated=candidate_domain_validated
-        and (isinstance(reference, sp.Poly) or structurally_equal),
         timeout_seconds=timeout_seconds,
     )
     if not decision.domain_valid:
@@ -1550,11 +1481,10 @@ def check_implicit_equivalence(
 ) -> ImplicitEquivalenceResult:
     """Compare the real zero sets of two exact algebraic residuals.
 
-    ``reference`` and ``candidate`` represent equations equal to zero. Pass the
-    same :class:`SympyQuestion` used with
-    :func:`validate_implicit_expression_input` as ``candidate`` to reuse its
-    successful powered-domain proof when the region matches. The
-    default ``auto`` strategy first proves easy equivalences canonically, then
+    ``reference`` and ``candidate`` represent equations equal to zero. A
+    :class:`SympyQuestion` may be passed as ``candidate`` to read its submitted
+    answer without modifying the underlying PrairieLearn data. The default
+    ``auto`` strategy first proves easy equivalences canonically, then
     searches exact univariate slices for a counterexample, and finally runs a
     guarded cylindrical algebraic decomposition (CAD). Residuals may be
     rational polynomials or use supported noninteger rational powers. Powered
@@ -1590,23 +1520,9 @@ def check_implicit_equivalence(
             f"slices_per_variable must be between 1 and {_MAX_SLICES_PER_VARIABLE}"
         )
 
-    candidate_lens = candidate if isinstance(candidate, SympyQuestion) else None
-    candidate_value = (
-        candidate_lens.submitted_answer if candidate_lens is not None else candidate
-    )
-    if candidate_value is None:
-        raise ValueError("candidate answer is missing")
-
     symbols = _variables(variables)
     reference_residual = _residual(
         reference,
-        symbols,
-        max_total_degree=_CAD_MAX_TOTAL_DEGREE,
-        max_terms=_CAD_MAX_TERMS_PER_POLYNOMIAL,
-        max_coefficient_bits=_CAD_MAX_COEFFICIENT_BITS,
-    )
-    candidate_residual = _residual(
-        cast(ExprInput, candidate_value),
         symbols,
         max_total_degree=_CAD_MAX_TOTAL_DEGREE,
         max_terms=_CAD_MAX_TERMS_PER_POLYNOMIAL,
@@ -1619,15 +1535,26 @@ def check_implicit_equivalence(
     region = sp.And(base_condition, domain_condition)
     domain_polys = _condition_polynomials(domain_condition, symbols)
     authored_condition_atoms = len(base_condition.atoms(Relational))
-    candidate_domain_validated = (
-        candidate_lens is not None
-        and not isinstance(candidate_residual, sp.Poly)
-        and _has_domain_proof(
-            candidate_lens,
-            candidate_residual,
-            symbols,
-            region,
+
+    candidate_value = (
+        candidate.submitted_answer
+        if isinstance(candidate, SympyQuestion)
+        else candidate
+    )
+    if candidate_value is None:
+        return _result(
+            "inconclusive",
+            exact=False,
+            method="canonical",
+            accepted=False,
+            reason="candidate-answer-missing",
         )
+    candidate_residual = _residual(
+        cast(ExprInput, candidate_value),
+        symbols,
+        max_total_degree=_CAD_MAX_TOTAL_DEGREE,
+        max_terms=_CAD_MAX_TERMS_PER_POLYNOMIAL,
+        max_coefficient_bits=_CAD_MAX_COEFFICIENT_BITS,
     )
 
     witness_spec = witnesses or ImplicitWitnesses()
@@ -1669,7 +1596,6 @@ def check_implicit_equivalence(
             authored,
             strategy=strategy,
             on_inconclusive=on_inconclusive,
-            candidate_domain_validated=candidate_domain_validated,
             timeout_seconds=timeout_seconds,
         )
 

@@ -106,11 +106,11 @@ def grade(data):
     answer.score = float(result.accepted)
 ```
 
-Passing the same answer lens to the checker lets it reuse the parse helper's
-successful powered-domain proof when the submitted residual and region match.
-The checker verifies an internal fingerprint before reuse; a changed answer or
-region triggers a fresh proof. A separately powered reference is also proved
-unless it is structurally identical to the validated submission.
+Passing the answer lens to the checker reads the parsed submission without
+modifying PrairieLearn's `data`. Parse and grade are independent executions:
+the parse helper stores only the ordinary parsed answer or format error, and the
+checker repeats the powered-domain proof using the grading region. No proof
+state is stored in `data` or assumed to survive between phases.
 
 Use `validate_implicit_polynomial_input` instead when the question intentionally
 requires a strict polynomial answer; that API continues to reject rational

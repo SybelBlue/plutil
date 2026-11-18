@@ -1,3 +1,4 @@
+import copy
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from typing import Any, cast
@@ -6,6 +7,7 @@ import numpy as np
 import prairielearn as pl
 import pytest
 import sympy as sp
+from prairielearn.internal.check_data import check_data
 
 from plutil import (
     ImplicitEquivalenceResult,
@@ -907,26 +909,36 @@ def test_powered_solver_abstracts_once_and_shares_one_timeout(
     assert timeout_calls == 1
 
 
-@pytest.mark.parametrize(
-    ("grade_condition", "expected_decide_calls"),
-    [
-        (lambda x: x >= 0, 2),
-        (lambda x: x >= 1, 3),
-    ],
-)
-def test_grading_reuses_only_a_matching_parse_domain_proof(
+def test_cad_runner_reraises_implicit_input_errors(
     monkeypatch: pytest.MonkeyPatch,
-    grade_condition: Callable[[sp.Symbol], sp.Basic],
-    expected_decide_calls: int,
+) -> None:
+    from plutil._vendor.sympy_extras.polys.cad import qe
+
+    def reject_input(*args: Any, **kwargs: Any) -> bool:
+        raise equivalence._ImplicitInputError("unsupported quantified input")
+
+    monkeypatch.setattr(qe, "decide", reject_input)
+
+    with pytest.raises(
+        equivalence._ImplicitInputError,
+        match="unsupported quantified input",
+    ):
+        equivalence._run_cad(((sp.true, ()),), timeout_seconds=1.0)
+
+
+def test_grading_reproves_domain_after_parse_in_fresh_data(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from plutil._vendor.sympy_extras.polys.cad import qe
 
     x = sp.Symbol("x")
-    data = question_data(
-        submitted_answers={"answer": pl.to_json(sp.sqrt(x))},
-        format_errors={},
+    parse_data = cast(
+        pl.QuestionData,
+        {
+            "submitted_answers": {"answer": pl.to_json(sp.sqrt(x))},
+            "format_errors": {},
+        },
     )
-    answer = SympyQuestion(data, "answer", variables=x)
     decide_calls = 0
     original_decide = qe.decide
 
@@ -937,17 +949,165 @@ def test_grading_reuses_only_a_matching_parse_domain_proof(
 
     monkeypatch.setattr(qe, "decide", counted_decide)
 
-    assert validate_implicit_expression_input(answer, condition=x >= 0)
+    assert validate_implicit_expression_input(
+        SympyQuestion(parse_data, "answer", variables=x),
+        condition=x >= 0,
+    )
+    grade_data = copy.deepcopy(parse_data)
     result = check_implicit_equivalence(
         x,
-        answer,
+        SympyQuestion(grade_data, "answer", variables=x),
         variables=x,
-        condition=grade_condition(x),
+        condition=x >= 0,
     )
 
     assert result.verdict == "equivalent"
     assert result.exact
-    assert decide_calls == expected_decide_calls
+    assert decide_calls == 3
+    assert grade_data == parse_data
+
+
+def test_grading_does_not_trust_proof_for_a_changed_submission() -> None:
+    x = sp.Symbol("x")
+    data = cast(
+        pl.QuestionData,
+        {
+            "submitted_answers": {"answer": pl.to_json(sp.sqrt(x))},
+            "format_errors": {},
+        },
+    )
+
+    assert validate_implicit_expression_input(
+        SympyQuestion(data, "answer", variables=x),
+        condition=x >= 0,
+    )
+    data["submitted_answers"]["answer"] = pl.to_json(sp.sqrt(x - 1))
+
+    result = check_implicit_equivalence(
+        x,
+        SympyQuestion(data, "answer", variables=x),
+        variables=x,
+        condition=x >= 0,
+    )
+
+    assert result.verdict == "inconclusive"
+    assert not result.accepted
+    assert result.reason == "cad-domain-invalid"
+
+
+def test_grading_reproves_domain_for_the_current_region() -> None:
+    x = sp.Symbol("x")
+    data = cast(
+        pl.QuestionData,
+        {
+            "submitted_answers": {"answer": pl.to_json(sp.sqrt(x - 1))},
+            "format_errors": {},
+        },
+    )
+
+    assert validate_implicit_expression_input(
+        SympyQuestion(data, "answer", variables=x),
+        condition=x >= 1,
+    )
+    result = check_implicit_equivalence(
+        x - 1,
+        SympyQuestion(copy.deepcopy(data), "answer", variables=x),
+        variables=x,
+        condition=x >= 0,
+    )
+
+    assert result.verdict == "inconclusive"
+    assert not result.accepted
+    assert result.reason == "cad-domain-invalid"
+
+
+def test_grading_proves_a_distinct_powered_reference_after_parse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from plutil._vendor.sympy_extras.polys.cad import qe
+
+    x = sp.Symbol("x")
+    data = cast(
+        pl.QuestionData,
+        {
+            "submitted_answers": {"answer": pl.to_json(sp.sqrt(x))},
+            "format_errors": {},
+        },
+    )
+    decide_calls = 0
+    original_decide = qe.decide
+
+    def counted_decide(*args: Any, **kwargs: Any) -> Any:
+        nonlocal decide_calls
+        decide_calls += 1
+        return original_decide(*args, **kwargs)
+
+    monkeypatch.setattr(qe, "decide", counted_decide)
+
+    assert validate_implicit_expression_input(
+        SympyQuestion(data, "answer", variables=x),
+        condition=x >= 0,
+    )
+    result = check_implicit_equivalence(
+        x ** sp.Rational(1, 3),
+        SympyQuestion(copy.deepcopy(data), "answer", variables=x),
+        variables=x,
+        condition=x >= 0,
+    )
+
+    assert result.verdict == "equivalent"
+    assert result.exact
+    assert decide_calls == 3
+
+
+@pytest.mark.parametrize(
+    "submitted_answers",
+    [{}, {"answer": None}],
+)
+def test_blank_candidate_lens_returns_a_rejected_result(
+    submitted_answers: dict[str, Any],
+) -> None:
+    x = sp.Symbol("x")
+    data = cast(
+        pl.QuestionData,
+        {
+            "submitted_answers": submitted_answers,
+            "format_errors": {},
+        },
+    )
+
+    result = check_implicit_equivalence(
+        x,
+        SympyQuestion(data, "answer", variables=x),
+        variables=x,
+    )
+
+    assert result == ImplicitEquivalenceResult(
+        verdict="inconclusive",
+        accepted=False,
+        exact=False,
+        method="canonical",
+        reason="candidate-answer-missing",
+    )
+
+
+def test_blank_candidate_lens_does_not_hide_author_setup_errors() -> None:
+    x = sp.Symbol("x")
+    data = cast(
+        pl.QuestionData,
+        {
+            "submitted_answers": {},
+            "format_errors": {},
+        },
+    )
+
+    with pytest.raises(ValueError, match="condition must be Boolean"):
+        check_implicit_equivalence(
+            x,
+            SympyQuestion(data, "answer", variables=x),
+            variables=x,
+            condition=x + 1,
+        )
 
 
 def test_rational_power_degree_is_rejected_before_abstraction() -> None:
@@ -1185,18 +1345,63 @@ def test_parse_helper_accepts_a_supported_polynomial() -> None:
     assert data["format_errors"] == {}
 
 
+def test_expression_validator_preserves_server_data_for_polynomial() -> None:
+    x = sp.Symbol("x")
+    data = cast(
+        pl.QuestionData,
+        {
+            "submitted_answers": {"answer": pl.to_json(x**2 - 1)},
+            "format_errors": {},
+        },
+    )
+    original = copy.deepcopy(data)
+
+    assert validate_implicit_expression_input(
+        SympyQuestion(data, "answer", variables=x)
+    )
+    assert data == original
+
+
 def test_expression_parse_helper_accepts_a_defined_rational_power() -> None:
     x = sp.Symbol("x")
-    data = question_data(
-        submitted_answers={"answer": pl.to_json(sp.sqrt(x))},
-        format_errors={},
+    data = cast(
+        pl.QuestionData,
+        {
+            "submitted_answers": {"answer": pl.to_json(sp.sqrt(x))},
+            "format_errors": {},
+        },
     )
+    original = copy.deepcopy(data)
 
     assert validate_implicit_expression_input(
         SympyQuestion(data, "answer", variables=x),
         condition=x >= 0,
     )
-    assert data["format_errors"] == {}
+    assert data == original
+
+
+def test_expression_parse_helper_preserves_element_extensions() -> None:
+    x = sp.Symbol("x")
+    data = cast(
+        pl.QuestionData,
+        {
+            "submitted_answers": {"answer": pl.to_json(sp.sqrt(x))},
+            "format_errors": {},
+            "extensions": {"example": {"path": "/tmp/example"}},
+        },
+    )
+    original = copy.deepcopy(data)
+
+    assert validate_implicit_expression_input(
+        SympyQuestion(data, "answer", variables=x),
+        condition=x >= 0,
+    )
+    check_data(
+        cast(dict[Any, Any], original),
+        cast(dict[Any, Any], data),
+        "parse",
+    )
+    assert data == original
 
 
 def test_expression_parse_helper_leaves_answer_intact_on_cad_timeout(
@@ -1220,6 +1425,34 @@ def test_expression_parse_helper_leaves_answer_intact_on_cad_timeout(
     )
     assert data["submitted_answers"]["answer"] == submitted
     assert data["format_errors"] == {}
+
+
+def test_expression_parse_helper_preserves_cad_input_error_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from plutil._vendor.sympy_extras.polys.cad import qe
+
+    x = sp.Symbol("x")
+    data = cast(
+        pl.QuestionData,
+        {
+            "submitted_answers": {"answer": pl.to_json(sp.sqrt(x))},
+            "format_errors": {},
+        },
+    )
+
+    def reject_input(*args: Any, **kwargs: Any) -> bool:
+        raise equivalence._ImplicitInputError("unsupported quantified input")
+
+    monkeypatch.setattr(qe, "decide", reject_input)
+
+    assert not validate_implicit_expression_input(
+        SympyQuestion(data, "answer", variables=x),
+        condition=x >= 0,
+    )
+    assert data["submitted_answers"]["answer"] is None
+    assert "unsupported quantified input" in data["format_errors"]["answer"]
+    assert "cad-error" not in data["format_errors"]["answer"]
 
 
 @pytest.mark.parametrize(
@@ -1263,13 +1496,19 @@ def test_expression_parse_helper_rejects_an_unproved_rational_power_domain() -> 
     data = question_data(
         submitted_answers={"answer": pl.to_json(sp.sqrt(x))},
         format_errors={},
+        raw_submitted_answers={"answer": "sqrt(x)"},
+        extensions={"example": {"path": "/tmp/example"}},
     )
+    expected = copy.deepcopy(data)
 
     assert not validate_implicit_expression_input(
         SympyQuestion(data, "answer", variables=x)
     )
     assert data["submitted_answers"]["answer"] is None
     assert "real and defined throughout" in data["format_errors"]["answer"]
+    expected["submitted_answers"]["answer"] = None
+    expected["format_errors"] = data["format_errors"]
+    assert data == expected
 
 
 def test_strict_polynomial_parse_helper_still_rejects_rational_powers() -> None:
