@@ -1,0 +1,108 @@
+diff --git a/__init__.py b/__init__.py
+new file mode 100644
+index 0000000..8e97e7b
+--- /dev/null
++++ b/__init__.py
+@@ -0,0 +1 @@
++"""Private vendored dependencies used by :mod:`plutil`."""
+diff --git a/sympy_extras/polys/cad/__init__.py b/sympy_extras/polys/cad/__init__.py
+index 9b22d17..2a47c1c 100644
+--- a/sympy_extras/polys/cad/__init__.py
++++ b/sympy_extras/polys/cad/__init__.py
+@@ -16,10 +16,8 @@ from .lifting import (cylindrical_algebraic_decomposition, CAD, CADCell,
+     NotWellOriented)
+ from .qe import (quantifier_elimination, decide, sample_points, solution_set,
+     truth_tables)
+-from .cylindrical import IndexedRoot, cylindrical_cases, cylindrical_formula, cylindrical_set
+ 
+ __all__ = ['projection_sets', 'mccallum_projection', 'hong_projection',
+     'squarefree_basis', 'SamplePoint', 'cylindrical_algebraic_decomposition',
+     'CAD', 'CADCell', 'NotWellOriented', 'quantifier_elimination', 'decide',
+-    'sample_points', 'solution_set', 'truth_tables', 'IndexedRoot',
+-    'cylindrical_formula', 'cylindrical_set', 'cylindrical_cases', 'augmented_projection_sets']
++    'sample_points', 'solution_set', 'truth_tables', 'augmented_projection_sets']
+diff --git a/sympy_extras/polys/cad/lifting.py b/sympy_extras/polys/cad/lifting.py
+index b321b7d..16ac58c 100644
+--- a/sympy_extras/polys/cad/lifting.py
++++ b/sympy_extras/polys/cad/lifting.py
+@@ -25,7 +25,7 @@ from sympy.polys.polytools import Poly
+ from .projection import projection_sets, _to_polys
+ from .samplepoints import (SamplePoint, Specialization, RealAlgebraic, _order,
+     rational_between, rational_below, rational_above)
+-from sympy_extras._typing import ExprLike, Sign
++from plutil._vendor.sympy_extras._typing import ExprLike, Sign
+ 
+ 
+ class NotWellOriented(PolynomialError):
+@@ -322,7 +322,7 @@ _LiftingKey = tuple[tuple[tuple[Poly, ...], ...], tuple[Symbol, ...], str]
+ _liftings: OrderedDict[_LiftingKey, Lifting] = OrderedDict()
+ 
+ #: how many liftings are kept
+-_KEPT = 64
++_KEPT = 0
+ 
+ 
+ def lifting_for(projection: Sequence[Sequence[Poly]], gens: Sequence[Symbol], method: str) -> Lifting:
+diff --git a/sympy_extras/polys/cad/projection.py b/sympy_extras/polys/cad/projection.py
+index 3cccbb2..b5e7371 100644
+--- a/sympy_extras/polys/cad/projection.py
++++ b/sympy_extras/polys/cad/projection.py
+@@ -48,12 +48,12 @@ from typing import Iterable, Optional, Sequence, Union
+ from sympy.core.symbol import Symbol
+ from sympy.polys.densebasic import dmp_strip, dmp_zero_p
+ from sympy.polys.domains import ZZ
+-from sympy_extras.polys.euclidtools import dmp_psc
++from plutil._vendor.sympy_extras.polys.euclidtools import dmp_psc
+ from sympy.polys.polyclasses import DMP
+ from sympy.polys.polyerrors import PolynomialError
+ from sympy.polys.polytools import Poly
+ 
+-from sympy_extras._typing import Dmp, DomainElement, ExprLike
++from plutil._vendor.sympy_extras._typing import Dmp, DomainElement, ExprLike
+ 
+ 
+ def _to_polys(polys: Iterable[Union[ExprLike, Poly]], gens: Sequence[Symbol]) -> list[Poly]:
+diff --git a/sympy_extras/polys/cad/qe.py b/sympy_extras/polys/cad/qe.py
+index 7bf16ef..7470267 100644
+--- a/sympy_extras/polys/cad/qe.py
++++ b/sympy_extras/polys/cad/qe.py
+@@ -37,7 +37,7 @@ from sympy.logic.boolalg import (And, Or, Not, Implies, Equivalent, Xor,
+ from sympy.polys.polytools import Poly
+ from sympy.sets.sets import Interval, FiniteSet, Set, Union as SetUnion
+ 
+-from sympy_extras._typing import (QuantifierPrefix, QuantifierSpec, Sign,
++from plutil._vendor.sympy_extras._typing import (QuantifierPrefix, QuantifierSpec, Sign,
+     as_boolean, as_symbol, free_symbols, sorted_symbols)
+ 
+ from .lifting import (CAD, CADCell, Lifting, NotWellOriented, _factor_signs,
+diff --git a/sympy_extras/polys/cad/samplepoints.py b/sympy_extras/polys/cad/samplepoints.py
+index 1163dd9..fa7571b 100644
+--- a/sympy_extras/polys/cad/samplepoints.py
++++ b/sympy_extras/polys/cad/samplepoints.py
+@@ -29,7 +29,12 @@ from sympy.polys.rootoftools import ComplexRootOf
+ from sympy.polys.domains.domain import Domain
+ from sympy.polys.domains.algebraicfield import AlgebraicField
+ 
+-from sympy_extras._typing import DomainElement, ExprLike, Sign, free_symbols
++from plutil._vendor.sympy_extras._typing import (
++    DomainElement,
++    ExprLike,
++    Sign,
++    free_symbols,
++)
+ 
+ #: a real algebraic number: a Rational, a real ComplexRootOf or a rational
+ #: multiple of one
+diff --git a/sympy_extras/polys/euclidtools.py b/sympy_extras/polys/euclidtools.py
+index 73e044d..b2d00fe 100644
+--- a/sympy_extras/polys/euclidtools.py
++++ b/sympy_extras/polys/euclidtools.py
+@@ -16,7 +16,7 @@ from sympy.polys.domains.domain import Domain
+ from sympy.polys.euclidtools import dmp_inner_subresultants, dup_inner_subresultants
+ from sympy.polys.rings import PolyElement
+ 
+-from sympy_extras._typing import Dmp, DomainElement, Dup
++from plutil._vendor.sympy_extras._typing import Dmp, DomainElement, Dup
+ 
+ __all__ = ["dup_psc", "dmp_psc", "psc"]
+ 

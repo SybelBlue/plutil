@@ -12,6 +12,7 @@ New here? Start with {doc}`getting-started`.
 | --- | --- |
 | {doc}`guide/common` | Core symbolic types, expression equality and triviality checks, nested `data` access |
 | {doc}`guide/grading` | Rich scores, multiple-choice/checkbox credit, and rule-based partial credit |
+| {doc}`guide/implicit-equations` | Bounded exact and witness-based equivalence for implicit polynomial equations |
 | {doc}`guide/choices` | Building `pl-multiple-choice` and `pl-checkbox` options from `server.py` |
 | {doc}`guide/formatting` | Deterministic number formatting (`fmt`), parsing it back (`defmt`), exact decimal input |
 | {doc}`guide/functions` | Domains, evaluation, translating/scaling, and rearranging equations |
@@ -36,6 +37,7 @@ getting-started
 
 guide/common
 guide/grading
+guide/implicit-equations
 guide/choices
 guide/formatting
 guide/functions
