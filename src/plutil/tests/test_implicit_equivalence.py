@@ -82,6 +82,23 @@ def test_univariate_root_comparison_uses_polynomial_gcd_for_rootof(
     assert len(evidence.eq_points) == 2
 
 
+def test_point_evaluation_does_not_call_simplify(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    x, y = sp.symbols("x y")
+
+    def unexpected_simplify(*args: object, **kwargs: object) -> None:
+        pytest.fail("point evaluation must not call simplify")
+
+    monkeypatch.setattr(equivalence.sp, "simplify", unexpected_simplify)
+
+    assert equivalence._point_truth(sp.And(x > 0, y < 2), {x: sp.S.One, y: sp.S.Zero})
+    assert equivalence._point_value(
+        sp.Poly(x**2 + y - 1, x, y, domain=sp.QQ),
+        {x: sp.S.One, y: sp.S.Zero},
+    ).is_zero
+
+
 def test_slices_return_an_exact_counterexample() -> None:
     x, y = sp.symbols("x y")
 

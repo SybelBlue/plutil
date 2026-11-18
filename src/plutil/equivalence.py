@@ -472,7 +472,7 @@ def _result(
 
 
 def _point_truth(condition: Boolean, point: Mapping[sp.Symbol, sp.Expr]) -> bool | None:
-    value = sp.simplify(condition.subs(list(point.items())))
+    value = condition.subs(list(point.items()))
     if value is sp.true:
         return True
     if value is sp.false:
@@ -503,7 +503,7 @@ def _point_in_region(
 
 
 def _point_value(poly: sp.Poly, point: Mapping[sp.Symbol, sp.Expr]) -> sp.Expr:
-    return cast(sp.Expr, sp.simplify(poly.as_expr().subs(list(point.items()))))
+    return cast(sp.Expr, poly.eval(dict(point)))
 
 
 def _normalize_witness_point(
