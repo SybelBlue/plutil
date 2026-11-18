@@ -717,15 +717,15 @@ def _slice_evidence(
 
     for pivot_index, pivot in enumerate(variables):
         fixed_variables = variables[:pivot_index] + variables[pivot_index + 1 :]
+        slice_count = slices_per_variable if fixed_variables else 1
         sample_values = {
             symbol: _rational_samples(
                 domains[symbol],
-                1 if not fixed_variables else slices_per_variable,
+                slices_per_variable,
                 rng,
             )
             for symbol in fixed_variables
         }
-        slice_count = 1 if not fixed_variables else slices_per_variable
         for index in range(slice_count):
             fixed = {
                 symbol: values[index % len(values)]
