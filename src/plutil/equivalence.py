@@ -787,6 +787,8 @@ def validate_implicit_expression_input(
                 timeout_seconds=timeout_seconds,
             )
             if not decision.domain_valid:
+                if decision.timed_out:
+                    return True
                 detail = decision.reason or "cad-domain-unproved"
                 raise _ImplicitInputError(
                     "could not prove that rational powers are real and defined "

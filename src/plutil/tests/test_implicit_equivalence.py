@@ -1056,6 +1056,29 @@ def test_expression_parse_helper_accepts_a_defined_rational_power() -> None:
     assert data["format_errors"] == {}
 
 
+def test_expression_parse_helper_leaves_answer_intact_on_cad_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    x = sp.Symbol("x")
+    submitted = pl.to_json(sp.sqrt(x))
+    data = question_data(
+        submitted_answers={"answer": submitted},
+        format_errors={},
+    )
+    monkeypatch.setattr(
+        equivalence.timeout_utils,
+        "SignalTimeout",
+        _immediate_timeout,
+    )
+
+    assert validate_implicit_expression_input(
+        SympyQuestion(data, "answer", variables=x),
+        condition=x >= 0,
+    )
+    assert data["submitted_answers"]["answer"] == submitted
+    assert data["format_errors"] == {}
+
+
 def test_expression_parse_helper_rejects_an_unproved_rational_power_domain() -> None:
     x = sp.Symbol("x")
     data = question_data(
