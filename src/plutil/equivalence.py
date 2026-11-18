@@ -809,9 +809,6 @@ def _cad_decide(
     *,
     timeout_seconds: float,
 ) -> ImplicitEquivalenceResult:
-    if timeout_seconds <= 0:
-        raise ValueError("timeout_seconds must be positive")
-
     formula = sp.Implies(
         region,
         sp.Equivalent(
@@ -819,7 +816,6 @@ def _cad_decide(
             sp.Eq(candidate.as_expr(), 0),
         ),
     )
-    equivalent = False
     try:
         from ._vendor.sympy_extras.polys.cad.qe import decide
     except Exception as exc:  # noqa: BLE001 - optional CAD backend import
@@ -857,13 +853,15 @@ def _cad_decide(
             timed_out=True,
             reason="cad-timeout",
         )
-
-    return _result(
-        "equivalent" if equivalent else "different",
-        exact=True,
-        method="cad",
-        reason="cad-decision",
-    )
+    else:
+        return _result(
+            # Every surviving path through the non-suppressing timeout context
+            # assigns this value, though Pyright cannot prove that across ``with``.
+            "equivalent" if equivalent else "different",  # pyright: ignore[reportPossiblyUnboundVariable]
+            exact=True,
+            method="cad",
+            reason="cad-decision",
+        )
 
 
 def check_implicit_equivalence(
