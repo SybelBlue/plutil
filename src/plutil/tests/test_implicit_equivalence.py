@@ -850,6 +850,44 @@ def test_combined_powered_residuals_exceeding_variable_limit_are_inconclusive() 
     assert result.reason == "cad-variable-limit"
 
 
+def test_too_many_generated_variables_report_the_cad_variable_limit() -> None:
+    x = sp.Symbol("x")
+    residual = (
+        sp.sqrt(x)
+        + x ** sp.Rational(1, 3)
+        + x ** sp.Rational(1, 4)
+        + x ** sp.Rational(3, 4)
+        - 1
+    )
+
+    result = check_implicit_equivalence(
+        residual,
+        x - 1,
+        variables=x,
+        condition=x >= 0,
+    )
+
+    assert result.verdict == "inconclusive"
+    assert result.reason == "cad-variable-limit"
+
+
+def test_parse_helper_reports_generated_variable_limit() -> None:
+    x = sp.Symbol("x")
+    residual = sp.sqrt(x) + x ** sp.Rational(1, 3) + x ** sp.Rational(1, 4)
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(residual)},
+        format_errors={},
+    )
+
+    assert not validate_implicit_expression_input(
+        SympyQuestion(data, "answer", variables=x),
+        condition=x >= 0,
+    )
+    assert (
+        "at most 3 original and generated variables" in data["format_errors"]["answer"]
+    )
+
+
 def test_powered_formula_limit_polynomials_preserve_generated_symbol_identity() -> None:
     x = sp.Symbol("x")
     residual = sp.sqrt(x) + x ** sp.Rational(1, 3)

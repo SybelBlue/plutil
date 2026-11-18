@@ -572,13 +572,24 @@ def _abstract_powered_formula(
     max_coefficient_bits: int,
 ) -> _PoweredProblem:
     """Apply the vendored helper through the exact first-party proxy."""
+    remaining_variables = max_variables - len(variables)
+    rational_powers = {
+        power
+        for power in formula.atoms(sp.Pow)
+        if isinstance(power.exp, sp.Rational) and power.exp.q != 1
+    }
+    if len(rational_powers) > remaining_variables:
+        raise _CadEnvelopeError(
+            "cad-variable-limit",
+            f"at most {max_variables} original and generated variables are supported",
+        )
     try:
         from ._vendor.sympy_extras.assumptions.bounds import polynomial_abstraction
 
         abstraction = polynomial_abstraction(
             formula,
             set(variables),
-            max_variables=max_variables,
+            max_variables=remaining_variables,
         )
     except timeout_utils.TimeoutExceptionError:
         raise
