@@ -11,6 +11,7 @@ zero sets agree in the requested region.
 from __future__ import annotations
 
 import random
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal, cast
@@ -863,13 +864,21 @@ def _point_is_zero(
     point: Mapping[sp.Symbol, sp.Expr],
     *,
     timeout_seconds: float,
+    deadline: float | None = None,
 ) -> bool | None:
     value = _point_value(residual, point)
     if value.is_zero is not None:
         return bool(value.is_zero)
 
     indeterminate = sp.Dummy("z")
-    timeout = timeout_utils.SignalTimeout(timeout_seconds, swallow_exc=False)
+    remaining = (
+        timeout_seconds
+        if deadline is None
+        else min(timeout_seconds, deadline - time.monotonic())
+    )
+    if remaining <= 0:
+        return None
+    timeout = timeout_utils.SignalTimeout(remaining, swallow_exc=False)
     try:
         with timeout:
             try:
@@ -960,6 +969,7 @@ def _check_authored_witnesses(
     *,
     seed: int | None,
     timeout_seconds: float,
+    deadline: float,
 ) -> _SliceEvidence:
     eq_points: list[Mapping[sp.Symbol, sp.Expr]] = []
     rng = (
@@ -982,6 +992,7 @@ def _check_authored_witnesses(
                 reference,
                 point,
                 timeout_seconds=timeout_seconds,
+                deadline=deadline,
             )
             if reference_zero is None:
                 return _SliceEvidence(
@@ -999,6 +1010,7 @@ def _check_authored_witnesses(
                     candidate,
                     point,
                     timeout_seconds=timeout_seconds,
+                    deadline=deadline,
                 )
             except _ImplicitInputError:
                 return _SliceEvidence(
@@ -1350,7 +1362,7 @@ def _check_powered_equivalence(
     *,
     strategy: ImplicitStrategy,
     on_inconclusive: InconclusivePolicy,
-    timeout_seconds: float,
+    deadline: float,
 ) -> ImplicitEquivalenceResult:
     if strategy == "canonical":
         return _result(
@@ -1417,12 +1429,21 @@ def _check_powered_equivalence(
         )
 
     prove_equivalence = strategy in ("auto", "cad") and not structurally_equal
-    decision = _powered_cad_decide(
-        problem,
-        variables,
-        region,
-        prove_equivalence=prove_equivalence,
-        timeout_seconds=timeout_seconds,
+    remaining = deadline - time.monotonic()
+    decision = (
+        _PoweredCadDecision(
+            domain_valid=False,
+            timed_out=True,
+            reason="cad-timeout",
+        )
+        if remaining <= 0
+        else _powered_cad_decide(
+            problem,
+            variables,
+            region,
+            prove_equivalence=prove_equivalence,
+            timeout_seconds=remaining,
+        )
     )
     if not decision.domain_valid:
         return _result(
@@ -1562,6 +1583,7 @@ def check_implicit_equivalence(
     )
 
     witness_spec = witnesses or ImplicitWitnesses()
+    deadline = time.monotonic() + timeout_seconds
     authored = _check_authored_witnesses(
         reference_residual,
         candidate_residual,
@@ -1571,6 +1593,7 @@ def check_implicit_equivalence(
         witness_spec,
         seed=seed,
         timeout_seconds=timeout_seconds,
+        deadline=deadline,
     )
     if authored.counterexample is not None:
         return _result(
@@ -1600,7 +1623,7 @@ def check_implicit_equivalence(
             authored,
             strategy=strategy,
             on_inconclusive=on_inconclusive,
-            timeout_seconds=timeout_seconds,
+            deadline=deadline,
         )
 
     reference_poly = reference_residual
@@ -1676,17 +1699,22 @@ def check_implicit_equivalence(
             len(symbols),
         )
         if eligible:
-            cad_result = _cad_decide(
-                reference_poly,
-                candidate_poly,
-                symbols,
-                region,
-                timeout_seconds=timeout_seconds,
-            )
-            if cad_result.verdict != "inconclusive":
-                return cad_result
-            cad_reason = cad_result.reason
-            cad_timed_out = cad_result.timed_out
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                cad_reason = "cad-timeout"
+                cad_timed_out = True
+            else:
+                cad_result = _cad_decide(
+                    reference_poly,
+                    candidate_poly,
+                    symbols,
+                    region,
+                    timeout_seconds=remaining,
+                )
+                if cad_result.verdict != "inconclusive":
+                    return cad_result
+                cad_reason = cad_result.reason
+                cad_timed_out = cad_result.timed_out
 
     if allow_heuristic and heuristic_ready:
         return _result(

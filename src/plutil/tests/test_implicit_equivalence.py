@@ -982,6 +982,48 @@ def test_powered_solver_abstracts_once_and_shares_one_timeout(
     assert timeout_calls == 1
 
 
+def test_authored_witnesses_and_cad_share_one_timeout_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    x, y = sp.symbols("x y")
+    clock = 0.0
+    cad_timeouts: list[float] = []
+
+    def monotonic() -> float:
+        return clock
+
+    def point_check(*args: object, **kwargs: object) -> bool:
+        nonlocal clock
+        clock += 0.2
+        return True
+
+    def cad_decide(*args: object, timeout_seconds: float, **kwargs: object) -> Any:
+        cad_timeouts.append(timeout_seconds)
+        return equivalence._PoweredCadDecision(
+            domain_valid=True,
+            equivalent=True,
+            reason="cad-decision",
+        )
+
+    monkeypatch.setattr(equivalence.time, "monotonic", monotonic)
+    monkeypatch.setattr(equivalence, "_point_is_zero", point_check)
+    monkeypatch.setattr(equivalence, "_powered_cad_decide", cad_decide)
+
+    result = check_implicit_equivalence(
+        sp.sqrt(x) - y,
+        sp.sqrt(x) - y + x,
+        variables=(x, y),
+        condition=x >= 0,
+        witnesses=ImplicitWitnesses(
+            eq=({x: 0, y: 0}, {x: 1, y: 1}),
+        ),
+        timeout_seconds=1.0,
+    )
+
+    assert result.verdict == "equivalent"
+    assert cad_timeouts == [pytest.approx(0.2)]
+
+
 def test_cad_runner_reraises_implicit_input_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
