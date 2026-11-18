@@ -702,13 +702,38 @@ def test_powered_residual_must_be_defined_throughout_the_region(
     x = sp.Symbol("x")
     residual = expression(x)
 
-    with pytest.raises(ValueError, match="real and defined throughout"):
-        check_implicit_equivalence(
-            residual,
-            residual,
-            variables=x,
-            condition=condition(x),
-        )
+    result = check_implicit_equivalence(
+        residual,
+        residual,
+        variables=x,
+        condition=condition(x),
+    )
+
+    assert result.verdict == "inconclusive"
+    assert not result.accepted
+    assert result.reason == "cad-domain-invalid"
+
+
+@pytest.mark.parametrize(
+    "witnesses",
+    [None, ImplicitWitnesses(neq={sp.Symbol("x"): 0})],
+)
+def test_candidate_undefined_on_part_of_region_is_inconclusive(
+    witnesses: ImplicitWitnesses | None,
+) -> None:
+    x = sp.Symbol("x")
+
+    result = check_implicit_equivalence(
+        x - 1,
+        sp.sqrt(x - 1),
+        variables=x,
+        condition=x >= 0,
+        witnesses=witnesses,
+    )
+
+    assert result.verdict == "inconclusive"
+    assert not result.accepted
+    assert result.reason == "cad-domain-invalid"
 
 
 def test_powered_residual_counts_generated_variables_in_the_cad_limit() -> None:

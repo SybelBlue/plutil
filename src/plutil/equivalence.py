@@ -783,8 +783,8 @@ def validate_implicit_expression_input(
             if not decision.domain_valid:
                 detail = decision.reason or "cad-domain-unproved"
                 raise _ImplicitInputError(
-                    "could not prove that rational powers are defined throughout "
-                    f"the comparison region ({detail})"
+                    "could not prove that rational powers are real and defined "
+                    f"throughout the comparison region ({detail})"
                 )
     except (RuntimeError, _ImplicitInputError) as exc:
         lens.format_error = (
@@ -968,7 +968,14 @@ def _check_authored_witnesses(
                 raise _ImplicitInputError(
                     f"the reference residual does not match an authored {label} witness"
                 )
-            candidate_zero = _point_value(candidate, point).is_zero
+            try:
+                candidate_zero = _point_value(candidate, point).is_zero
+            except _ImplicitInputError:
+                return _SliceEvidence(
+                    None,
+                    tuple(eq_points),
+                    reason="candidate-undefined-at-witness",
+                )
             if candidate_zero is None:
                 raise _ImplicitInputError(
                     "could not determine the submitted residual at a witness"
@@ -1197,9 +1204,9 @@ def _powered_cad_decide(
             try:
                 powers_defined = decide(domain_formula, domain_quantifiers)
                 if not powers_defined:
-                    raise _ImplicitInputError(
-                        "rational powers must be real and defined throughout "
-                        "the comparison region"
+                    return _PoweredCadDecision(
+                        domain_valid=False,
+                        reason="cad-domain-invalid",
                     )
                 domain_valid = True
                 if not prove_equivalence:
