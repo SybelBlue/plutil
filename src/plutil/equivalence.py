@@ -307,9 +307,10 @@ def validate_implicit_polynomial_input(
 
     variables = _variables(lens.variables)
     try:
-        if len(variables) > max_variables:
+        variable_limit = min(max_variables, _CAD_MAX_VARIABLES)
+        if len(variables) > variable_limit:
             raise _ImplicitInputError(
-                f"at most {max_variables} variables are supported"
+                f"at most {variable_limit} variables are supported"
             )
         if not isinstance(submitted, sp.Expr):
             raise _ImplicitInputError("the answer must be an expression")

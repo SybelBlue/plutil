@@ -629,7 +629,7 @@ def test_parse_helper_rejects_an_unsupported_polynomial() -> None:
 
 
 def test_parse_helper_cannot_raise_the_checker_polynomial_limits() -> None:
-    x, y, z = sp.symbols("x y z")
+    w, x, y, z = sp.symbols("w x y z")
 
     def rejected_message(
         expression: sp.Expr,
@@ -648,6 +648,11 @@ def test_parse_helper_cannot_raise_the_checker_polynomial_limits() -> None:
         return data["format_errors"]["answer"]
 
     assert "total degree" in rejected_message(x**5, x, max_total_degree=6)
+    assert "at most 3 variables" in rejected_message(
+        w + x + y + z,
+        (w, x, y, z),
+        max_variables=5,
+    )
     assert "30 terms" in rejected_message(
         cast(
             sp.Expr,
