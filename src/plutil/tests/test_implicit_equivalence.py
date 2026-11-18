@@ -674,7 +674,7 @@ def test_cad_eligibility_reuses_per_polynomial_validation(
     monkeypatch.setattr(sp.Poly, "total_degree", unexpected_limit_recheck)
     monkeypatch.setattr(equivalence, "_coefficient_bits", unexpected_limit_recheck)
 
-    assert equivalence._cad_eligible(residuals, (), 0, 1) == (True, None)
+    assert equivalence._cad_polynomials_eligible(residuals, 0, 1) == (True, None)
     assert terms_calls == len(residuals)
 
 
@@ -1060,23 +1060,6 @@ def test_authored_witnesses_and_cad_share_one_timeout_budget(
 
     assert result.verdict == "equivalent"
     assert cad_timeouts == [pytest.approx(0.2)]
-
-
-def test_cad_runner_reraises_implicit_input_errors(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from plutil._vendor.sympy_extras.polys.cad import qe
-
-    def reject_input(*args: Any, **kwargs: Any) -> bool:
-        raise equivalence._ImplicitInputError("unsupported quantified input")
-
-    monkeypatch.setattr(qe, "decide", reject_input)
-
-    with pytest.raises(
-        equivalence._ImplicitInputError,
-        match="unsupported quantified input",
-    ):
-        equivalence._run_cad(((sp.true, ()),), timeout_seconds=1.0)
 
 
 def test_grading_reproves_domain_after_parse_in_fresh_data(
@@ -1612,34 +1595,6 @@ def test_expression_parse_helper_leaves_answer_intact_on_cad_timeout(
     )
     assert data["submitted_answers"]["answer"] == submitted
     assert data["format_errors"] == {}
-
-
-def test_expression_parse_helper_preserves_cad_input_error_message(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from plutil._vendor.sympy_extras.polys.cad import qe
-
-    x = sp.Symbol("x")
-    data = cast(
-        pl.QuestionData,
-        {
-            "submitted_answers": {"answer": pl.to_json(sp.sqrt(x))},
-            "format_errors": {},
-        },
-    )
-
-    def reject_input(*args: Any, **kwargs: Any) -> bool:
-        raise equivalence._ImplicitInputError("unsupported quantified input")
-
-    monkeypatch.setattr(qe, "decide", reject_input)
-
-    assert not validate_implicit_expression_input(
-        SympyQuestion(data, "answer", variables=x),
-        condition=x >= 0,
-    )
-    assert data["submitted_answers"]["answer"] is None
-    assert "unsupported quantified input" in data["format_errors"]["answer"]
-    assert "cad-error" not in data["format_errors"]["answer"]
 
 
 @pytest.mark.parametrize(

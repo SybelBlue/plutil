@@ -1250,19 +1250,6 @@ def _slice_evidence(
     return _SliceEvidence(None, tuple(eq_by_key.values()), exact, reason)
 
 
-def _cad_eligible(
-    residuals: tuple[sp.Poly, sp.Poly],
-    condition_polys: tuple[sp.Poly, ...],
-    authored_condition_atoms: int,
-    variable_count: int,
-) -> tuple[bool, str | None]:
-    return _cad_polynomials_eligible(
-        (*residuals, *condition_polys),
-        authored_condition_atoms,
-        variable_count,
-    )
-
-
 def _cad_polynomials_eligible(
     polynomials: tuple[sp.Poly, ...],
     authored_condition_atoms: int,
@@ -1296,8 +1283,6 @@ def _run_cad(
                 try:
                     results.append(decide(formula, list(quantifiers)))
                 except timeout_utils.TimeoutExceptionError:
-                    raise
-                except _ImplicitInputError:
                     raise
                 except Exception as exc:  # noqa: BLE001 - isolate CAD backend
                     return _CadRunResult(
@@ -1754,9 +1739,13 @@ def check_implicit_equivalence(
     cad_reason: str | None = None
     cad_timed_out = False
     if strategy in ("auto", "cad"):
-        eligible, cad_reason = _cad_eligible(
-            (reference_poly, candidate_poly),
-            (*condition_polys, *domain_polys),
+        eligible, cad_reason = _cad_polynomials_eligible(
+            (
+                reference_poly,
+                candidate_poly,
+                *condition_polys,
+                *domain_polys,
+            ),
             authored_condition_atoms,
             len(symbols),
         )
