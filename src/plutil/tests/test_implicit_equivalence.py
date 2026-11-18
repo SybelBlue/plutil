@@ -528,6 +528,30 @@ def test_cad_does_not_swallow_an_enclosing_timeout(
     assert exc_info.value.timeout is enclosing_timeout
 
 
+def test_powered_abstraction_does_not_swallow_an_enclosing_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from plutil._vendor.sympy_extras.assumptions import bounds
+
+    x = sp.Symbol("x")
+    enclosing_timeout: Any = object()
+
+    def foreign_timeout(*args: object, **kwargs: object) -> None:
+        raise equivalence.timeout_utils.TimeoutExceptionError(enclosing_timeout)
+
+    monkeypatch.setattr(bounds, "polynomial_abstraction", foreign_timeout)
+
+    with pytest.raises(equivalence.timeout_utils.TimeoutExceptionError) as exc_info:
+        check_implicit_equivalence(
+            sp.sqrt(x),
+            sp.sqrt(x),
+            variables=x,
+            condition=x >= 0,
+        )
+
+    assert exc_info.value.timeout is enclosing_timeout
+
+
 def test_cad_timeout_setup_errors_propagate(monkeypatch: pytest.MonkeyPatch) -> None:
     x, y = sp.symbols("x y")
 

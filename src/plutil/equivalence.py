@@ -579,6 +579,8 @@ def _abstract_powered_formula(
             set(variables),
             max_variables=max_variables,
         )
+    except timeout_utils.TimeoutExceptionError:
+        raise
     except Exception as exc:
         raise RuntimeError(f"cad-error:{type(exc).__name__}") from exc
 
