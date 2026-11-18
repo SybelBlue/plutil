@@ -339,6 +339,52 @@ def _validate_polynomial_structure(
     return has_rational_power
 
 
+def _validate_powered_residual_limits(
+    expr: sp.Expr,
+    variables: tuple[sp.Symbol, ...],
+    *,
+    max_total_degree: int,
+    max_terms: int,
+    max_coefficient_bits: int,
+) -> None:
+    powers = tuple(
+        sorted(
+            (
+                power
+                for power in expr.atoms(sp.Pow)
+                if isinstance(power.exp, sp.Rational) and power.exp.q != 1
+            ),
+            key=sp.default_sort_key,
+        )
+    )
+    generated = tuple(sp.Dummy("t", real=True) for _power in powers)
+    replacements = dict(zip(powers, generated))
+    all_variables = (*variables, *generated)
+
+    def validate(polynomial_expr: sp.Expr) -> None:
+        _polynomial(
+            polynomial_expr,
+            all_variables,
+            align_symbols=False,
+            max_total_degree=max_total_degree,
+            max_terms=max_terms,
+            max_coefficient_bits=max_coefficient_bits,
+        )
+
+    validate(expr.xreplace(replacements))
+    for power, variable in zip(powers, generated):
+        base = cast(sp.Expr, power.base.xreplace(replacements))
+        exponent = cast(sp.Rational, power.exp)
+        numerator = int(exponent.p)
+        denominator = int(exponent.q)
+        defining_polynomial = (
+            variable**denominator - base**numerator
+            if numerator > 0
+            else variable**denominator * base ** (-numerator) - 1
+        )
+        validate(defining_polynomial)
+
+
 def _residual(
     value: ExprInput | sp.Expr,
     variables: tuple[sp.Symbol, ...],
@@ -356,6 +402,13 @@ def _residual(
         allow_rational_powers=True,
     )
     if powered:
+        _validate_powered_residual_limits(
+            expr,
+            variables,
+            max_total_degree=max_total_degree,
+            max_terms=max_terms,
+            max_coefficient_bits=max_coefficient_bits,
+        )
         return expr
     return _polynomial(
         expr,

@@ -1275,6 +1275,40 @@ def test_rational_power_degree_is_rejected_before_abstraction() -> None:
         )
 
 
+@pytest.mark.parametrize("strategy", ["auto", "canonical"])
+def test_powered_residual_term_limit_is_strategy_independent(
+    strategy: equivalence.ImplicitStrategy,
+) -> None:
+    x, y = sp.symbols("x y")
+    residual = (1 + x + y + sp.sqrt(x)) ** 4 - 1
+
+    with pytest.raises(ValueError, match="at most 30 terms"):
+        check_implicit_equivalence(
+            residual,
+            x - 1,
+            variables=(x, y),
+            condition=x >= 0,
+            strategy=strategy,
+        )
+
+
+@pytest.mark.parametrize("strategy", ["auto", "canonical"])
+def test_powered_residual_coefficient_limit_is_strategy_independent(
+    strategy: equivalence.ImplicitStrategy,
+) -> None:
+    x = sp.Symbol("x")
+    residual = sp.sqrt(x) + x / 2**80
+
+    with pytest.raises(ValueError, match="64 bits"):
+        check_implicit_equivalence(
+            residual,
+            x,
+            variables=x,
+            condition=x >= 0,
+            strategy=strategy,
+        )
+
+
 def test_rational_powers_remain_unsupported_in_region_conditions() -> None:
     x = sp.Symbol("x")
 
