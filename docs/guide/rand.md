@@ -156,6 +156,14 @@ root = rand.factory(rand.int, -6, 6, exclude=(0,))
 p = rand.sp.poly_roots(1, of="x", degree=3, root_factory=root, expand=True)
 ```
 
+## `rand.ordering(values) -> list`
+
+Return the values in a random order as a new list. The input is left unchanged.
+
+```python
+steps = rand.ordering(("expand", "factor", "simplify"))
+```
+
 ## `rand.partitions(values, *, samples) -> tuple[tuple, ...]`
 
 Split shuffled values into disjoint samples. A sample size may be exact, an
@@ -229,6 +237,7 @@ next_partitions = rand.factory(
     samples=(None, None),
 )
 next_coprimes = rand.factory(rand.coprimes, (2, 3, 5, 7, 11))
+next_ordering = rand.factory(rand.ordering, ("a", "b", "c", "d"))
 
 a = next_integer()
 colors = next_choices()

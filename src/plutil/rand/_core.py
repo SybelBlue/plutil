@@ -38,6 +38,17 @@ def choices[T](pop: Sequence[T], *args, **kwargs) -> Sequence[T]:
     return base.choices(pop, *args, **kwargs)
 
 
+def ordering[T](pop: Sequence[T]) -> list[T]:
+    """Return the elements of ``pop`` in a random order.
+
+    The input is not modified; a new shuffled list is returned, so immutable
+    sequences such as tuples and ranges are accepted.
+    """
+    shuffled = list(pop)
+    base.shuffle(shuffled)
+    return shuffled
+
+
 def int(
     low: py.int,
     high: py.int,
@@ -245,6 +256,7 @@ __all__ = (
     "float",
     "int",
     "mbool",
+    "ordering",
     "partitions",
     "rational",
     "sign",
