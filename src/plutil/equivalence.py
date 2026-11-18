@@ -527,9 +527,17 @@ _RELATION_TYPES = (
 )
 
 
-def _condition_polynomials(
-    condition: Boolean,
+def _relation_polynomials(
+    formula: Boolean,
     variables: tuple[sp.Symbol, ...],
+    *,
+    align_symbols: bool,
+    max_total_degree: int,
+    max_terms: int,
+    max_coefficient_bits: int,
+    relation_error: str,
+    argument_error: str,
+    formula_error: str,
 ) -> tuple[sp.Poly, ...]:
     polynomials: list[sp.Poly] = []
 
@@ -538,33 +546,49 @@ def _condition_polynomials(
             return
         if isinstance(value, Relational):
             if not isinstance(value, _RELATION_TYPES):
-                raise _ImplicitInputError(
-                    f"unsupported condition relation: {type(value).__name__}"
-                )
+                raise _ImplicitInputError(f"{relation_error}: {type(value).__name__}")
             lhs = cast(sp.Expr, value.lhs)
             rhs = cast(sp.Expr, value.rhs)
             polynomials.append(
                 _polynomial(
                     lhs - rhs,
                     variables,
-                    max_total_degree=_CAD_MAX_TOTAL_DEGREE,
-                    max_terms=_CAD_MAX_TERMS_PER_POLYNOMIAL,
-                    max_coefficient_bits=_CAD_MAX_COEFFICIENT_BITS,
+                    align_symbols=align_symbols,
+                    max_total_degree=max_total_degree,
+                    max_terms=max_terms,
+                    max_coefficient_bits=max_coefficient_bits,
                 )
             )
             return
         if isinstance(value, BooleanFunction):
             for argument in value.args:
                 if not isinstance(argument, (Boolean, bool)):
-                    raise _ImplicitInputError("condition arguments must be Boolean")
+                    raise _ImplicitInputError(argument_error)
                 visit(sp.sympify(argument))
             return
-        raise _ImplicitInputError(
-            "condition must contain only polynomial relations and Boolean operators"
-        )
+        raise _ImplicitInputError(formula_error)
 
-    visit(condition)
+    visit(formula)
     return tuple(polynomials)
+
+
+def _condition_polynomials(
+    condition: Boolean,
+    variables: tuple[sp.Symbol, ...],
+) -> tuple[sp.Poly, ...]:
+    return _relation_polynomials(
+        condition,
+        variables,
+        align_symbols=True,
+        max_total_degree=_CAD_MAX_TOTAL_DEGREE,
+        max_terms=_CAD_MAX_TERMS_PER_POLYNOMIAL,
+        max_coefficient_bits=_CAD_MAX_COEFFICIENT_BITS,
+        relation_error="unsupported condition relation",
+        argument_error="condition arguments must be Boolean",
+        formula_error=(
+            "condition must contain only polynomial relations and Boolean operators"
+        ),
+    )
 
 
 def _formula_polynomials(
@@ -576,43 +600,17 @@ def _formula_polynomials(
     max_coefficient_bits: int,
 ) -> tuple[sp.Poly, ...]:
     """Validate and collect every polynomial relation in a Boolean formula."""
-    polynomials: list[sp.Poly] = []
-
-    def visit(value: Boolean | sp.Basic) -> None:
-        if value in (sp.true, sp.false):
-            return
-        if isinstance(value, Relational):
-            if not isinstance(value, _RELATION_TYPES):
-                raise _ImplicitInputError(
-                    f"unsupported generated relation: {type(value).__name__}"
-                )
-            lhs = cast(sp.Expr, value.lhs)
-            rhs = cast(sp.Expr, value.rhs)
-            polynomials.append(
-                _polynomial(
-                    lhs - rhs,
-                    variables,
-                    align_symbols=False,
-                    max_total_degree=max_total_degree,
-                    max_terms=max_terms,
-                    max_coefficient_bits=max_coefficient_bits,
-                )
-            )
-            return
-        if isinstance(value, BooleanFunction):
-            for argument in value.args:
-                if not isinstance(argument, (Boolean, bool)):
-                    raise _ImplicitInputError(
-                        "generated formula arguments must be Boolean"
-                    )
-                visit(sp.sympify(argument))
-            return
-        raise _ImplicitInputError(
-            "the generated formula must contain only polynomial relations"
-        )
-
-    visit(formula)
-    return tuple(polynomials)
+    return _relation_polynomials(
+        formula,
+        variables,
+        align_symbols=False,
+        max_total_degree=max_total_degree,
+        max_terms=max_terms,
+        max_coefficient_bits=max_coefficient_bits,
+        relation_error="unsupported generated relation",
+        argument_error="generated formula arguments must be Boolean",
+        formula_error="the generated formula must contain only polynomial relations",
+    )
 
 
 def _abstract_powered_formula(
