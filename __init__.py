@@ -41,7 +41,13 @@ from .common import (
     to_expr,
     truncate_to_significant_digits,
 )
-from .equivalence import equivalent
+from .equivalence import (
+    ImplicitEquivalenceResult,
+    ImplicitWitnesses,
+    check_implicit_equivalence,
+    equivalent,
+    validate_implicit_polynomial_input,
+)
 from .functions import (
     domain,
     eval_at,
@@ -79,6 +85,8 @@ __all__: Final[tuple[str, ...]] = (
     "Data",
     "ExprInput",
     "ExprLike",
+    "ImplicitEquivalenceResult",
+    "ImplicitWitnesses",
     "MultipleChoiceOption",
     "MultipleChoiceQuestion",
     "NoPreferences",
@@ -92,6 +100,7 @@ __all__: Final[tuple[str, ...]] = (
     "SympyValue",
     "award_partial_credit",
     "check",
+    "check_implicit_equivalence",
     "choices",
     "clamp",
     "count_in_latex",
@@ -131,4 +140,5 @@ __all__: Final[tuple[str, ...]] = (
     "spint",
     "to_expr",
     "truncate_to_significant_digits",
+    "validate_implicit_polynomial_input",
 )
