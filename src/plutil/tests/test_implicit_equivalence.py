@@ -222,6 +222,53 @@ def test_incorrectly_authored_witness_is_rejected() -> None:
         )
 
 
+def test_aborted_authored_witness_pass_cannot_enable_heuristic_acceptance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    x, y = sp.symbols("x y")
+    point_results = iter([True, True] * 3 + [True, None])
+    point_calls = 0
+
+    def interrupted_point_check(*args: object, **kwargs: object) -> bool | None:
+        nonlocal point_calls
+        point_calls += 1
+        return next(point_results)
+
+    monkeypatch.setattr(equivalence, "_point_is_zero", interrupted_point_check)
+    monkeypatch.setattr(
+        equivalence,
+        "_powered_cad_decide",
+        lambda *args, **kwargs: equivalence._PoweredCadDecision(
+            domain_valid=True,
+            timed_out=True,
+            reason="cad-timeout",
+        ),
+    )
+    witnesses = ImplicitWitnesses(
+        eq=(
+            {x: 0, y: 0},
+            {x: 1, y: 1},
+            {x: 4, y: 2},
+            {x: 9, y: 3},
+        ),
+        neq={x: 16, y: 0},
+    )
+
+    result = check_implicit_equivalence(
+        sp.sqrt(x) - y,
+        sp.sqrt(x) - y + x,
+        variables=(x, y),
+        condition=x >= 0,
+        witnesses=witnesses,
+        on_inconclusive="witness",
+    )
+
+    assert result.verdict == "inconclusive"
+    assert not result.accepted
+    assert result.reason == "candidate-witness-inconclusive"
+    assert point_calls == 8
+
+
 def test_variable_assumptions_cannot_silently_narrow_the_real_domain() -> None:
     positive_x = sp.Symbol("x", positive=True)
 

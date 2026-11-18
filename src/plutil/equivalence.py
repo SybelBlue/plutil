@@ -982,7 +982,7 @@ def _check_authored_witnesses(
             if reference_zero is None:
                 return _SliceEvidence(
                     None,
-                    tuple(eq_points),
+                    (),
                     reason="reference-witness-inconclusive",
                 )
             if reference_zero is not expected_zero:
@@ -999,13 +999,13 @@ def _check_authored_witnesses(
             except _ImplicitInputError:
                 return _SliceEvidence(
                     None,
-                    tuple(eq_points),
+                    (),
                     reason="candidate-undefined-at-witness",
                 )
             if candidate_zero is None:
                 return _SliceEvidence(
                     None,
-                    tuple(eq_points),
+                    (),
                     reason="candidate-witness-inconclusive",
                 )
             if candidate_zero != expected_zero:
@@ -1461,7 +1461,7 @@ def _check_powered_equivalence(
         method="cad" if strategy in ("auto", "cad") else "witness",
         accepted=False,
         timed_out=decision.timed_out,
-        reason=decision.reason or "insufficient-witness-evidence",
+        reason=authored.reason or decision.reason or "insufficient-witness-evidence",
     )
 
 
@@ -1692,7 +1692,12 @@ def check_implicit_equivalence(
             reason="heuristic-witness-agreement",
         )
 
-    reason = cad_reason or slices.reason or "insufficient-witness-evidence"
+    reason = (
+        authored.reason
+        or cad_reason
+        or slices.reason
+        or "insufficient-witness-evidence"
+    )
     return _result(
         "inconclusive",
         exact=False,
