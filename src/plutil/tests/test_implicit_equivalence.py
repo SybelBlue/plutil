@@ -567,6 +567,30 @@ def test_nested_powers_are_rejected_before_polynomial_expansion(
         )
 
 
+def test_non_polynomial_branches_are_rejected_before_polynomial_expansion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    x, y = sp.symbols("x y")
+    expressions = (
+        (1 + sp.pi) ** 3000,
+        (x + y + 1) ** 200 + 1 / x,
+        sp.Add(sp.sin(x), (x + y + 1) ** 200, evaluate=False),
+    )
+
+    def unexpected_poly(*args: object, **kwargs: object) -> None:
+        pytest.fail("sp.Poly must not run for structurally invalid input")
+
+    monkeypatch.setattr(equivalence.sp, "Poly", unexpected_poly)
+
+    for expression in expressions:
+        with pytest.raises(ValueError):
+            equivalence._polynomial(
+                expression,
+                (x, y),
+                max_total_degree=4,
+            )
+
+
 def test_parse_helper_rejects_an_unsupported_polynomial() -> None:
     x = sp.Symbol("x")
     data = question_data(
