@@ -117,6 +117,24 @@ class _ImplicitInputError(ValueError):
     """An implicit-equation input is outside the supported polynomial subset."""
 
 
+def _align_symbols_by_name[T: sp.Basic](
+    value: T,
+    variables: OneOrMore[Variable],
+) -> T:
+    declared_symbols = tuple(
+        var_to_symbol(item) for item in _normalize_one_or_more(variables)
+    )
+    by_name = {symbol.name: symbol for symbol in declared_symbols}
+    replacements: dict[sp.Basic, sp.Basic] = {}
+    for symbol in value.free_symbols:
+        if not isinstance(symbol, sp.Symbol):
+            continue
+        declared = by_name.get(symbol.name)
+        if declared is not None and symbol != declared:
+            replacements[symbol] = declared
+    return cast(T, value.xreplace(replacements))
+
+
 def _implicit_input_expr(
     value: ExprInput,
     variables: OneOrMore[Variable] = (),
@@ -124,7 +142,7 @@ def _implicit_input_expr(
     context: str = "expression",
 ) -> sp.Expr:
     try:
-        return _input_to_expr(value, variables)
+        return _align_symbols_by_name(_input_to_expr(value, variables), variables)
     except (sympy_utils.BaseSympyError, TypeError, ValueError) as exc:
         raise _ImplicitInputError(
             f"the {context} could not be parsed as an expression"
@@ -359,8 +377,11 @@ def _condition_polynomials(
     return tuple(polynomials)
 
 
-def _as_condition(value: sp.Basic | bool) -> Boolean:
-    condition = sp.sympify(value)
+def _as_condition(
+    value: sp.Basic | bool,
+    variables: tuple[sp.Symbol, ...],
+) -> Boolean:
+    condition = _align_symbols_by_name(sp.sympify(value), variables)
     if not isinstance(condition, Boolean):
         raise _ImplicitInputError("condition must be Boolean")
     return condition
@@ -914,7 +935,7 @@ def check_implicit_equivalence(
         max_terms=_CAD_MAX_TERMS_PER_POLYNOMIAL,
         max_coefficient_bits=_CAD_MAX_COEFFICIENT_BITS,
     )
-    base_condition = _as_condition(condition)
+    base_condition = _as_condition(condition, symbols)
     condition_polys = _condition_polynomials(base_condition, symbols)
     normalized_domains = _normalize_domains(domains, symbols)
     domain_condition = _domain_condition(normalized_domains)

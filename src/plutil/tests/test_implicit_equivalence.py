@@ -189,6 +189,30 @@ def test_explicit_real_variable_assumption_is_supported() -> None:
     assert result.exact
 
 
+@pytest.mark.parametrize(
+    ("reference", "candidate"),
+    [
+        ("x**2 - 1", "x - 1"),
+        (pl.to_json(sp.Symbol("x") ** 2 - 1), pl.to_json(sp.Symbol("x") - 1)),
+    ],
+)
+def test_real_variable_assumption_is_applied_to_parsed_inputs(
+    reference: Any,
+    candidate: Any,
+) -> None:
+    real_x = sp.Symbol("x", real=True)
+
+    result = check_implicit_equivalence(
+        reference,
+        candidate,
+        variables=real_x,
+        condition=sp.Symbol("x") < 0,
+    )
+
+    assert result.verdict == "different"
+    assert result.counterexample == {real_x: sp.Integer(-1)}
+
+
 def test_implicit_witnesses_is_keyword_only() -> None:
     fields = ImplicitWitnesses.__dataclass_fields__.values()
 
@@ -653,6 +677,20 @@ def test_parse_helper_accepts_a_supported_polynomial() -> None:
 
     assert validate_implicit_polynomial_input(
         SympyQuestion(data, "answer", variables=(x, y))
+    )
+    assert data["format_errors"] == {}
+
+
+def test_parse_helper_accepts_a_real_variable_with_plain_serialized_symbols() -> None:
+    plain_x = sp.Symbol("x")
+    real_x = sp.Symbol("x", real=True)
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(plain_x**2 - 1)},
+        format_errors={},
+    )
+
+    assert validate_implicit_polynomial_input(
+        SympyQuestion(data, "answer", variables=real_x)
     )
     assert data["format_errors"] == {}
 
