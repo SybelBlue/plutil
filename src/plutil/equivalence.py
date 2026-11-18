@@ -726,24 +726,28 @@ def validate_implicit_expression_input(
     if submitted is None:
         return False
 
+    if timeout_seconds <= 0:
+        raise ValueError("timeout_seconds must be positive")
+    variables = _variables(lens.variables)
+    variable_limit = min(max_variables, _CAD_MAX_VARIABLES)
+    if len(variables) > variable_limit:
+        raise ValueError(f"at most {variable_limit} variables are supported")
+    total_degree_limit = min(max_total_degree, _CAD_MAX_TOTAL_DEGREE)
+    term_limit = min(max_terms, _CAD_MAX_TERMS_PER_POLYNOMIAL)
+    coefficient_limit = min(
+        max_coefficient_bits,
+        _CAD_MAX_COEFFICIENT_BITS,
+    )
+    base_condition = _as_condition(condition, variables)
+    condition_polys = _condition_polynomials(base_condition, variables)
+    normalized_domains = _normalize_domains(domains, variables)
+    domain_condition = _domain_condition(normalized_domains)
+    domain_polys = _condition_polynomials(domain_condition, variables)
+
     try:
-        if timeout_seconds <= 0:
-            raise _ImplicitInputError("timeout_seconds must be positive")
-        variables = _variables(lens.variables)
-        variable_limit = min(max_variables, _CAD_MAX_VARIABLES)
-        if len(variables) > variable_limit:
-            raise _ImplicitInputError(
-                f"at most {variable_limit} variables are supported"
-            )
         if not isinstance(submitted, sp.Expr):
             raise _ImplicitInputError("the answer must be an expression")
 
-        total_degree_limit = min(max_total_degree, _CAD_MAX_TOTAL_DEGREE)
-        term_limit = min(max_terms, _CAD_MAX_TERMS_PER_POLYNOMIAL)
-        coefficient_limit = min(
-            max_coefficient_bits,
-            _CAD_MAX_COEFFICIENT_BITS,
-        )
         residual = _residual(
             submitted,
             variables,
@@ -751,11 +755,6 @@ def validate_implicit_expression_input(
             max_terms=term_limit,
             max_coefficient_bits=coefficient_limit,
         )
-        base_condition = _as_condition(condition, variables)
-        condition_polys = _condition_polynomials(base_condition, variables)
-        normalized_domains = _normalize_domains(domains, variables)
-        domain_condition = _domain_condition(normalized_domains)
-        domain_polys = _condition_polynomials(domain_condition, variables)
         if isinstance(residual, sp.Poly):
             return True
 

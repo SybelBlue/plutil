@@ -1079,6 +1079,42 @@ def test_expression_parse_helper_leaves_answer_intact_on_cad_timeout(
     assert data["format_errors"] == {}
 
 
+@pytest.mark.parametrize(
+    ("options", "message"),
+    [
+        (lambda x: {"timeout_seconds": 0}, "timeout_seconds must be positive"),
+        (lambda x: {"condition": x + 1}, "condition must be Boolean"),
+        (
+            lambda x: {"condition": sp.sqrt(x) > 1},
+            "polynomial with rational coefficients",
+        ),
+        (
+            lambda x: {"domains": {x: sp.FiniteSet(0)}},
+            "must be Reals or a real interval",
+        ),
+    ],
+)
+def test_expression_parse_helper_propagates_author_setup_errors(
+    options: Callable[[sp.Symbol], dict[str, Any]],
+    message: str,
+) -> None:
+    x = sp.Symbol("x")
+    submitted = pl.to_json(x)
+    data = question_data(
+        submitted_answers={"answer": submitted},
+        format_errors={},
+    )
+
+    with pytest.raises(ValueError, match=message):
+        validate_implicit_expression_input(
+            SympyQuestion(data, "answer", variables=x),
+            **options(x),
+        )
+
+    assert data["submitted_answers"]["answer"] == submitted
+    assert data["format_errors"] == {}
+
+
 def test_expression_parse_helper_rejects_an_unproved_rational_power_domain() -> None:
     x = sp.Symbol("x")
     data = question_data(
