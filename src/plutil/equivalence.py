@@ -695,10 +695,12 @@ def validate_implicit_expression_input(
 ) -> bool:
     """Validate a bounded polynomial or exact rational-power submission.
 
-    Rational powers are accepted only when CAD proves that they are real and
-    defined everywhere in the supplied region. This helper is intended for a
-    PrairieLearn ``parse(data)`` function; invalid or unproved input receives a
-    format error and its submitted answer is cleared.
+    Rational powers are normally accepted only when CAD proves that they are
+    real and defined everywhere in the supplied region. This helper is intended
+    for a PrairieLearn ``parse(data)`` function; deterministically invalid input
+    receives a format error and its submitted answer is cleared. A CAD timeout
+    leaves the answer intact so grading can fail closed as inconclusive instead
+    of blaming a transient server timeout on the student.
     """
     if lens.format_error is not None:
         return False

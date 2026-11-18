@@ -118,7 +118,10 @@ powers.
 
 The checker enforces the residual limits again. The parse helper is still
 important because it gives students an actionable format error and prevents a
-known-unsupported answer from reaching grading.
+known-unsupported answer from reaching grading. If its powered-domain proof
+times out, however, it leaves the parsed answer intact: the grading check then
+retries the proof and safely returns an inconclusive verdict if the timeout
+recurs. A transient server timeout is not reported as a student format error.
 
 ## How decisions are made
 
