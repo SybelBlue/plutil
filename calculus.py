@@ -17,6 +17,7 @@ from .common import (
     ExprInput,
     ExprLike,
     NumberLike,
+    OneOrMore,
     Variable,
     _input_to_expr,
     _normalize_one_or_more,
@@ -64,22 +65,32 @@ def award_missing_constant_credit(
 def derivative(
     f: ExprInput,
     *,
-    d: Variable,
+    d: OneOrMore[Variable],
     evaluate: bool = True,
 ) -> sympy.Expr:
     """Differentiate ``f`` with respect to ``d``.
 
+    A sequence differentiates repeatedly, in order: ``d=(x, x)`` is the
+    second derivative in ``x`` and ``d=(x, y)`` is the mixed partial
+    ``d/dy (df/dx)``.
+
     Set ``evaluate=False`` to return an unevaluated SymPy derivative.
+
+    Raises:
+        ValueError: If ``d`` is an empty sequence.
     """
+    variables = tuple(map(var_to_symbol, _normalize_one_or_more(d)))
+    if not variables:
+        raise ValueError("`d` must name at least one variable")
     return sympy.Derivative(
         _input_to_expr(f),
-        var_to_symbol(d),
+        *variables,
         evaluate=evaluate,
     )
 
 
 def derivative_(
-    *, d: Variable, evaluate: bool = True
+    *, d: OneOrMore[Variable], evaluate: bool = True
 ) -> Callable[[ExprInput], sympy.Expr]:
     """Return a callable that differentiates its argument with respect to ``d``."""
     return lambda f: derivative(f, d=d, evaluate=evaluate)
