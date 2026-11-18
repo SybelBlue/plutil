@@ -767,6 +767,45 @@ def test_combined_powered_residuals_exceeding_variable_limit_are_inconclusive() 
     assert result.reason == "cad-variable-limit"
 
 
+def test_powered_formula_limit_polynomials_preserve_generated_symbol_identity() -> None:
+    x = sp.Symbol("x")
+    residual = sp.sqrt(x) + x ** sp.Rational(1, 3)
+    formula = cast(Any, sp.Eq(residual, 0, evaluate=False))
+
+    problem = equivalence._abstract_powered_formula(
+        formula,
+        (x,),
+        max_variables=3,
+        max_total_degree=4,
+        max_terms=30,
+        max_coefficient_bits=64,
+    )
+
+    relation = problem.polynomials[0]
+    assert relation.gens == (x, *problem.variables)
+    assert len(relation.terms()) == 2
+    assert set(relation.as_expr().free_symbols) == set(problem.variables)
+
+
+def test_powered_formula_does_not_merge_generated_symbol_with_user_t() -> None:
+    x, t = sp.symbols("x t")
+    formula = cast(Any, sp.Eq(sp.sqrt(x) - t, 0, evaluate=False))
+
+    problem = equivalence._abstract_powered_formula(
+        formula,
+        (x, t),
+        max_variables=3,
+        max_total_degree=4,
+        max_terms=30,
+        max_coefficient_bits=64,
+    )
+
+    relation = problem.polynomials[0]
+    assert not relation.is_zero
+    assert relation.gens == (x, t, *problem.variables)
+    assert set(relation.as_expr().free_symbols) == {t, *problem.variables}
+
+
 def test_nested_rational_powers_are_supported_within_the_variable_limit() -> None:
     x = sp.Symbol("x")
     residual = sp.Pow(sp.sqrt(x), sp.Rational(1, 2), evaluate=False)

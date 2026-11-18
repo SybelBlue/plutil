@@ -391,11 +391,16 @@ def _polynomial(
     value: ExprInput | sp.Expr,
     variables: tuple[sp.Symbol, ...],
     *,
+    align_symbols: bool = True,
     max_total_degree: int | None = None,
     max_terms: int | None = None,
     max_coefficient_bits: int | None = None,
 ) -> sp.Poly:
-    expr = _implicit_input_expr(value, variables)
+    expr = (
+        _implicit_input_expr(value, variables)
+        if align_symbols
+        else cast(sp.Expr, value)
+    )
     if expr.has(sp.Float):
         raise _ImplicitInputError("use exact rational coefficients, not decimals")
     if extra := expr.free_symbols - set(variables):
@@ -554,6 +559,7 @@ def _formula_polynomials(
                 _polynomial(
                     lhs - rhs,
                     variables,
+                    align_symbols=False,
                     max_total_degree=max_total_degree,
                     max_terms=max_terms,
                     max_coefficient_bits=max_coefficient_bits,
