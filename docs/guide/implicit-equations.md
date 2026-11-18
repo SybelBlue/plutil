@@ -43,6 +43,8 @@ The exact CAD tier additionally accepts at most three original plus generated
 variables, four authored region relations, and 60 terms across the complete
 request. Each distinct rational-power expression introduces one generated
 variable; an identical expression shared by the residuals is reused.
+Requests that are individually valid but exceed this combined CAD envelope
+return an inconclusive verdict instead of raising an input error.
 
 Rational powers follow SymPy's principal-real convention. A noninteger power
 requires a nonnegative base, including powers with odd denominators, and a

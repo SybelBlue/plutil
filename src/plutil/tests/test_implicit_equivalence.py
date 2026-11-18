@@ -715,13 +715,31 @@ def test_powered_residual_counts_generated_variables_in_the_cad_limit() -> None:
     x, y = sp.symbols("x y")
     residual = sp.sqrt(x) + sp.sqrt(y)
 
-    with pytest.raises(ValueError, match="at most 3 original and generated"):
-        check_implicit_equivalence(
-            residual,
-            residual,
-            variables=(x, y),
-            condition=sp.And(x >= 0, y >= 0),
-        )
+    result = check_implicit_equivalence(
+        residual,
+        residual,
+        variables=(x, y),
+        condition=sp.And(x >= 0, y >= 0),
+    )
+
+    assert result.verdict == "inconclusive"
+    assert not result.accepted
+    assert result.reason == "cad-variable-limit"
+
+
+def test_combined_powered_residuals_exceeding_variable_limit_are_inconclusive() -> None:
+    x, y = sp.symbols("x y")
+
+    result = check_implicit_equivalence(
+        sp.sqrt(x) - y,
+        x ** sp.Rational(1, 3) - y,
+        variables=(x, y),
+        condition=x >= 0,
+    )
+
+    assert result.verdict == "inconclusive"
+    assert not result.accepted
+    assert result.reason == "cad-variable-limit"
 
 
 def test_nested_rational_powers_are_supported_within_the_variable_limit() -> None:

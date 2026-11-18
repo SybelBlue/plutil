@@ -133,6 +133,14 @@ class _ImplicitInputError(ValueError):
     """An implicit-equation input is outside the supported exact subset."""
 
 
+class _CadEnvelopeError(_ImplicitInputError):
+    """A valid expression cannot fit in the combined CAD request envelope."""
+
+    def __init__(self, reason: str, message: str) -> None:
+        super().__init__(message)
+        self.reason = reason
+
+
 def _align_symbols_by_name[T: sp.Basic](
     value: T,
     variables: OneOrMore[Variable],
@@ -596,8 +604,9 @@ def _abstract_powered_formula(
     generated = tuple(abstraction.variables)
     all_variables = (*variables, *generated)
     if len(all_variables) > max_variables:
-        raise _ImplicitInputError(
-            f"at most {max_variables} original and generated variables are supported"
+        raise _CadEnvelopeError(
+            "cad-variable-limit",
+            f"at most {max_variables} original and generated variables are supported",
         )
     constraints = tuple(abstraction.constraints)
     relation_polynomials = _formula_polynomials(
@@ -1341,6 +1350,14 @@ def _check_powered_equivalence(
             max_total_degree=_CAD_MAX_TOTAL_DEGREE,
             max_terms=_CAD_MAX_TERMS_PER_POLYNOMIAL,
             max_coefficient_bits=_CAD_MAX_COEFFICIENT_BITS,
+        )
+    except _CadEnvelopeError as exc:
+        return _result(
+            "inconclusive",
+            exact=False,
+            method="cad",
+            accepted=False,
+            reason=exc.reason,
         )
     except RuntimeError as exc:
         return _result(
