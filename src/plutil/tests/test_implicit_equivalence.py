@@ -98,6 +98,14 @@ def test_point_evaluation_does_not_call_simplify(
         sp.Poly(x**2 + y - 1, x, y, domain=sp.QQ),
         {x: sp.S.One, y: sp.S.Zero},
     ).is_zero
+    assert equivalence._point_value(sp.sqrt(x), {x: sp.Integer(4)}) == 2
+
+
+def test_point_zero_falls_back_when_is_zero_is_unknown() -> None:
+    value = sp.UnevaluatedExpr(0)
+
+    assert value.is_zero is None
+    assert equivalence._point_is_zero(value, {}, timeout_seconds=1.0) is True
 
 
 def test_slices_return_an_exact_counterexample() -> None:

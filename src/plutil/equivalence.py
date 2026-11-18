@@ -28,7 +28,7 @@ from sympy.core.relational import (
     Unequality,
 )
 from sympy.logic.boolalg import Boolean, BooleanFunction
-from sympy.polys.polyerrors import CoercionFailed, PolynomialError
+from sympy.polys.polyerrors import CoercionFailed, NotAlgebraic, PolynomialError
 
 from . import rand
 from .common import (
@@ -867,12 +867,38 @@ def _point_value(
 ) -> sp.Expr:
     if isinstance(residual, sp.Poly):
         return cast(sp.Expr, residual.eval(dict(point)))
-    value = cast(sp.Expr, sp.simplify(residual.subs(list(point.items()))))
-    if value.is_real is not True or value.is_finite is not True:
+    value = cast(sp.Expr, residual.subs(list(point.items())))
+    if value.is_real is False or value.is_finite is False:
         raise _ImplicitInputError(
             "a powered residual is not a finite real value at a witness"
         )
     return value
+
+
+def _point_is_zero(
+    residual: sp.Poly | sp.Expr,
+    point: Mapping[sp.Symbol, sp.Expr],
+    *,
+    timeout_seconds: float,
+) -> bool | None:
+    value = _point_value(residual, point)
+    if value.is_zero is not None:
+        return bool(value.is_zero)
+
+    indeterminate = sp.Dummy("z")
+    timeout = timeout_utils.SignalTimeout(timeout_seconds, swallow_exc=False)
+    try:
+        with timeout:
+            try:
+                minimum = sp.minimal_polynomial(value, indeterminate)
+            except (NotAlgebraic, PolynomialError, TypeError, ValueError):
+                return value.equals(0)
+            minimum_at_zero = cast(sp.Expr, minimum.subs(indeterminate, 0))
+            return minimum_at_zero.is_zero
+    except timeout_utils.TimeoutExceptionError as exc:
+        if exc.timeout is not timeout:
+            raise
+        return None
 
 
 def _normalize_witness_point(
@@ -950,6 +976,7 @@ def _check_authored_witnesses(
     witnesses: ImplicitWitnesses,
     *,
     seed: int | None,
+    timeout_seconds: float,
 ) -> _SliceEvidence:
     eq_points: list[Mapping[sp.Symbol, sp.Expr]] = []
     rng = (
@@ -968,14 +995,28 @@ def _check_authored_witnesses(
                 raise _ImplicitInputError(
                     "every witness must lie in the comparison region"
                 )
-            reference_zero = _point_value(reference, point).is_zero
+            reference_zero = _point_is_zero(
+                reference,
+                point,
+                timeout_seconds=timeout_seconds,
+            )
+            if reference_zero is None:
+                return _SliceEvidence(
+                    None,
+                    tuple(eq_points),
+                    reason="reference-witness-inconclusive",
+                )
             if reference_zero is not expected_zero:
                 label = "eq" if expected_zero else "neq"
                 raise _ImplicitInputError(
                     f"the reference residual does not match an authored {label} witness"
                 )
             try:
-                candidate_zero = _point_value(candidate, point).is_zero
+                candidate_zero = _point_is_zero(
+                    candidate,
+                    point,
+                    timeout_seconds=timeout_seconds,
+                )
             except _ImplicitInputError:
                 return _SliceEvidence(
                     None,
@@ -983,8 +1024,10 @@ def _check_authored_witnesses(
                     reason="candidate-undefined-at-witness",
                 )
             if candidate_zero is None:
-                raise _ImplicitInputError(
-                    "could not determine the submitted residual at a witness"
+                return _SliceEvidence(
+                    None,
+                    tuple(eq_points),
+                    reason="candidate-witness-inconclusive",
                 )
             if candidate_zero != expected_zero:
                 return _SliceEvidence(point, tuple(eq_points))
@@ -1533,6 +1576,7 @@ def check_implicit_equivalence(
         normalized_domains,
         witness_spec,
         seed=seed,
+        timeout_seconds=timeout_seconds,
     )
     if authored.counterexample is not None:
         return _result(
