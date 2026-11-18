@@ -6,13 +6,23 @@ Full API reference: {py:mod}`plutil.calculus`, {py:mod}`plutil.feedback`.
 
 ### `derivative(f, *, d) -> Expr`
 
-Symbolic derivative of `f` with respect to symbol `d`.
+Symbolic derivative of `f` with respect to `d`.
 
 ```python
 from plutil.calculus import derivative
 from sympy.abc import x
 
 derivative(x**3 + 2 * x, d=x)  # -> 3*x**2 + 2
+```
+
+Pass a sequence to `d` to differentiate repeatedly, in order. Repeating a
+variable gives a higher derivative; mixing variables gives a mixed partial.
+
+```python
+from sympy.abc import y
+
+derivative(x**3, d=(x, x))  # -> 6*x
+derivative(x**2 * y**3, d=(x, y))  # -> 6*x*y**2
 ```
 
 ### `tangent_of(f, **point) -> Expr`

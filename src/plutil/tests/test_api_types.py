@@ -83,6 +83,7 @@ def test_expression_apis_return_sympy_expressions() -> None:
     assert_type(to_expr(2), sympy.Expr)
     assert_type(require_expr(conservative_value), sympy.Expr)
     assert_type(derivative(value, d=x), sympy.Expr)
+    assert_type(derivative(value, d=(x, "x")), sympy.Expr)
     assert_type(integrate(value, d=x), sympy.Expr)
     assert_type(eval_at(value, x=2), sympy.Expr)
     assert_type(evalf_at(value, x=2), float)

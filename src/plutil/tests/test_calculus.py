@@ -12,6 +12,8 @@ from plutil.calculus import (
     approximate_area,
     arc_length_of,
     award_missing_constant_credit,
+    derivative,
+    derivative_,
     integrate,
     mean_value_theorem,
     secant_of,
@@ -24,6 +26,35 @@ from plutil.common import eq
 from plutil.feedback import missing_constant
 from plutil.lenses import SympyQuestion
 from plutil.tests.helpers import question_data
+
+
+def test_derivative_single_variable():
+    assert eq(derivative(x**3 + 2 * x, d="x"), 3 * x**2 + 2)
+
+
+def test_derivative_sequence_repeats_differentiation():
+    assert eq(derivative(x**3, d=(x, x)), 6 * x)
+    assert eq(derivative(x**3, d=["x", "x", "x"]), 6)
+
+
+def test_derivative_sequence_mixed_partials():
+    assert eq(derivative(x**2 * y**3, d=(x, "y")), 6 * x * y**2)
+
+
+def test_derivative_sequence_unevaluated():
+    result = derivative(x**2 * y, d=(x, y), evaluate=False)
+
+    assert result == sympy.Derivative(x**2 * y, x, y)
+    assert eq(result.doit(), 2 * x)
+
+
+def test_derivative_rejects_empty_sequence():
+    with pytest.raises(ValueError, match="at least one variable"):
+        derivative(x, d=())
+
+
+def test_derivative_partial_accepts_sequence():
+    assert eq(derivative_(d=(x, x))(sympy.sin(x)), -sympy.sin(x))
 
 
 def test_integrate_indefinite_adds_constant():
