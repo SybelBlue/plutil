@@ -231,6 +231,22 @@ def test_explicit_real_variable_assumption_is_supported() -> None:
     assert result.exact
 
 
+def test_real_variable_assumption_is_applied_to_domain_and_witness_keys() -> None:
+    plain_x = sp.Symbol("x")
+    real_x = sp.Symbol("x", real=True)
+
+    result = check_implicit_equivalence(
+        real_x,
+        real_x + 1,
+        variables=real_x,
+        domains={plain_x: sp.Interval(-2, -1)},
+        witnesses=ImplicitWitnesses(neq={plain_x: -1}),
+    )
+
+    assert result.verdict == "different"
+    assert result.counterexample == {real_x: sp.Integer(-1)}
+
+
 @pytest.mark.parametrize(
     ("reference", "candidate"),
     [
@@ -368,6 +384,36 @@ def test_domain_witness_must_sample_real_values() -> None:
             variables=x,
             witnesses=ImplicitWitnesses(eq={x: sp.Complexes}),
         )
+
+
+def test_witness_domain_support_is_defined_by_the_random_sampler(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    x = sp.Symbol("x")
+    domain = sp.FiniteSet(0)
+
+    def fake_in_domain(
+        received_domain: object,
+        *,
+        k: int,
+        rng: np.random.Generator,
+    ) -> np.ndarray[Any, Any]:
+        assert received_domain == domain
+        assert k == 1
+        assert isinstance(rng, np.random.Generator)
+        return np.array([0])
+
+    monkeypatch.setattr(equivalence.rand.sp, "in_domain", fake_in_domain)
+
+    result = check_implicit_equivalence(
+        x,
+        x,
+        variables=x,
+        witnesses=ImplicitWitnesses(eq=cast(Any, {x: domain})),
+        seed=1234,
+    )
+
+    assert result.verdict == "equivalent"
 
 
 class _ImmediateTimeout(AbstractContextManager[None]):

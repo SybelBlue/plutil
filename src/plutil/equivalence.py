@@ -13,7 +13,7 @@ from __future__ import annotations
 import random
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal, TypeIs, cast
+from typing import Literal, cast
 
 import numpy as np
 import sympy as sp
@@ -124,13 +124,15 @@ def _align_symbols_by_name[T: sp.Basic](
     declared_symbols = tuple(
         var_to_symbol(item) for item in _normalize_one_or_more(variables)
     )
-    by_name = {symbol.name: symbol for symbol in declared_symbols}
     replacements: dict[sp.Basic, sp.Basic] = {}
     for symbol in value.free_symbols:
         if not isinstance(symbol, sp.Symbol):
             continue
-        declared = by_name.get(symbol.name)
-        if declared is not None and symbol != declared:
+        try:
+            declared = _resolve_variable(symbol, declared_symbols)
+        except _ImplicitInputError:
+            continue
+        if symbol != declared:
             replacements[symbol] = declared
     return cast(T, value.xreplace(replacements))
 
@@ -163,6 +165,17 @@ def _variables(variables: OneOrMore[Variable]) -> tuple[sp.Symbol, ...]:
                 "implicit-equation variables may only carry the real=True assumption"
             )
     return symbols
+
+
+def _resolve_variable(
+    variable: Variable,
+    variables: tuple[sp.Symbol, ...],
+) -> sp.Symbol:
+    name = variable.name if isinstance(variable, sp.Symbol) else variable
+    by_name = {symbol.name: symbol for symbol in variables}
+    if (symbol := by_name.get(name)) is None:
+        raise _ImplicitInputError(f"unknown variable: {variable}")
+    return symbol
 
 
 def _coefficient_bits(poly: sp.Poly) -> int:
@@ -396,12 +409,9 @@ def _normalize_domains(
     if domains is None:
         return normalized
 
-    by_name = {symbol.name: symbol for symbol in variables}
     seen: set[sp.Symbol] = set()
     for variable, domain in domains.items():
-        symbol = variable if isinstance(variable, sp.Symbol) else by_name.get(variable)
-        if symbol is None or symbol not in normalized:
-            raise _ImplicitInputError(f"unknown domain variable: {variable}")
+        symbol = _resolve_variable(variable, variables)
         if symbol in seen:
             raise _ImplicitInputError(
                 f"domain for {symbol} was provided more than once"
@@ -511,15 +521,12 @@ def _normalize_witness_point(
     variables: tuple[sp.Symbol, ...],
     rng: np.random.Generator | None,
 ) -> dict[sp.Symbol, sp.Expr]:
-    by_name = {symbol.name: symbol for symbol in variables}
     point: dict[sp.Symbol, sp.Expr] = {}
     for variable, raw_value in raw.items():
-        symbol = variable if isinstance(variable, sp.Symbol) else by_name.get(variable)
-        if symbol is None or symbol not in variables:
-            raise _ImplicitInputError(f"unknown witness variable: {variable}")
+        symbol = _resolve_variable(variable, variables)
         if symbol in point:
             raise _ImplicitInputError(f"witness binds {symbol} more than once")
-        if _is_witness_domain(raw_value):
+        if isinstance(raw_value, sp.Set):
             value = _sample_witness_coordinate(raw_value, rng)
         else:
             value = _implicit_input_expr(raw_value, context="witness coordinate")
@@ -537,29 +544,21 @@ def _normalize_witness_point(
     return point
 
 
-def _is_witness_domain(value: WitnessCoordinate) -> TypeIs[rand.sp.Domain]:
-    return isinstance(value, sp.Interval) or any(
-        value is domain
-        for domain in (
-            sp.Complexes,
-            sp.Reals,
-            sp.Integers,
-            sp.Naturals,
-            sp.Naturals0,
-            sp.Rationals,
-        )
-    )
-
-
 def _sample_witness_coordinate(
-    domain: rand.sp.Domain,
+    domain: sp.Set,
     rng: np.random.Generator | None,
 ) -> sp.Expr:
-    samples = (
-        rand.sp.in_domain(domain, k=1)
-        if rng is None
-        else rand.sp.in_domain(domain, k=1, rng=rng)
-    )
+    try:
+        supported_domain = cast(rand.sp.Domain, domain)
+        samples = (
+            rand.sp.in_domain(supported_domain, k=1)
+            if rng is None
+            else rand.sp.in_domain(supported_domain, k=1, rng=rng)
+        )
+    except TypeError as exc:
+        raise _ImplicitInputError(
+            "witness coordinate domains must be supported by rand.sp.in_domain"
+        ) from exc
     sample = samples[0]
     if isinstance(sample, np.integer):
         value: sp.Expr = sp.Integer(int(sample))
