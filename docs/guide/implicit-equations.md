@@ -71,9 +71,9 @@ The default `strategy="auto"` is tiered:
 
 1. Normalize square-free polynomial factors. This exactly proves common cases
    such as scalar multiples and repeated factors.
-2. Compare exact roots on deterministic univariate slices. A mismatch is an
+2. Compare exact roots on randomly sampled univariate slices. A mismatch is an
    exact counterexample; in one variable, a complete root comparison is an
-   exact decision.
+   exact decision. Pass `seed` for reproducible slice selection.
 3. Run a vendored pure-Python CAD implementation inside a one-second signal
    timeout and the complexity envelope above.
 
@@ -155,7 +155,7 @@ the seed established by PrairieLearn. Pass
 Repeat a witness template in `eq` or `neq` to draw more than one point.
 
 Witnesses are particularly useful for isolated points and components that a
-small deterministic family of slices might miss.
+small sampled family of slices might miss.
 
 ## Reading the result
 
