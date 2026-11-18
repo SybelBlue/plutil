@@ -115,6 +115,31 @@ def test_slices_return_an_exact_counterexample() -> None:
     assert result.counterexample is not None
 
 
+def test_slice_substitution_stays_in_the_polynomial_domain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    x, y = sp.symbols("x y")
+    reference = sp.Poly(x**2 + y**2 - 1, x, y, domain=sp.QQ)
+    candidate = sp.Poly(x**2 + 2 * y**2 - 1, x, y, domain=sp.QQ)
+
+    def unexpected_poly(*args: object, **kwargs: object) -> None:
+        pytest.fail("slice substitution must not reconstruct a Poly from an expression")
+
+    monkeypatch.setattr(equivalence.sp, "Poly", unexpected_poly)
+
+    evidence = equivalence._slice_evidence(
+        reference,
+        candidate,
+        (x, y),
+        sp.true,
+        {x: sp.Reals, y: sp.Reals},
+        seed=1234,
+        slices_per_variable=5,
+    )
+
+    assert evidence.counterexample is not None
+
+
 def test_cad_proves_equal_real_zero_sets_with_different_complex_zero_sets() -> None:
     x, y = sp.symbols("x y")
 

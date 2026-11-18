@@ -731,13 +731,8 @@ def _slice_evidence(
                 symbol: values[index % len(values)]
                 for symbol, values in sample_values.items()
             }
-            substitutions = list(fixed.items())
-            reference_line = sp.Poly(
-                reference.as_expr().subs(substitutions), pivot, domain=sp.QQ
-            )
-            candidate_line = sp.Poly(
-                candidate.as_expr().subs(substitutions), pivot, domain=sp.QQ
-            )
+            reference_line = cast(sp.Poly, reference.eval(fixed))
+            candidate_line = cast(sp.Poly, candidate.eval(fixed))
 
             if reference_line.is_zero or candidate_line.is_zero:
                 if reference_line.is_zero != candidate_line.is_zero:
