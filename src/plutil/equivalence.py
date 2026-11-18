@@ -594,18 +594,17 @@ def _abstract_powered_formula(
     """Apply the vendored helper through the exact first-party proxy."""
     try:
         from ._vendor.sympy_extras.assumptions.bounds import polynomial_abstraction
+
+        abstraction = polynomial_abstraction(
+            formula,
+            set(variables),
+            max_variables=max_variables,
+        )
     except Exception as exc:
         raise RuntimeError(f"cad-error:{type(exc).__name__}") from exc
 
-    abstraction = polynomial_abstraction(
-        formula,
-        set(variables),
-        max_variables=max_variables,
-    )
     if abstraction is None:
-        raise _ImplicitInputError(
-            f"at most {max_variables} original and generated variables are supported"
-        )
+        raise RuntimeError("cad-error:abstraction-unsupported")
 
     generated = tuple(abstraction.variables)
     all_variables = (*variables, *generated)

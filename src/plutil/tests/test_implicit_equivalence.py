@@ -806,6 +806,38 @@ def test_powered_formula_does_not_merge_generated_symbol_with_user_t() -> None:
     assert set(relation.as_expr().free_symbols) == {t, *problem.variables}
 
 
+@pytest.mark.parametrize(
+    ("replacement", "reason"),
+    [
+        (lambda *args, **kwargs: None, "cad-error:abstraction-unsupported"),
+        (
+            lambda *args, **kwargs: (_ for _ in ()).throw(KeyError("broken")),
+            "cad-error:KeyError",
+        ),
+    ],
+)
+def test_powered_abstraction_failures_are_inconclusive(
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: Callable[..., Any],
+    reason: str,
+) -> None:
+    from plutil._vendor.sympy_extras.assumptions import bounds
+
+    x = sp.Symbol("x")
+    monkeypatch.setattr(bounds, "polynomial_abstraction", replacement)
+
+    result = check_implicit_equivalence(
+        sp.sqrt(x),
+        sp.sqrt(x),
+        variables=x,
+        condition=x >= 0,
+    )
+
+    assert result.verdict == "inconclusive"
+    assert not result.accepted
+    assert result.reason == reason
+
+
 def test_nested_rational_powers_are_supported_within_the_variable_limit() -> None:
     x = sp.Symbol("x")
     residual = sp.Pow(sp.sqrt(x), sp.Rational(1, 2), evaluate=False)
