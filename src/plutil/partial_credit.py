@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from itertools import product
 from typing import TYPE_CHECKING, Protocol, overload
 
+import sympy as sp
+
 if TYPE_CHECKING:
     from .lenses import Question, SympyQuestion
 
@@ -318,6 +320,49 @@ class SympyCreditScheme(_CreditSchemeBase[PlValue]):
             feedback=feedback,
             preserve_higher=preserve_higher,
         )
+
+
+def award_interval_clusivity_credit(
+    lens: SympyQuestion,
+    *,
+    partial_score: float = 0.5,
+    feedback: str | None = (
+        "Your interval has the correct boundary values, but check which "
+        "finite endpoints are included."
+    ),
+    preserve_higher: bool = True,
+) -> bool:
+    """Award credit when only an interval's endpoint inclusion is wrong.
+
+    "Clusivity" means whether the interval includes or excludes each endpoint.
+    The submitted and correct answers must both be intervals with symbolically
+    equivalent start and end values, but different left or right clusivity.
+
+    ``feedback`` defaults to the stock clusivity message; pass ``None`` to
+    award the score without feedback. When ``preserve_higher`` is true, an equal
+    or higher existing score and its associated data remain unchanged.
+
+    Returns:
+        ``True`` if the partial score was written, or ``False`` if the answers
+        do not differ only in clusivity or score preservation prevents a write.
+    """
+    correct = lens.correct_answer
+    submitted = lens.submitted_answer
+    if not isinstance(correct, sp.Interval) or not isinstance(submitted, sp.Interval):
+        return False
+    if not eq(correct.start, submitted.start) or not eq(correct.end, submitted.end):
+        return False
+    if (correct.left_open, correct.right_open) == (
+        submitted.left_open,
+        submitted.right_open,
+    ):
+        return False
+
+    return lens.set_rich_score(
+        partial_score,
+        feedback=feedback,
+        preserve_higher=preserve_higher,
+    )
 
 
 def award_partial_credit(
