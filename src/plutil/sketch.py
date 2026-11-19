@@ -445,6 +445,13 @@ def _tool_options(
         raise TypeError("helper, read_only, and hollow must be booleans")
     if options.get("helper") is True and options.get("read_only") is True:
         raise ValueError("a sketch tool cannot be both helper and read-only")
+    for name in ("label", "color", "group", "fill_color"):
+        if (value := options.get(name)) is None:
+            continue
+        if not isinstance(value, str):
+            raise TypeError(f"tool option {name} must be a string")
+        if not value.strip():
+            raise ValueError(f"tool option {name} must not be blank")
     if limit is not None and (
         isinstance(limit, bool) or not isinstance(limit, int) or limit < 1
     ):

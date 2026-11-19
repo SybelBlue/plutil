@@ -293,6 +293,36 @@ def test_tool_validation_matches_pl_sketch_constraints() -> None:
         sketch.tools.create(type="polygon", id="region", opacity=1.5)
 
 
+@pytest.mark.parametrize(
+    ("tool_type", "options", "error_type", "message"),
+    [
+        ("point", {"label": ["x"]}, TypeError, "label must be a string"),
+        ("point", {"color": 5}, TypeError, "color must be a string"),
+        ("point", {"group": ""}, ValueError, "group must not be blank"),
+        ("point", {"group": "   "}, ValueError, "group must not be blank"),
+        (
+            "polygon",
+            {"fill_color": []},
+            TypeError,
+            "fill_color must be a string",
+        ),
+    ],
+)
+def test_tool_text_options_require_nonblank_strings(
+    tool_type: str,
+    options: dict[str, object],
+    error_type: type[Exception],
+    message: str,
+) -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    create = cast(Any, sketch.tools.create)
+
+    with pytest.raises(error_type, match=message):
+        create(type=tool_type, id="tool", **options)
+
+    assert sketch.params["tools"] == []
+
+
 def test_toolbar_constraints_are_checked_before_mutation() -> None:
     sketch = SketchQuestion(question_data(), "graph")
 
