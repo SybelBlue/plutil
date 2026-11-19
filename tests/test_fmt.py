@@ -363,6 +363,69 @@ def test_scientific_supports_ascii_math_and_engineering_notation() -> None:
     assert fmt.scientific(0) == "0e+0"
 
 
+@pytest.mark.parametrize(
+    ("value", "digits", "expected"),
+    [
+        (sympy.pi, 12, "3.14159265359"),
+        (Decimal(12345), 6, "12345"),
+        (Decimal(12345), 3, "1.23e+4"),
+        (Decimal("0.00012345"), 3, "0.000123"),
+        (Decimal("0.000012345"), 3, "1.23e-5"),
+        (Decimal(0), 3, "0"),
+    ],
+)
+def test_general_switches_between_standard_and_scientific_notation(
+    value: fmt.NumberInput, digits: int, expected: str
+) -> None:
+    assert (
+        fmt.number(
+            value,
+            notation="general",
+            max_significant_digits=digits,
+        )
+        == expected
+    )
+
+
+def test_general_selects_notation_after_rounding() -> None:
+    assert (
+        fmt.number(
+            Decimal("999.9"),
+            notation="general",
+            max_significant_digits=3,
+        )
+        == "1e+3"
+    )
+    assert (
+        fmt.number(
+            Decimal("0.00009999"),
+            notation="general",
+            max_significant_digits=3,
+        )
+        == "0.0001"
+    )
+
+
+def test_general_supports_existing_number_styles() -> None:
+    assert (
+        fmt.number(
+            -12_345,
+            notation="general",
+            max_significant_digits=3,
+            sign="never",
+            exponent_style="times",
+        )
+        == "1.23 × 10^4"
+    )
+
+
+def test_general_rejects_fraction_digit_bounds() -> None:
+    with pytest.raises(
+        ValueError, match="general notation requires significant-digit bounds"
+    ):
+        fmt.number(1.25, notation="general", max_fraction_digits=2)
+
+
 def test_scientific_rounding_carries_into_the_exponent() -> None:
     assert (
         fmt.scientific(
