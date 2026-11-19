@@ -1,3 +1,4 @@
+import copy
 from typing import Any, cast
 
 import chevron
@@ -54,6 +55,26 @@ def test_sketch_reconnects_without_resetting_authored_data() -> None:
 
     assert reconnected.params is original.params
     assert len(reconnected.params["initial"]) == 1
+
+
+def test_sketch_reconnect_does_not_rewrite_params() -> None:
+    data = question_data()
+    SketchQuestion(data, "graph").initial.add_point((1, 2))
+    before = copy.deepcopy(data["params"])
+
+    SketchQuestion(data, "graph", must_exist=True)
+
+    assert data["params"] == before
+
+
+def test_sketch_must_exist_rejects_missing_spec_without_creating_one() -> None:
+    data = question_data()
+
+    with pytest.raises(KeyError, match="no authored sketch"):
+        SketchQuestion(data, "typo", must_exist=True)
+
+    assert "typo_sketch" not in data["params"]
+    assert "typo_sketch_html" not in data["params"]
 
 
 def test_configure_and_set_frame_update_rendered_attributes() -> None:

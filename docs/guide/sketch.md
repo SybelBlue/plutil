@@ -76,6 +76,15 @@ weight; use `set_rich_score(weight=...)` when setting a partial-score weight.
 Coordinate helpers reject symbolic, complex, and nonfinite coordinates rather
 than producing a sketch that fails later during prepare.
 
+In grading or another phase that should reconnect rather than create authoring
+params, require the generated spec to exist so answer-name typos fail early:
+
+```python
+sketch = SketchQuestion(data, "given-graph", must_exist=True)
+```
+
+Reconnecting does not rewrite the stored params.
+
 The available layer helpers are:
 
 - `add_point(point)`

@@ -608,9 +608,12 @@ class SketchQuestion(_SketchAuthoringMixin, PartialScoreProxy):
     lenses without inheriting those incompatible answer accessors.
     """
 
+    _: KW_ONLY
+    must_exist: bool = False
+
     def __post_init__(self) -> None:
         """Create or reconnect to this sketch's Mustache-ready parameters."""
-        self._initialize_sketch()
+        self._initialize_sketch(must_exist=self.must_exist)
 
 
 def _normalize_choice_html(value: str) -> str:

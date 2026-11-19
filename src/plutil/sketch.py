@@ -425,13 +425,15 @@ class _SketchAuthoringMixin:
     data: pl.QuestionData
     answers_name: str
 
-    def _initialize_sketch(self) -> None:
+    def _initialize_sketch(self, *, must_exist: bool = False) -> None:
         if not self.answers_name.strip():
             raise ValueError("answers_name must not be blank")
         key = sketch_param_name(self.answers_name)
         params = self.data.setdefault("params", {})
         existing = params.get(key)
         if existing is None:
+            if must_exist:
+                raise KeyError(f"no authored sketch exists for {self.answers_name!r}")
             params[key] = {
                 "answers_name": self.answers_name,
                 "attrs": "",
@@ -448,12 +450,12 @@ class _SketchAuthoringMixin:
                 "initial": [],
                 "solution": [],
             }
+            self._sync_sketch_attrs()
         elif (
             not isinstance(existing, dict)
             or existing.get("answers_name") != self.answers_name
         ):
             raise TypeError(f"params[{key!r}] is not a sketch authored for this answer")
-        self._sync_sketch_attrs()
 
     @property
     def params(self) -> SketchParams:

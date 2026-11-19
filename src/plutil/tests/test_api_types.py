@@ -277,6 +277,7 @@ def test_sketch_lens_has_typed_layers_and_helpers() -> None:
     assert_type(sketch.solution.add_function(x**2, x=(-1, 1)), str)
     assert_type(sketch.solution.add_function(function), str)
     assert_type(sketch.fit_frame(y_bounds=(-1, 2)), None)
+    assert_type(SketchQuestion(sketch.data, "graph", must_exist=True), SketchQuestion)
 
 
 def test_text_parsers_preserve_the_expression_or_set_possibility() -> None:
