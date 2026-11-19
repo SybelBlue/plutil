@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 
+import prairielearn as pl
 import sympy as sp
 
 from .common import (
@@ -23,15 +24,15 @@ from .common import (
 from .equivalence import equivalent
 
 type Vector = tuple[sp.Expr, ...]
-type VectorLike = Sequence[ExprLike]
-"""A vector whose components are SymPy expressions or native numbers."""
-type VectorInput = Sequence[ExprInput]
-"""A vector whose components may include serialized symbolic inputs."""
+type VectorLike = Sequence[ExprLike] | sp.Tuple
+"""A native or SymPy tuple/sequence of expression values."""
+type VectorInput = Sequence[ExprInput] | sp.Tuple
+"""A native or SymPy vector whose components may be symbolic JSON."""
 type _ExpressionComparison = Callable[[sp.Expr, sp.Expr], bool]
 
 
 def _sympify_vector(vector: VectorInput) -> Vector:
-    return tuple(_input_to_expr(component) for component in vector)
+    return tuple(_input_to_expr(pl.from_json(component)) for component in vector)
 
 
 def _is_zero_vector(
@@ -62,7 +63,7 @@ def _dot_product(
     )
 
 
-def dot_product(
+def dot(
     left: VectorInput,
     right: VectorInput,
 ) -> sp.Expr:
@@ -92,7 +93,7 @@ def _cross_product(
     )
 
 
-def cross_product(
+def cross(
     left: VectorInput,
     right: VectorInput,
 ) -> tuple[sp.Expr, sp.Expr, sp.Expr]:
@@ -111,7 +112,39 @@ def cross_product(
     return _cross_product(left_vector, right_vector)
 
 
-def is_zero_vector(vector: VectorInput) -> bool:
+def normal(surface: ExprInput, *, at: VectorInput | None = None) -> Vector:
+    """Return a normal vector to an implicit level surface.
+
+    The result is the gradient of ``surface``, with components ordered by
+    SymPy's canonical ordering of its free symbols. If ``at`` is supplied, its
+    coordinates are substituted in that same order.
+
+    Raises:
+        ValueError: If ``surface`` has no variables or ``at`` has the wrong
+            dimension.
+    """
+    expression = _input_to_expr(surface)
+    variables = tuple(sorted(expression.free_symbols, key=lambda item: item.sort_key()))
+    if not variables:
+        raise ValueError("surface must contain at least one variable")
+
+    result = tuple(
+        require_expr(sp.diff(expression, variable)) for variable in variables
+    )
+    if at is None:
+        return result
+
+    point = _sympify_vector(at)
+    if len(point) != len(variables):
+        raise ValueError("point dimension must match the surface variables")
+    substitutions = tuple(zip(variables, point))
+    return tuple(
+        require_expr(component.subs(substitutions, simultaneous=True))
+        for component in result
+    )
+
+
+def is_zero(vector: VectorInput) -> bool:
     """Return whether ``vector`` is a nonempty zero vector.
 
     Components are sympified and compared with zero using :func:`plutil.eq`.

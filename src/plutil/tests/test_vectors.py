@@ -1,3 +1,5 @@
+import prairielearn as pl
+import prairielearn.sympy_utils as psu
 import pytest
 import sympy as sp
 
@@ -5,25 +7,26 @@ from plutil.vectors import (
     are_equivalent_parametric_lines,
     are_orthogonal,
     are_parallel,
-    cross_product,
-    dot_product,
-    is_zero_vector,
+    cross,
+    dot,
+    is_zero,
+    normal,
 )
 
 
 def test_is_zero_vector_sympifies_components_and_handles_symbolic_zero() -> None:
     x = sp.Symbol("x")
 
-    assert is_zero_vector((0, sp.Add(x, -x, evaluate=False), 0.0))
-    assert not is_zero_vector((0, x))
-    assert not is_zero_vector(())
+    assert is_zero((0, sp.Add(x, -x, evaluate=False), 0.0))
+    assert not is_zero((0, x))
+    assert not is_zero(())
 
 
 def test_dot_product_sympifies_two_and_three_dimensional_vectors() -> None:
     x = sp.Symbol("x")
 
-    assert dot_product((1, x), (x, 2)) == 3 * x
-    assert dot_product((1, 2, 3), (4, 5, 6)) == 32
+    assert dot((1, x), (x, 2)) == 3 * x
+    assert dot((1, 2, 3), (4, 5, 6)) == 32
 
 
 @pytest.mark.parametrize(
@@ -38,14 +41,14 @@ def test_dot_product_rejects_invalid_dimensions(left, right) -> None:
         ValueError,
         match="dot product requires nonempty vectors of equal dimension",
     ):
-        dot_product(left, right)
+        dot(left, right)
 
 
 def test_cross_product_returns_a_symbolic_three_dimensional_vector() -> None:
     x = sp.Symbol("x")
 
-    assert cross_product((1, x, 0), (0, 1, x)) == (x**2, -x, 1)
-    assert cross_product((0, 1, x), (1, x, 0)) == (-(x**2), x, -1)
+    assert cross((1, x, 0), (0, 1, x)) == (x**2, -x, 1)
+    assert cross((0, 1, x), (1, x, 0)) == (-(x**2), x, -1)
 
 
 @pytest.mark.parametrize(
@@ -61,7 +64,49 @@ def test_cross_product_requires_three_dimensions(left, right) -> None:
         ValueError,
         match="cross product requires two three-dimensional vectors",
     ):
-        cross_product(left, right)
+        cross(left, right)
+
+
+def test_vector_inputs_accept_sympy_and_serialized_tuples() -> None:
+    x = sp.Symbol("x", real=True)
+    vector = sp.Tuple(x, 2)
+    vector_json: tuple[psu.SympyJson, ...] = (
+        pl.sympy_to_json(x),
+        pl.sympy_to_json(sp.Integer(2)),
+    )
+
+    assert dot(vector, (2, 3)) == 2 * x + 6
+    assert dot(vector_json, (2, 3)) == 2 * x + 6
+
+
+def test_normal_returns_the_gradient_in_canonical_variable_order() -> None:
+    x, y, z = sp.symbols("x y z")
+
+    assert normal(x**2 + 2 * y**2 + 3 * z**2 - 1) == (2 * x, 4 * y, 6 * z)
+
+
+def test_normal_evaluates_at_vector_inputs() -> None:
+    x, y, z = sp.symbols("x y z")
+    point = sp.Tuple(1, 2, 3)
+    point_json: tuple[psu.SympyJson, ...] = tuple(
+        pl.sympy_to_json(sp.Integer(value)) for value in (1, 2, 3)
+    )
+
+    assert normal(x**2 + y**2 + z**2, at=(1, 2, 3)) == (2, 4, 6)
+    assert normal(x**2 + y**2 + z**2, at=point) == (2, 4, 6)
+    assert normal(x**2 + y**2 + z**2, at=point_json) == (2, 4, 6)
+
+
+def test_normal_rejects_a_constant_surface_or_wrong_point_dimension() -> None:
+    x, y, z = sp.symbols("x y z")
+
+    with pytest.raises(ValueError, match="surface must contain at least one variable"):
+        normal(3)
+    with pytest.raises(
+        ValueError,
+        match="point dimension must match the surface variables",
+    ):
+        normal(x**2 + y**2 + z**2, at=(1, 2))
 
 
 @pytest.mark.parametrize(
