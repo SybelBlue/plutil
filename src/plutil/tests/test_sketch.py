@@ -1,13 +1,13 @@
+from typing import Any, cast
+
 import chevron
 import lxml.html
 import pytest
 import sympy as sp
-from typing import Any, cast
 
 from plutil import SketchQuestion
-from plutil.sketch import sketch_param_name
+from plutil.sketch import sketch_markup_param_name, sketch_param_name
 from plutil.tests.helpers import question_data
-
 
 SKETCH_TEMPLATE = """
 {{#params.given-graph_sketch}}
@@ -26,6 +26,7 @@ def test_sketch_uses_separate_params_with_prairielearn_defaults() -> None:
     sketch = SketchQuestion(data, "given-graph")
 
     assert sketch_param_name("given-graph") == "given-graph_sketch"
+    assert sketch_markup_param_name("given-graph") == "given-graph_sketch_html"
     assert sketch.params is data["params"]["given-graph_sketch"]
     assert sketch.x_bounds == (-5.0, 5.0)
     assert sketch.y_bounds == (-5.0, 5.0)
@@ -33,6 +34,12 @@ def test_sketch_uses_separate_params_with_prairielearn_defaults() -> None:
         'answers-name="given-graph" weight="1" x-range="-5,5" '
         'y-range="-5,5" width="800" height="450" enforce-bounds="false" '
         'read-only="false" overlay-solution="true" allow-blank="false"'
+    )
+    assert data["params"]["given-graph_sketch_html"] == (
+        '<pl-sketch answers-name="given-graph" weight="1" x-range="-5,5" '
+        'y-range="-5,5" width="800" height="450" enforce-bounds="false" '
+        'read-only="false" overlay-solution="true" allow-blank="false">\n'
+        "</pl-sketch>"
     )
     assert "given-graph" not in data["params"]
 
@@ -280,6 +287,28 @@ def test_authored_params_render_the_documented_mustache_contract() -> None:
     }
     tools = element.findall("pl-sketch-tool")
     assert tools[0].attrib["color"] == 'blue & "cyan"'
+    assert element.find("pl-sketch-initial").attrib["coordinates"] == "(1,2)"
+    assert element.find("pl-sketch-solution").attrib["function"] == "x**2"
+
+
+def test_complete_markup_param_stays_synchronized() -> None:
+    data = question_data()
+    sketch = SketchQuestion(data, "given-graph")
+    sketch.configure(read_only=True, weight=0)
+    sketch.set_frame(x=(-2, 3), y=(-1, 4))
+    sketch.initial.add_point((1, 2), color='blue & "cyan"')
+    sketch.solution.add_function("x**2", x=(-2, 2))
+
+    rendered = chevron.render(
+        "{{{params.given-graph_sketch_html}}}", cast(dict[str, Any], data)
+    )
+    element = lxml.html.fragment_fromstring(rendered)
+
+    assert element.attrib["answers-name"] == "given-graph"
+    assert element.attrib["x-range"] == "-2,3"
+    assert element.attrib["y-range"] == "-1,4"
+    assert element.attrib["read-only"] == "true"
+    assert element.find("pl-sketch-tool").attrib["color"] == 'blue & "cyan"'
     assert element.find("pl-sketch-initial").attrib["coordinates"] == "(1,2)"
     assert element.find("pl-sketch-solution").attrib["function"] == "x**2"
 

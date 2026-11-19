@@ -106,6 +106,11 @@ def sketch_param_name(answers_name: str) -> str:
     return f"{answers_name}_sketch"
 
 
+def sketch_markup_param_name(answers_name: str) -> str:
+    """Return the params key containing a sketch's complete default markup."""
+    return f"{answers_name}_sketch_html"
+
+
 def _format_number(value: float) -> str:
     if value == 0:
         value = 0.0
@@ -568,6 +573,7 @@ class _SketchAuthoringMixin:
                 "_signature": signature,
             }
         )
+        self._sync_sketch_markup()
         return tool_id
 
     def _resolve_tool(
@@ -632,6 +638,7 @@ class _SketchAuthoringMixin:
         if symbolic_function:
             drawing["symbolic_function"] = True
         self.params[state].append(drawing)
+        self._sync_sketch_markup()
 
     def _sync_sketch_attrs(self) -> None:
         params = self.params
@@ -655,6 +662,27 @@ class _SketchAuthoringMixin:
                 ("allow-blank", params["allow_blank"]),
             )
         )
+        self._sync_sketch_markup()
+
+    def _sync_sketch_markup(self) -> None:
+        params = self.params
+        lines = [f"<pl-sketch {params['attrs']}>"]
+        lines.extend(
+            f"  <pl-sketch-tool {tool['attrs']}></pl-sketch-tool>"
+            for tool in params["tools"]
+        )
+        lines.extend(
+            f"  <pl-sketch-initial {drawing['attrs']}></pl-sketch-initial>"
+            for drawing in params["initial"]
+        )
+        lines.extend(
+            f"  <pl-sketch-solution {drawing['attrs']}></pl-sketch-solution>"
+            for drawing in params["solution"]
+        )
+        lines.append("</pl-sketch>")
+        self.data.setdefault("params", {})[
+            sketch_markup_param_name(self.answers_name)
+        ] = "\n".join(lines)
 
 
 class SketchLayer:
@@ -920,5 +948,6 @@ __all__ = [
     "SketchPointInput",
     "SketchToolParams",
     "SketchToolType",
+    "sketch_markup_param_name",
     "sketch_param_name",
 ]

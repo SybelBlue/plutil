@@ -7,7 +7,16 @@ the sketch.
 
 ## Question template
 
-For an answer named `given-graph`, put this block in `question.html`:
+For an answer named `given-graph`, render the complete default template with a
+single triple-Mustache expression:
+
+```html
+{{{params.given-graph_sketch_html}}}
+```
+
+`SketchQuestion` keeps this markup synchronized as the frame, tools, and
+drawings change. If the element structure needs customization, use the
+structured parameter instead:
 
 ```html
 {{#params.given-graph_sketch}}
@@ -25,11 +34,13 @@ For an answer named `given-graph`, put this block in `question.html`:
 {{/params.given-graph_sketch}}
 ```
 
-The conventional parameter name is the answer name followed by `_sketch`;
-{func}`plutil.sketch.sketch_param_name` returns it when code needs the name.
-Keep this block directly in `question.html`. PrairieLearn's `pl-template`
-element is intended for decorative content and cannot safely wrap submission
-elements such as `pl-sketch`.
+The conventional parameter names append `_sketch_html` for the complete markup
+and `_sketch` for the structured specification. The helpers
+{func}`plutil.sketch.sketch_markup_param_name` and
+{func}`plutil.sketch.sketch_param_name` return these names when code needs
+them. Keep either form directly in `question.html`. PrairieLearn's
+`pl-template` element is intended for decorative content and cannot safely
+wrap submission elements such as `pl-sketch`.
 
 ## Initial and solution drawings
 
