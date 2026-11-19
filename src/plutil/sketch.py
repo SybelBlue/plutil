@@ -172,6 +172,10 @@ def sketch_markup_param_name(answers_name: str) -> str:
     return f"{answers_name}_sketch_html"
 
 
+def _same_sketch(left: SketchQuestion, right: SketchQuestion) -> bool:
+    return left.data is right.data and left.answers_name == right.answers_name
+
+
 def _format_number(value: float) -> str:
     if value == 0:
         value = 0.0
@@ -454,7 +458,7 @@ def _validate_toolbar(
         )
 
 
-@dataclass(frozen=True, slots=True, init=False)
+@dataclass(frozen=True, slots=True, init=False, eq=False)
 class Tool[ToolTypeT: SketchToolType]:
     """One registered, sketch-owned drawing tool and drawing factory."""
 
@@ -478,6 +482,27 @@ class Tool[ToolTypeT: SketchToolType]:
 
     def __init__(self) -> None:
         raise TypeError("tools must be created with sketch.tools.create()")
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Tool):
+            return NotImplemented
+        return (
+            _same_sketch(self._sketch, other._sketch)
+            and self.id == other.id
+            and self.type == other.type
+            and self._options() == other._options()
+        )
+
+    def __hash__(self) -> int:
+        return hash(
+            (
+                id(self._sketch.data),
+                self._sketch.answers_name,
+                self.id,
+                self.type,
+                tuple(sorted(self._options().items())),
+            )
+        )
 
     @classmethod
     def _from_options(
@@ -1216,7 +1241,7 @@ class _SketchAuthoringMixin:
     def _register_tool[ToolTypeT: SketchToolType](
         self, tool: Tool[ToolTypeT]
     ) -> Tool[ToolTypeT]:
-        if tool._sketch is not self:
+        if not _same_sketch(tool._sketch, cast("SketchQuestion", self)):
             raise ValueError("tool belongs to a different sketch")
         options = tool._options()
         signature = _tool_signature(tool.type, options)
@@ -1337,7 +1362,7 @@ class SketchLayer:
         tool = drawing.tool
         if tool is None:
             raise ValueError("drawing must be bound with a registered tool")
-        if tool._sketch is not self.sketch:
+        if not _same_sketch(tool._sketch, self.sketch):
             raise ValueError("drawing tool belongs to a different sketch")
         if not _tool_accepts_drawing(tool.type, drawing):
             raise ValueError(

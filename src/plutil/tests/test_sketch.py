@@ -328,6 +328,37 @@ def test_layer_rejects_unbound_and_foreign_drawings() -> None:
     with pytest.raises(ValueError, match="different sketch"):
         right.initial.add(points.create(1, 2))
 
+    shared_data = question_data()
+    first = SketchQuestion(shared_data, "first")
+    second = SketchQuestion(shared_data, "second")
+    first_points = first.tools.create(type="point", id="points")
+    with pytest.raises(ValueError, match="different sketch"):
+        second.initial.add(first_points.create(1, 2))
+
+
+def test_tool_from_another_lens_for_the_same_sketch_remains_usable() -> None:
+    data = question_data()
+    original = SketchQuestion(data, "graph")
+    points = original.tools.create(type="point", id="points")
+    reconnected = SketchQuestion(data, "graph", must_exist=True)
+    reconnected_points = reconnected.tools.create(type="point", id="points")
+
+    reconnected.initial += points.create(1, 2)
+
+    assert reconnected_points == points
+    assert hash(reconnected_points) == hash(points)
+    assert reconnected.params["initial"][0]["tool_id"] == "points"
+
+
+def test_tools_from_different_sketches_are_not_equal() -> None:
+    first = SketchQuestion(question_data(), "graph")
+    second = SketchQuestion(question_data(), "graph")
+    first_points = first.tools.create(type="point", id="points")
+    second_points = second.tools.create(type="point", id="points")
+
+    assert first_points != second_points
+    assert len({first_points, second_points}) == 2
+
 
 def test_common_drawings_serialize_expected_shapes() -> None:
     sketch = SketchQuestion(question_data(), "graph")
