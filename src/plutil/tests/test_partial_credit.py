@@ -121,14 +121,18 @@ def test_award_interval_clusivity_credit_compares_symbolic_endpoints(
         "set_weighted_score_data",
         lambda data: calls.append(data),
     )
-    a = sympy.Integer(5)
-    correct = sympy.Interval(sympy.log(a), 1 + sympy.log(a))
-    submitted = sympy.Interval.open(sympy.log(a), sympy.log(a * sympy.E))
-    data = _interval_question_data(correct, submitted)
+    variable = sympy.Symbol("x", real=True)
+    correct = sympy.Interval(-abs(variable), abs(variable))
+    submitted = sympy.Interval.open(-abs(variable), abs(variable))
+    data = question_data(submitted_answers={"answer": pl.to_json(submitted)})
+    lens = SympyQuestion(data, "answer", variables=variable)
+    lens.correct_answer = correct
 
-    awarded = award_interval_clusivity_credit(SympyQuestion(data, "answer"))
+    awarded = award_interval_clusivity_credit(lens)
 
     assert awarded is True
+    assert lens.correct_answer == correct
+    assert lens.submitted_answer == submitted
     assert data["partial_scores"]["answer"]["score"] == 0.5
     assert calls == [data]
 

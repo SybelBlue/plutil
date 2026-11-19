@@ -186,12 +186,25 @@ included (closed) or excluded (open). Incorrect bounds, non-interval answers,
 and exact matches are left unchanged.
 
 ```python
+import sympy as sp
+
 from plutil import SympyQuestion, award_interval_clusivity_credit
+
+x = sp.Symbol("x", real=True)
+
+
+def generate(data):
+    domain = SympyQuestion(data, "domain", variables=x)
+    domain.correct_answer = sp.Interval(-abs(x), abs(x))
 
 
 def grade(data):
-    award_interval_clusivity_credit(SympyQuestion(data, "domain"))
+    domain = SympyQuestion(data, "domain", variables=x)
+    award_interval_clusivity_credit(domain)
 ```
+
+Here the correct interval is $[-|x|, |x|]$, so the same `x` accepted by the
+lens also appears symbolically in both boundary values.
 
 The default score is `0.5`, and the default feedback asks the student to check
 which finite endpoints are included. Pass a custom `partial_score` or
