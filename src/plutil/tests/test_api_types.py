@@ -25,15 +25,22 @@ from plutil import (
     SetLike,
     SympyInput,
     SympyValue,
+    VectorInput,
+    VectorLike,
+    are_orthogonal,
+    are_parallel,
     check_implicit_equivalence,
+    cross,
     defmt,
     domain,
+    dot,
     fmt,
     function_names,
     is_finite_integer,
     is_finite_real_number,
     latex,
     lim_latex,
+    normal,
     obfuscations,
     rand,
     require_expr,
@@ -48,6 +55,7 @@ from plutil.calculus import (
 from plutil.choices import checkbox, multiple_choice
 from plutil.common import _input_to_expr, _input_to_set, eq, str_to_sympy
 from plutil.functions import eval_at, evalf_at
+from plutil.vectors import are_equivalent_parametric_lines, is_zero
 
 
 def test_rand_factory_preserves_generator_return_types() -> None:
@@ -226,6 +234,33 @@ def test_numeric_predicates_narrow_objects_to_sympy_expressions() -> None:
         assert_type(finite_integer, sympy.Expr)
 
 
+def test_vector_predicates_return_booleans() -> None:
+    t = sympy.Symbol("t")
+    vector: VectorLike = (1, t)
+    vector_input: VectorInput = vector
+
+    assert_type(is_zero(vector_input), bool)
+    assert_type(are_parallel((1, 2), (2, 4)), bool)
+    assert_type(are_orthogonal((1, 0), (0, 1)), bool)
+    assert_type(
+        are_equivalent_parametric_lines(
+            (t, 2 * t),
+            (1 + t, 2 + 2 * t),
+            parameter=t,
+        ),
+        bool,
+    )
+
+
+def test_vector_products_return_symbolic_values() -> None:
+    assert_type(dot((1, 2), (3, 4)), sympy.Expr)
+    assert_type(
+        cross((1, 0, 0), (0, 1, 0)),
+        tuple[sympy.Expr, sympy.Expr, sympy.Expr],
+    )
+    assert_type(normal(x**2, at=(2,)), tuple[sympy.Expr, ...])
+
+
 def test_multiple_choice_lens_has_a_typed_boolean_award() -> None:
     data: pl.QuestionData
     data = {  # pyright: ignore[reportAssignmentType]
@@ -269,6 +304,11 @@ def test_input_types_accept_and_validate_sympy_json() -> None:
     expr_json: psu.SympyJson = pl.sympy_to_json(x**2 + 1)
     set_json: psu.SympyJson = pl.sympy_to_json(sympy.Interval(0, 1), allow_sets=True)
     expr_input: ExprInput = expr_json
+    vector_json: tuple[psu.SympyJson, ...] = (
+        pl.sympy_to_json(x),
+        pl.sympy_to_json(sympy.Integer(1)),
+    )
+    vector_input: VectorInput = vector_json
     set_input: SetInput = set_json
     sympy_inputs: tuple[SympyInput, ...] = (expr_input, set_input)
 
@@ -278,6 +318,19 @@ def test_input_types_accept_and_validate_sympy_json() -> None:
     assert_type(_input_to_set(set_input), sympy.Set)
     assert_type(derivative(expr_input, d=x), sympy.Expr)
     assert_type(integrate(expr_input, d=x), sympy.Expr)
+    assert_type(dot((expr_input,), (1,)), sympy.Expr)
+    assert_type(dot(vector_input, (1, 1)), sympy.Expr)
+    assert_type(is_zero((expr_input,)), bool)
+    assert_type(are_parallel((expr_input,), (1,)), bool)
+    assert_type(are_orthogonal((expr_input,), (1,)), bool)
+    assert_type(
+        are_equivalent_parametric_lines(
+            (expr_input,),
+            (expr_input,),
+            parameter="x",
+        ),
+        bool,
+    )
     assert_type(latex(set_input), str)
     assert _input_to_expr(expr_input) == x**2 + 1
     assert _input_to_set(set_input) == sympy.Interval(0, 1)

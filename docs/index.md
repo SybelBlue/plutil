@@ -16,6 +16,7 @@ New here? Start with {doc}`getting-started`.
 | {doc}`guide/choices` | Building `pl-multiple-choice` and `pl-checkbox` options from `server.py` |
 | {doc}`guide/formatting` | Deterministic number formatting (`fmt`), parsing it back (`defmt`), exact decimal input |
 | {doc}`guide/functions` | Domains, evaluation, translating/scaling, and rearranging equations |
+| {doc}`guide/vectors` | Symbolic vector relationships and affine parametric-line equivalence |
 | {doc}`guide/calculus` | Derivatives, tangent lines, integrals, missing-constant credit, stock feedback |
 | {doc}`guide/rand` | Random integers, rationals, polynomials, partitions, and reusable factories |
 | {doc}`guide/obfuscations` | Random equivalent expressions built from trigonometric identities |
@@ -41,6 +42,7 @@ guide/implicit-equations
 guide/choices
 guide/formatting
 guide/functions
+guide/vectors
 guide/calculus
 guide/rand
 guide/obfuscations

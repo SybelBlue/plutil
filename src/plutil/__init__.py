@@ -1,6 +1,6 @@
 from typing import Final
 
-from . import choices, fabc, feedback, fmt, obfuscations, rand
+from . import choices, fabc, feedback, fmt, obfuscations, rand, vectors
 from .assumptions import (
     AssumptionsTypedDict,
     check,
@@ -80,6 +80,16 @@ from .sets import (
     reject_set_outside_domain,
 )
 from .symbolic_decimals import parse_symbolic_decimals
+from .vectors import (
+    Vector,
+    VectorInput,
+    VectorLike,
+    are_orthogonal,
+    are_parallel,
+    cross,
+    dot,
+    normal,
+)
 
 __all__: Final[tuple[str, ...]] = (
     "AssumptionsTypedDict",
@@ -103,6 +113,11 @@ __all__: Final[tuple[str, ...]] = (
     "SympyInput",
     "SympyQuestion",
     "SympyValue",
+    "Vector",
+    "VectorInput",
+    "VectorLike",
+    "are_orthogonal",
+    "are_parallel",
     "award_interval_clusivity_credit",
     "award_partial_credit",
     "check",
@@ -110,8 +125,10 @@ __all__: Final[tuple[str, ...]] = (
     "choices",
     "clamp",
     "count_in_latex",
+    "cross",
     "dbg",
     "domain",
+    "dot",
     "eq",
     "equivalent",
     "eval_at",
@@ -135,6 +152,7 @@ __all__: Final[tuple[str, ...]] = (
     "latex",
     "lim_latex",
     "mbool",
+    "normal",
     "obfuscations",
     "parse_symbolic_decimals",
     "rand",
@@ -143,12 +161,13 @@ __all__: Final[tuple[str, ...]] = (
     "reject_set_outside_domain",
     "require_expr",
     "rule",
-    "setrec",
     "set_group_rich_score",
+    "setrec",
     "sign",
     "spint",
     "to_expr",
     "truncate_to_significant_digits",
     "validate_implicit_expression_input",
     "validate_implicit_polynomial_input",
+    "vectors",
 )
