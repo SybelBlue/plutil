@@ -5,6 +5,8 @@ from plutil.geometry import (
     are_affine_parametric_lines_equivalent,
     are_orthogonal,
     are_parallel,
+    cross_product,
+    dot_product,
     is_zero_vector,
 )
 
@@ -15,6 +17,51 @@ def test_is_zero_vector_sympifies_components_and_handles_symbolic_zero() -> None
     assert is_zero_vector((0, sp.Add(x, -x, evaluate=False), 0.0))
     assert not is_zero_vector((0, x))
     assert not is_zero_vector(())
+
+
+def test_dot_product_sympifies_two_and_three_dimensional_vectors() -> None:
+    x = sp.Symbol("x")
+
+    assert dot_product((1, x), (x, 2)) == 3 * x
+    assert dot_product((1, 2, 3), (4, 5, 6)) == 32
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [
+        ((), ()),
+        ((1, 2), (1,)),
+    ],
+)
+def test_dot_product_rejects_invalid_dimensions(left, right) -> None:
+    with pytest.raises(
+        ValueError,
+        match="dot product requires nonempty vectors of equal dimension",
+    ):
+        dot_product(left, right)
+
+
+def test_cross_product_returns_a_symbolic_three_dimensional_vector() -> None:
+    x = sp.Symbol("x")
+
+    assert cross_product((1, x, 0), (0, 1, x)) == (x**2, -x, 1)
+    assert cross_product((0, 1, x), (1, x, 0)) == (-(x**2), x, -1)
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [
+        ((1, 2), (3, 4)),
+        ((1, 2, 3), (4, 5)),
+        ((), ()),
+    ],
+)
+def test_cross_product_requires_three_dimensions(left, right) -> None:
+    with pytest.raises(
+        ValueError,
+        match="cross product requires two three-dimensional vectors",
+    ):
+        cross_product(left, right)
 
 
 @pytest.mark.parametrize(
@@ -107,6 +154,16 @@ def test_equivalent_affine_lines_support_symbolic_components() -> None:
     assert are_affine_parametric_lines_equivalent(equivalent, target, parameter=t)
 
 
+def test_equivalent_affine_lines_use_probabilistic_equivalence_fallback() -> None:
+    a, t = sp.symbols("a t", real=True)
+    unresolved_identity = sp.floor(a) + sp.frac(a)
+    target = (a * t, t)
+    equivalent = (unresolved_identity * t, t)
+
+    assert not sp.simplify(unresolved_identity - a).is_zero
+    assert are_affine_parametric_lines_equivalent(equivalent, target, parameter=t)
+
+
 @pytest.mark.parametrize(
     ("left", "right"),
     [
@@ -118,6 +175,7 @@ def test_equivalent_affine_lines_support_symbolic_components() -> None:
         ((sp.Symbol("t"), 0), (sp.Symbol("t") ** 2, sp.Symbol("t"))),
         ((sp.Symbol("t"), 0), (0, sp.Symbol("t"))),
         ((sp.Symbol("t"), 1), (sp.Symbol("t"), 2)),
+        ((sp.nan * sp.Symbol("t"), 0), (sp.Symbol("t"), 0)),
         ((), ()),
     ],
 )

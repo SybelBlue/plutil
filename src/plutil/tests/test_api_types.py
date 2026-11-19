@@ -29,8 +29,10 @@ from plutil import (
     are_orthogonal,
     are_parallel,
     check_implicit_equivalence,
+    cross_product,
     defmt,
     domain,
+    dot_product,
     fmt,
     function_names,
     is_finite_integer,
@@ -243,6 +245,14 @@ def test_geometry_predicates_return_booleans() -> None:
             parameter=t,
         ),
         bool,
+    )
+
+
+def test_geometry_products_return_symbolic_values() -> None:
+    assert_type(dot_product((1, 2), (3, 4)), sympy.Expr)
+    assert_type(
+        cross_product((1, 0, 0), (0, 1, 0)),
+        tuple[sympy.Expr, sympy.Expr, sympy.Expr],
     )
 
 

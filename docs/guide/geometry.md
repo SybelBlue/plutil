@@ -2,11 +2,24 @@
 
 Full API reference: {py:mod}`plutil.geometry`.
 
-The geometry predicates are pure symbolic checks: they do not read or mutate
-PrairieLearn question data or scores. Numeric components are converted to SymPy
-expressions, and symbolic comparisons use {py:func}`plutil.eq`.
+The geometry helpers do not read or mutate PrairieLearn question data or
+scores. Numeric components are converted to SymPy expressions, and vector
+relationship predicates use {py:func}`plutil.eq`.
 
 ## Vector relationships
+
+`dot_product(left, right)` returns a SymPy expression for nonempty vectors of
+the same dimension. `cross_product(left, right)` returns a three-component
+tuple and requires two three-dimensional vectors. Invalid dimensions raise
+`ValueError`.
+
+```python
+from plutil import cross_product, dot_product
+from sympy.abc import x
+
+dot_product((1, x), (x, 2))  # -> 3*x
+cross_product((1, x, 0), (0, 1, x))  # -> (x**2, -x, 1)
+```
 
 `is_zero_vector(vector)` checks that a nonempty vector has all-zero components.
 `are_parallel(left, right)` and `are_orthogonal(left, right)` require nonempty
@@ -34,6 +47,12 @@ whether two component-wise parametrizations describe the same line. Both must
 have the same nonzero dimension, be affine in the supplied SymPy symbol, and
 have nonzero parallel direction vectors. Scaling, reversing, or shifting the
 parameter does not change the represented line.
+
+Affine structure is validated exactly. Direction and offset comparisons first
+use {py:func}`plutil.eq`; when SymPy cannot establish equality, they fall back
+to the probabilistic {py:func}`plutil.equivalence.equivalent` checker, sampling
+every remaining free symbol over the reals. A `True` result from that fallback
+is a grading heuristic rather than a symbolic proof.
 
 ```python
 import sympy as sp

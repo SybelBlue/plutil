@@ -63,6 +63,8 @@ from .geometry import (
     are_affine_parametric_lines_equivalent,
     are_orthogonal,
     are_parallel,
+    cross_product,
+    dot_product,
     is_zero_vector,
 )
 from .lenses import (
@@ -119,8 +121,10 @@ __all__: Final[tuple[str, ...]] = (
     "choices",
     "clamp",
     "count_in_latex",
+    "cross_product",
     "dbg",
     "domain",
+    "dot_product",
     "eq",
     "equivalent",
     "eval_at",
