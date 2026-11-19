@@ -59,6 +59,35 @@ becomes `\int_{0}^{5 / 2} x\, dx`; the other styles follow `displaystyle`
 replace `True` with `ratio_power_style="radical"` and `False` with
 `ratio_power_style="stacked"`.
 
+### Multivariable limits
+
+The top-level `plutil.lim_latex` formatter accepts matching coordinate
+sequences for multivariable limits. Python sequences and `sympy.Tuple` values
+are supported; both `var` and `val` must be nonempty and have the same length.
+
+```python
+import sympy
+from sympy.abc import x, y
+
+from plutil import lim_latex
+
+lim_latex(var=(x, y), val=(0, 0), body=x**2 + y**2)
+# r"\displaystyle \lim_{\left(x, y\right) \to \left(0, 0\right)} {\left(x^{2} + y^{2}\right)}"
+
+lim_latex(
+    var=sympy.Tuple(x, y),
+    val=sympy.Tuple(0, 0),
+    body=x / y,
+    displaystyle=False,
+)
+# r"\lim_{\left(x, y\right) \to \left(0, 0\right)} {\frac{x}{y}}"
+```
+
+Scalar limits retain the existing `dir` support. Multivariable limits do not
+have a component-wise direction API, so their `dir` argument must be `None`.
+The `log_base`, `reparse`, `displaystyle`, and `ratio_power_style` options are
+applied to every coordinate and to the body.
+
 ### Matrix LaTeX
 
 `fmt.matrix_latex` renders rectangular nested sequences and two-dimensional
