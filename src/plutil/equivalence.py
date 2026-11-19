@@ -774,7 +774,7 @@ def validate_implicit_expression_input(
     inconclusive instead of blaming an infrastructure failure on the student.
     """
     has_format_error = lens.format_error is not None
-    submitted = lens.submitted_answer
+    submitted = None if has_format_error else lens.submitted_answer
 
     if timeout_seconds <= 0:
         raise ValueError("timeout_seconds must be positive")

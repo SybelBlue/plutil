@@ -1829,7 +1829,7 @@ def test_expression_parse_helper_propagates_author_setup_errors(
     ("submitted_answers", "format_errors"),
     [
         ({}, {}),
-        ({"answer": pl.to_json(sp.Symbol("x"))}, {"answer": "Original error."}),
+        ({"answer": "x+"}, {"answer": "Original error."}),
     ],
 )
 def test_expression_parse_helper_validates_setup_without_a_usable_submission(
@@ -1849,6 +1849,20 @@ def test_expression_parse_helper_validates_setup_without_a_usable_submission(
             condition=x + 1,
         )
 
+    assert data == original
+
+
+def test_expression_parse_helper_preserves_an_existing_format_error() -> None:
+    x = sp.Symbol("x")
+    data = question_data(
+        submitted_answers={"answer": "x+"},
+        format_errors={"answer": "Original error."},
+    )
+    original = copy.deepcopy(data)
+
+    assert not validate_implicit_expression_input(
+        SympyQuestion(data, "answer", variables=x)
+    )
     assert data == original
 
 
