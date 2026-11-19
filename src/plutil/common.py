@@ -624,6 +624,20 @@ def lim_latex(
 
 
 @overload
+def lim_latex(
+    *,
+    var: Sequence[Variable] | sympy.Tuple,
+    val: Sequence[ExprInput] | sympy.Tuple,
+    dir: None = None,
+    body: ExprInput,
+    log_base: ExprInput | None = None,
+    reparse: bool = False,
+    displaystyle: bool = True,
+    ratio_power_style: RatioPowerStyle = "radical",
+) -> str: ...
+
+
+@overload
 @deprecated(
     "Use `ratio_power_style='radical'` or `ratio_power_style='stacked'` instead.",
     category=None,
@@ -641,10 +655,28 @@ def lim_latex(
 ) -> str: ...
 
 
+@overload
+@deprecated(
+    "Use `ratio_power_style='radical'` or `ratio_power_style='stacked'` instead.",
+    category=None,
+)
 def lim_latex(
     *,
-    var: Variable,
-    val: ExprInput,
+    var: Sequence[Variable] | sympy.Tuple,
+    val: Sequence[ExprInput] | sympy.Tuple,
+    dir: None = None,
+    body: ExprInput,
+    log_base: ExprInput | None = None,
+    reparse: bool = False,
+    displaystyle: bool = True,
+    simplifyRatioPowers: bool,
+) -> str: ...
+
+
+def lim_latex(
+    *,
+    var: Variable | Sequence[Variable] | sympy.Tuple,
+    val: ExprInput | Sequence[ExprInput] | sympy.Tuple,
     dir: Literal["+", "-", "+-"] | str | sympy.Symbol | None = None,
     body: ExprInput,
     log_base: ExprInput | None = None,
@@ -655,20 +687,64 @@ def lim_latex(
 ) -> str:
     """Render a display-style limit expression as a LaTeX fragment.
 
+    For a multivariable limit, pass ``var`` and ``val`` as nonempty Python
+    sequences or :class:`sympy.Tuple` objects of equal length. A direction is
+    only supported for scalar limits, so ``dir`` must be ``None`` in that case.
+
     ``ratio_power_style`` and deprecated ``simplifyRatioPowers`` behave as in
     :func:`latex`.
     """
     style = _resolve_ratio_power_style(ratio_power_style, simplifyRatioPowers)
     direction = rf"^{{{dir}}}" if dir and dir not in ("+-", "-+") else ""
+    var_items = _limit_sequence(var)
+    val_items = _limit_sequence(val)
+    if (var_items is None) != (val_items is None):
+        raise TypeError("var and val must both be scalars or both be sequences")
+
+    if var_items is None or val_items is None:
+        var_value: LatexableValue = var_to_symbol(cast(Variable, var))
+        val_value: LatexableValue = _input_to_expr(cast(ExprInput, val))
+    else:
+        if not var_items:
+            raise ValueError("var must be a nonempty sequence")
+        if not val_items:
+            raise ValueError("val must be a nonempty sequence")
+        if len(var_items) != len(val_items):
+            raise ValueError(
+                "var and val sequences must have matching lengths "
+                f"(got {len(var_items)} and {len(val_items)})"
+            )
+        if dir is not None:
+            raise ValueError("dir must be None for a multivariable limit")
+
+        variables: list[sympy.Symbol] = []
+        for index, variable in enumerate(var_items):
+            if not isinstance(variable, (str, sympy.Symbol)):
+                raise TypeError(
+                    f"var[{index}] must be a string or SymPy Symbol, "
+                    f"got {type(variable).__name__}"
+                )
+            variables.append(var_to_symbol(variable))
+
+        values: list[sympy.Expr] = []
+        for index, value in enumerate(val_items):
+            try:
+                values.append(_input_to_expr(cast(ExprInput, value)))
+            except TypeError as exc:
+                raise TypeError(f"val[{index}] must be an expression input") from exc
+
+        var_value = tuple(variables)
+        val_value = tuple(values)
+
     var_tex = latex(
-        var_to_symbol(var),
+        var_value,
         log_base=log_base,
         reparse=reparse,
         displaystyle=displaystyle,
         ratio_power_style=style,
     )
     val_tex = latex(
-        _input_to_expr(val),
+        val_value,
         log_base=log_base,
         reparse=reparse,
         displaystyle=displaystyle,
@@ -686,6 +762,15 @@ def lim_latex(
         body_tex = rf"\left({body_tex}\right)"
     disp_prefix = r"\displaystyle " if displaystyle else ""
     return rf"{disp_prefix}\lim_{{{var_tex} \to {val_tex}{direction}}} {{{body_tex}}}"
+
+
+def _limit_sequence(value: object) -> tuple[object, ...] | None:
+    """Return a supported limit coordinate sequence, or ``None`` for a scalar."""
+    if isinstance(value, sympy.Tuple):
+        return value.args
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return tuple(value)
+    return None
 
 
 def count_in_latex(
