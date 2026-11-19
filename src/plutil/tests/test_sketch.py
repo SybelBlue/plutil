@@ -124,7 +124,7 @@ def test_auto_tools_reuse_matching_styles_and_separate_different_styles() -> Non
     sketch = SketchQuestion(question_data(), "graph")
 
     filled = sketch.initial.add_point((0, 0), color="blue")
-    same = sketch.solution.add_point((1, 1), color="blue")
+    same = sketch.initial.add_point((1, 1), color="blue")
     hollow = sketch.initial.add_point((2, 2), color="blue", hollow=True)
 
     assert filled == same == "point-1"
@@ -133,8 +133,44 @@ def test_auto_tools_reuse_matching_styles_and_separate_different_styles() -> Non
         "point-1",
         "point-2",
     ]
-    assert len(sketch.params["initial"]) == 2
-    assert len(sketch.params["solution"]) == 1
+    assert len(sketch.params["initial"]) == 3
+    assert not sketch.params["solution"]
+
+
+def test_solution_auto_tools_are_read_only_by_default() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+
+    automatic = sketch.solution.add_function("x**2", color="green")
+
+    assert automatic == "spline-1"
+    assert sketch.params["tools"][0]["read_only"] is True
+    assert 'read-only="true"' in sketch.params["tools"][0]["attrs"]
+    sketch.configure(width=240)
+
+
+def test_toolbar_constraints_are_checked_before_mutation() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+
+    with pytest.raises(ValueError, match="at least 310"):
+        sketch.configure(width=309)
+    assert sketch.params["width"] == 800
+
+    sketch.configure(width=310)
+    sketch.initial.add_point((0, 0), color="color-1")
+    with pytest.raises(ValueError, match="at least 380"):
+        sketch.initial.add_point((1, 1), color="color-2")
+    assert len(sketch.params["tools"]) == 1
+
+
+def test_toolbar_rejects_more_than_seven_icons() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+
+    for index in range(7):
+        sketch.add_tool(f"point-{index}", "point", color=f"color-{index}")
+
+    with pytest.raises(ValueError, match="at most 7"):
+        sketch.add_tool("point-8", "point", color="color-8")
+    assert len(sketch.params["tools"]) == 7
 
 
 def test_explicit_tools_validate_references_and_conflicts() -> None:

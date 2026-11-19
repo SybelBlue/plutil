@@ -85,7 +85,9 @@ The available layer helpers are:
 
 Each returns the tool ID it used. If `tool_id` is omitted, drawings with the
 same tool type and style reuse one deterministic tool. Different styles create
-different tools.
+different tools. Automatic tools created only for solution drawings default to
+`read_only=True`, keeping sample-solution styles out of the student toolbar;
+pass `read_only=False` when a visible tool is intentional.
 
 ## Explicit tools
 
@@ -106,7 +108,8 @@ sketch.initial.add_point((3, 4), tool_id=open_points)
 
 An explicit `tool_id` must already exist and have the type required by the
 drawing helper. Configure its style in `add_tool()` rather than repeating style
-arguments on each drawing.
+arguments on each drawing. The lens enforces PrairieLearn's seven-icon limit
+and minimum canvas width as tools or canvas options are added.
 
 ## Fitting frame bounds
 

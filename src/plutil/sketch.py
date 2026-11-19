@@ -44,6 +44,9 @@ class SketchToolParams(TypedDict):
     id: str
     type: SketchToolType
     attrs: str
+    read_only: bool
+    helper: bool
+    group: str | None
     _auto: bool
     _signature: list[list[str]]
 
@@ -392,6 +395,30 @@ def _validate_tool_id(tool_id: str) -> str:
     return tool_id
 
 
+def _toolbar_icon_count(tools: Sequence[SketchToolParams]) -> int:
+    if not tools:
+        return 1
+    groups = {tool["group"] for tool in tools if tool["group"] is not None}
+    ungrouped = sum(
+        not tool["read_only"] and not tool["helper"] and tool["group"] is None
+        for tool in tools
+    )
+    return ungrouped + len(groups)
+
+
+def _validate_toolbar(
+    tools: Sequence[SketchToolParams], *, width: int, read_only: bool
+) -> None:
+    icon_count = _toolbar_icon_count(tools)
+    if icon_count > 7:
+        raise ValueError("pl-sketch supports at most 7 toolbar icons")
+    minimum_width = 240 if read_only else 240 + 70 * icon_count
+    if width < minimum_width:
+        raise ValueError(
+            f"width must be at least {minimum_width} pixels for the sketch toolbar"
+        )
+
+
 class _SketchAuthoringMixin:
     """Implementation mixin for :class:`plutil.lenses.SketchQuestion`."""
 
@@ -505,6 +532,11 @@ class _SketchAuthoringMixin:
             **boolean_options,
         }
         params = cast(dict[str, Any], self.params)
+        _validate_toolbar(
+            self.params["tools"],
+            width=self.params["width"] if width is None else width,
+            read_only=(self.params["read_only"] if read_only is None else read_only),
+        )
         for name, value in updates.items():
             if value is not None:
                 params[name] = value
@@ -646,15 +678,23 @@ class _SketchAuthoringMixin:
             if existing["_signature"] == signature:
                 return tool_id
             raise ValueError(f"tool ID {tool_id!r} is already configured differently")
-        self.params["tools"].append(
-            {
-                "id": tool_id,
-                "type": tool_type,
-                "attrs": _tool_attrs(tool_id, tool_type, options),
-                "_auto": auto,
-                "_signature": signature,
-            }
+        group = options.get("group")
+        tool: SketchToolParams = {
+            "id": tool_id,
+            "type": tool_type,
+            "attrs": _tool_attrs(tool_id, tool_type, options),
+            "read_only": options.get("read_only") is True,
+            "helper": options.get("helper") is True,
+            "group": cast(str | None, group),
+            "_auto": auto,
+            "_signature": signature,
+        }
+        _validate_toolbar(
+            (*self.params["tools"], tool),
+            width=self.params["width"],
+            read_only=self.params["read_only"],
         )
+        self.params["tools"].append(tool)
         self._sync_sketch_markup()
         return tool_id
 
@@ -790,6 +830,12 @@ class SketchLayer:
         tool_type: SketchToolType,
         **options: object,
     ) -> str:
+        if (
+            self.state == "solution"
+            and tool_id is None
+            and options.get("read_only") is None
+        ):
+            options["read_only"] = True
         normalized = _tool_options(tool_type, **options)  # pyright: ignore[reportArgumentType]
         return self.sketch._resolve_tool(tool_id, tool_type, normalized)
 
