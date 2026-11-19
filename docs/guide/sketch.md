@@ -98,7 +98,8 @@ Each returns the tool ID it used. If `tool_id` is omitted, drawings with the
 same tool type and style reuse one deterministic tool. Different styles create
 different tools. Automatic tools created only for solution drawings default to
 `read_only=True`, keeping sample-solution styles out of the student toolbar;
-pass `read_only=False` when a visible tool is intentional.
+pass `read_only=False` when a visible tool is intentional. Their IDs use the
+reserved `_auto-` prefix, leaving author-defined IDs in a separate namespace.
 
 ## Explicit tools
 

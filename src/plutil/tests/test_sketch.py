@@ -148,11 +148,11 @@ def test_auto_tools_reuse_matching_styles_and_separate_different_styles() -> Non
     same = sketch.initial.add_point((1, 1), color="blue")
     hollow = sketch.initial.add_point((2, 2), color="blue", hollow=True)
 
-    assert filled == same == "point-1"
-    assert hollow == "point-2"
+    assert filled == same == "_auto-point-1"
+    assert hollow == "_auto-point-2"
     assert [tool["id"] for tool in sketch.params["tools"]] == [
-        "point-1",
-        "point-2",
+        "_auto-point-1",
+        "_auto-point-2",
     ]
     assert len(sketch.params["initial"]) == 3
     assert not sketch.params["solution"]
@@ -163,7 +163,7 @@ def test_solution_auto_tools_are_read_only_by_default() -> None:
 
     automatic = sketch.solution.add_function("x**2", color="green")
 
-    assert automatic == "spline-1"
+    assert automatic == "_auto-spline-1"
     assert sketch.params["tools"][0]["read_only"] is True
     assert 'read-only="true"' in sketch.params["tools"][0]["attrs"]
     sketch.configure(width=240)
@@ -229,6 +229,19 @@ def test_tool_ids_reject_surrounding_whitespace() -> None:
         sketch.initial.add_point((0, 0), tool_id="points ")
 
 
+def test_automatic_tool_ids_use_a_reserved_namespace() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+
+    automatic = sketch.initial.add_point((0, 0), color="blue")
+    explicit = sketch.add_tool("point-1", "point", color="red")
+
+    assert automatic == "_auto-point-1"
+    assert explicit == "point-1"
+    assert sketch.initial.add_point((1, 1), tool_id=automatic) == automatic
+    with pytest.raises(ValueError, match="reserved"):
+        sketch.add_tool("_auto-point-2", "point")
+
+
 def test_tool_validation_matches_pl_sketch_constraints() -> None:
     sketch = SketchQuestion(question_data(), "graph")
 
@@ -254,12 +267,12 @@ def test_common_drawing_helpers_serialize_expected_shapes() -> None:
 
     attrs = [drawing["attrs"] for drawing in sketch.params["initial"]]
     assert attrs == [
-        'tool-id="line-1" coordinates="(0,0),(1,1)"',
-        'tool-id="horizontal-line-1" coordinates="2"',
-        'tool-id="vertical-line-1" coordinates="-1"',
-        'tool-id="polyline-1" coordinates="(0,0),(1,2),(3,1)"',
-        'tool-id="polygon-1" coordinates="(0,0),(2,0),(1,1)"',
-        'tool-id="free-draw-1" coordinates="(0,0),(1,1)"',
+        'tool-id="_auto-line-1" coordinates="(0,0),(1,1)"',
+        'tool-id="_auto-horizontal-line-1" coordinates="2"',
+        'tool-id="_auto-vertical-line-1" coordinates="-1"',
+        'tool-id="_auto-polyline-1" coordinates="(0,0),(1,2),(3,1)"',
+        'tool-id="_auto-polygon-1" coordinates="(0,0),(2,0),(1,1)"',
+        'tool-id="_auto-free-draw-1" coordinates="(0,0),(1,1)"',
     ]
     assert 'opacity="0.5"' in sketch.params["tools"][4]["attrs"]
 
@@ -270,7 +283,7 @@ def test_points_accept_exact_sympy_values_and_reject_invalid_coordinates() -> No
 
     sketch.initial.add_point((sp.Rational(1, 2), sp.sqrt(2)))
     assert sketch.params["initial"][0]["attrs"] == (
-        'tool-id="point-1" coordinates="(0.5,1.4142135623731)"'
+        'tool-id="_auto-point-1" coordinates="(0.5,1.4142135623731)"'
     )
 
     with pytest.raises(ValueError, match="exactly two"):
@@ -304,9 +317,11 @@ def test_functions_validate_variables_and_require_y_bounds_when_fitting() -> Non
     sketch = SketchQuestion(question_data(), "graph")
     x, y = sp.symbols("x y")
 
-    assert sketch.solution.add_function(x**2, x=(-2, 3), color="green") == "spline-1"
+    assert (
+        sketch.solution.add_function(x**2, x=(-2, 3), color="green") == "_auto-spline-1"
+    )
     assert sketch.params["solution"][0]["attrs"] == (
-        'tool-id="spline-1" function="x**2" x-range="-2,3"'
+        'tool-id="_auto-spline-1" function="x**2" x-range="-2,3"'
     )
     with pytest.raises(ValueError, match="explicit y_bounds"):
         sketch.fit_frame()

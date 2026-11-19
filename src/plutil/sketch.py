@@ -82,6 +82,7 @@ class SketchParams(TypedDict):
 
 _DASH_STYLES = frozenset(("solid", "dashed", "longdashed", "dotted", "dashdotted"))
 _DIRECTION_CONSTRAINTS = frozenset(("none", "horizontal", "vertical"))
+_AUTO_TOOL_ID_PREFIX = "_auto-"
 _FUNCTION_NAMES = frozenset(
     (
         "abs",
@@ -682,6 +683,10 @@ class _SketchAuthoringMixin:
         options: Mapping[str, object],
     ) -> str:
         tool_id = _validate_tool_id(tool_id)
+        if not auto and tool_id.startswith(_AUTO_TOOL_ID_PREFIX):
+            raise ValueError(
+                f"tool IDs starting with {_AUTO_TOOL_ID_PREFIX!r} are reserved"
+            )
         signature = _tool_signature(tool_type, options)
         existing = next(
             (tool for tool in self.params["tools"] if tool["id"] == tool_id), None
@@ -748,7 +753,9 @@ class _SketchAuthoringMixin:
             return matching["id"]
         existing_ids = {tool["id"] for tool in self.params["tools"]}
         index = 1
-        while (candidate := f"{tool_type}-{index}") in existing_ids:
+        while (
+            candidate := f"{_AUTO_TOOL_ID_PREFIX}{tool_type}-{index}"
+        ) in existing_ids:
             index += 1
         return self._store_tool(candidate, tool_type, auto=True, options=options)
 
