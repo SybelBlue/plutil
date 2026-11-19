@@ -123,6 +123,7 @@ _FUNCTION_NAMES = frozenset(
         "x",
     )
 )
+_FUNCTION_CALL_NAMES = _FUNCTION_NAMES - {"e", "pi", "x"}
 _FUNCTION_NODE_TYPES = (
     ast.Expression,
     ast.Call,
@@ -295,6 +296,19 @@ def _validate_function_text(value: str) -> str:
         if not isinstance(node, _FUNCTION_NODE_TYPES):
             raise TypeError(
                 f"pl-sketch functions do not support {type(node).__name__} syntax"
+            )
+        if isinstance(node, ast.Constant) and (
+            isinstance(node.value, bool)
+            or not isinstance(node.value, (int, float))
+            or (isinstance(node.value, float) and not math.isfinite(node.value))
+        ):
+            raise TypeError("pl-sketch function constants must be finite real numbers")
+        if isinstance(node, ast.Call) and (
+            not isinstance(node.func, ast.Name)
+            or node.func.id not in _FUNCTION_CALL_NAMES
+        ):
+            raise ValueError(
+                "pl-sketch function calls must target a supported function name"
             )
         if isinstance(node, ast.Name) and node.id not in _FUNCTION_NAMES:
             raise ValueError(

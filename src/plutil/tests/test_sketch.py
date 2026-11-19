@@ -480,8 +480,14 @@ def test_functions_use_and_validate_sketchresponse_syntax() -> None:
         Function("x^2")
     with pytest.raises(ValueError, match="function names"):
         Function("y + t")
-    with pytest.raises(ValueError, match="function names"):
+    with pytest.raises(ValueError, match="supported function name"):
         Function(sp.gamma(x))
+    for value in ("'abc'", "True", "1j", "1e999"):
+        with pytest.raises(TypeError, match="finite real numbers"):
+            Function(value)
+    for value in ("x(2)", "e(2)", "pi(2)"):
+        with pytest.raises(ValueError, match="supported function name"):
+            Function(value)
 
 
 def test_fit_frame_uses_both_layers_padding_origin_and_minimum_span() -> None:
