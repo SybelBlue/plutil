@@ -2,7 +2,7 @@ import pytest
 import sympy as sp
 
 from plutil.geometry import (
-    are_affine_parametric_lines_equivalent,
+    are_equivalent_parametric_lines,
     are_orthogonal,
     are_parallel,
     cross_product,
@@ -134,8 +134,8 @@ def test_equivalent_affine_lines_accept_two_dimensional_shift_and_reversal() -> 
     target = (1 + 2 * t, 3 - t)
     equivalent = (5 - 6 * t, 1 + 3 * t)
 
-    assert are_affine_parametric_lines_equivalent(equivalent, target, parameter=t)
-    assert are_affine_parametric_lines_equivalent(target, equivalent, parameter=t)
+    assert are_equivalent_parametric_lines(equivalent, target, parameter=t)
+    assert are_equivalent_parametric_lines(target, equivalent, parameter=t)
 
 
 def test_equivalent_affine_lines_accept_three_dimensional_scaling_and_shift() -> None:
@@ -143,7 +143,7 @@ def test_equivalent_affine_lines_accept_three_dimensional_scaling_and_shift() ->
     target = (1 - 3 * t, -1 + 9 * t, 2 + 4 * t)
     equivalent = (-5 - 6 * t, 17 + 18 * t, 10 + 8 * t)
 
-    assert are_affine_parametric_lines_equivalent(equivalent, target, parameter=t)
+    assert are_equivalent_parametric_lines(equivalent, target, parameter=t)
 
 
 def test_equivalent_affine_lines_support_symbolic_components() -> None:
@@ -151,7 +151,7 @@ def test_equivalent_affine_lines_support_symbolic_components() -> None:
     target = (a + t, 3 - 2 * t)
     equivalent = (a + 2 - 3 * t, -1 + 6 * t)
 
-    assert are_affine_parametric_lines_equivalent(equivalent, target, parameter=t)
+    assert are_equivalent_parametric_lines(equivalent, target, parameter=t)
 
 
 def test_equivalent_affine_lines_use_probabilistic_equivalence_fallback() -> None:
@@ -161,7 +161,7 @@ def test_equivalent_affine_lines_use_probabilistic_equivalence_fallback() -> Non
     equivalent = (unresolved_identity * t, t)
 
     assert not sp.simplify(unresolved_identity - a).is_zero
-    assert are_affine_parametric_lines_equivalent(equivalent, target, parameter=t)
+    assert are_equivalent_parametric_lines(equivalent, target, parameter=t)
 
 
 @pytest.mark.parametrize(
@@ -182,9 +182,14 @@ def test_equivalent_affine_lines_use_probabilistic_equivalence_fallback() -> Non
 def test_equivalent_affine_lines_reject_invalid_or_different_lines(left, right) -> None:
     t = sp.Symbol("t")
 
-    assert not are_affine_parametric_lines_equivalent(left, right, parameter=t)
+    assert not are_equivalent_parametric_lines(left, right, parameter=t)
 
 
-def test_equivalent_affine_lines_requires_a_symbol_parameter() -> None:
-    with pytest.raises(TypeError, match="parameter must be a SymPy Symbol"):
-        are_affine_parametric_lines_equivalent((1, 2), (1, 2), parameter="t")  # type: ignore[arg-type]
+def test_equivalent_affine_lines_accepts_a_parameter_name() -> None:
+    t = sp.Symbol("t")
+
+    assert are_equivalent_parametric_lines(
+        (t, 2 * t),
+        (1 + t, 2 + 2 * t),
+        parameter="t",
+    )

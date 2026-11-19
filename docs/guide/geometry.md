@@ -3,8 +3,12 @@
 Full API reference: {py:mod}`plutil.geometry`.
 
 The geometry helpers do not read or mutate PrairieLearn question data or
-scores. Numeric components are converted to SymPy expressions, and vector
-relationship predicates use {py:func}`plutil.eq`.
+scores. Components accept expression values or serialized PrairieLearn
+symbolic inputs, which are converted to SymPy expressions. Vector relationship
+predicates use {py:func}`plutil.eq`. {py:data}`plutil.geometry.VectorLike`
+describes vectors of expression values, while
+{py:data}`plutil.geometry.VectorInput` also permits serialized symbolic
+components.
 
 ## Vector relationships
 
@@ -42,11 +46,12 @@ any nonzero scaling. Mismatched dimensions return `False`.
 
 ## Affine parametric lines
 
-`are_affine_parametric_lines_equivalent(left, right, *, parameter)` checks
+`are_equivalent_parametric_lines(left, right, *, parameter)` checks
 whether two component-wise parametrizations describe the same line. Both must
-have the same nonzero dimension, be affine in the supplied SymPy symbol, and
-have nonzero parallel direction vectors. Scaling, reversing, or shifting the
-parameter does not change the represented line.
+have the same nonzero dimension, be affine in the supplied variable, and have
+nonzero parallel direction vectors. Scaling, reversing, or shifting the
+parameter does not change the represented line. The variable may be supplied
+as a name or a SymPy symbol.
 
 Affine structure is validated exactly. Direction and offset comparisons first
 use {py:func}`plutil.eq`; when SymPy cannot establish equality, they fall back
@@ -57,13 +62,13 @@ is a grading heuristic rather than a symbolic proof.
 ```python
 import sympy as sp
 
-from plutil import are_affine_parametric_lines_equivalent
+from plutil import are_equivalent_parametric_lines
 
 t = sp.Symbol("t")  # No real=True assumption is required.
 target = (1 - 3 * t, -1 + 9 * t, 2 + 4 * t)
 shifted_and_scaled = (-5 - 6 * t, 17 + 18 * t, 10 + 8 * t)
 
-are_affine_parametric_lines_equivalent(
+are_equivalent_parametric_lines(
     shifted_and_scaled,
     target,
     parameter=t,
@@ -71,6 +76,4 @@ are_affine_parametric_lines_equivalent(
 ```
 
 Nonlinear components, zero directions, different dimensions, parallel lines at
-different offsets, and nonparallel directions return `False`. `parameter` must
-be a {py:class}`sympy.Symbol`; plain symbols and symbols with assumptions are
-both supported.
+different offsets, and nonparallel directions return `False`.

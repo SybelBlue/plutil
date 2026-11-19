@@ -11,18 +11,31 @@ from collections.abc import Callable, Sequence
 
 import sympy as sp
 
-from .common import ExprLike, eq, require_expr
+from .common import (
+    ExprInput,
+    ExprLike,
+    Variable,
+    _input_to_expr,
+    eq,
+    require_expr,
+    var_to_symbol,
+)
 from .equivalence import equivalent
 
+type Vector = tuple[sp.Expr, ...]
+type VectorLike = Sequence[ExprLike]
+"""A vector whose components are SymPy expressions or native numbers."""
+type VectorInput = Sequence[ExprInput]
+"""A vector whose components may include serialized symbolic inputs."""
 type _ExpressionComparison = Callable[[sp.Expr, sp.Expr], bool]
 
 
-def _sympify_vector(vector: Sequence[ExprLike]) -> tuple[sp.Expr, ...]:
-    return tuple(require_expr(sp.sympify(component)) for component in vector)
+def _sympify_vector(vector: VectorInput) -> Vector:
+    return tuple(_input_to_expr(component) for component in vector)
 
 
 def _is_zero_vector(
-    vector: tuple[sp.Expr, ...],
+    vector: Vector,
     *,
     compare: _ExpressionComparison = eq,
 ) -> bool:
@@ -30,15 +43,15 @@ def _is_zero_vector(
 
 
 def _same_nonzero_dimension(
-    left: tuple[sp.Expr, ...],
-    right: tuple[sp.Expr, ...],
+    left: Vector,
+    right: Vector,
 ) -> bool:
     return bool(left) and len(left) == len(right)
 
 
 def _dot_product(
-    left: tuple[sp.Expr, ...],
-    right: tuple[sp.Expr, ...],
+    left: Vector,
+    right: Vector,
 ) -> sp.Expr:
     return sum(
         (
@@ -50,8 +63,8 @@ def _dot_product(
 
 
 def dot_product(
-    left: Sequence[ExprLike],
-    right: Sequence[ExprLike],
+    left: VectorInput,
+    right: VectorInput,
 ) -> sp.Expr:
     """Return the symbolic dot product of two vectors.
 
@@ -69,8 +82,8 @@ def dot_product(
 
 
 def _cross_product(
-    left: tuple[sp.Expr, ...],
-    right: tuple[sp.Expr, ...],
+    left: Vector,
+    right: Vector,
 ) -> tuple[sp.Expr, sp.Expr, sp.Expr]:
     return (
         left[1] * right[2] - left[2] * right[1],
@@ -80,8 +93,8 @@ def _cross_product(
 
 
 def cross_product(
-    left: Sequence[ExprLike],
-    right: Sequence[ExprLike],
+    left: VectorInput,
+    right: VectorInput,
 ) -> tuple[sp.Expr, sp.Expr, sp.Expr]:
     """Return the symbolic cross product of two three-dimensional vectors.
 
@@ -98,7 +111,7 @@ def cross_product(
     return _cross_product(left_vector, right_vector)
 
 
-def is_zero_vector(vector: Sequence[ExprLike]) -> bool:
+def is_zero_vector(vector: VectorInput) -> bool:
     """Return whether ``vector`` is a nonempty zero vector.
 
     Components are sympified and compared with zero using :func:`plutil.eq`.
@@ -109,8 +122,8 @@ def is_zero_vector(vector: Sequence[ExprLike]) -> bool:
 
 
 def are_parallel(
-    left: Sequence[ExprLike],
-    right: Sequence[ExprLike],
+    left: VectorInput,
+    right: VectorInput,
 ) -> bool:
     """Return whether two nonzero vectors are parallel.
 
@@ -138,8 +151,8 @@ def are_parallel(
 
 
 def are_orthogonal(
-    left: Sequence[ExprLike],
-    right: Sequence[ExprLike],
+    left: VectorInput,
+    right: VectorInput,
 ) -> bool:
     """Return whether two nonzero vectors are orthogonal.
 
@@ -183,8 +196,8 @@ def _broadly_equivalent(left: sp.Expr, right: sp.Expr) -> bool:
 
 
 def _are_parallel(
-    left: tuple[sp.Expr, ...],
-    right: tuple[sp.Expr, ...],
+    left: Vector,
+    right: Vector,
     *,
     compare: _ExpressionComparison,
 ) -> bool:
@@ -208,9 +221,9 @@ def _are_parallel(
 
 
 def _affine_line_parts(
-    parametrization: tuple[sp.Expr, ...],
+    parametrization: Vector,
     parameter: sp.Symbol,
-) -> tuple[tuple[sp.Expr, ...], tuple[sp.Expr, ...]] | None:
+) -> tuple[Vector, Vector] | None:
     if any(
         not eq(sp.diff(component, parameter, 2), sp.S.Zero)
         for component in parametrization
@@ -222,11 +235,11 @@ def _affine_line_parts(
     return point, direction
 
 
-def are_affine_parametric_lines_equivalent(
-    left: Sequence[ExprLike],
-    right: Sequence[ExprLike],
+def are_equivalent_parametric_lines(
+    left: VectorInput,
+    right: VectorInput,
     *,
-    parameter: sp.Symbol,
+    parameter: Variable,
 ) -> bool:
     """Return whether two affine parametrizations describe the same line.
 
@@ -241,16 +254,14 @@ def are_affine_parametric_lines_equivalent(
     by any nonzero scaling, including reversal, and their parameter-zero points
     may differ by a shift along the line.
 
-    ``parameter`` may be a plain :class:`sympy.Symbol`; no assumptions such as
-    ``real=True`` are required. Mismatched dimensions, nonlinear components,
-    and zero directions return ``False``.
+    ``parameter`` may be a variable name or a plain :class:`sympy.Symbol`; no
+    assumptions such as ``real=True`` are required. Mismatched dimensions,
+    nonlinear components, and zero directions return ``False``.
 
     Raises:
-        TypeError: If ``parameter`` is not a SymPy symbol or a component cannot
-            be sympified to a SymPy expression.
+        TypeError: If a component cannot be parsed to a SymPy expression.
     """
-    if not isinstance(parameter, sp.Symbol):
-        raise TypeError("parameter must be a SymPy Symbol")
+    parameter_symbol = var_to_symbol(parameter)
 
     left_line = _sympify_vector(left)
     right_line = _sympify_vector(right)
@@ -264,11 +275,11 @@ def are_affine_parametric_lines_equivalent(
 
     left_parts = _affine_line_parts(
         left_line,
-        parameter,
+        parameter_symbol,
     )
     right_parts = _affine_line_parts(
         right_line,
-        parameter,
+        parameter_symbol,
     )
     if left_parts is None or right_parts is None:
         return False

@@ -25,7 +25,9 @@ from plutil import (
     SetLike,
     SympyInput,
     SympyValue,
-    are_affine_parametric_lines_equivalent,
+    VectorInput,
+    VectorLike,
+    are_equivalent_parametric_lines,
     are_orthogonal,
     are_parallel,
     check_implicit_equivalence,
@@ -234,12 +236,14 @@ def test_numeric_predicates_narrow_objects_to_sympy_expressions() -> None:
 
 def test_geometry_predicates_return_booleans() -> None:
     t = sympy.Symbol("t")
+    vector: VectorLike = (1, t)
+    vector_input: VectorInput = vector
 
-    assert_type(is_zero_vector((0, 0)), bool)
+    assert_type(is_zero_vector(vector_input), bool)
     assert_type(are_parallel((1, 2), (2, 4)), bool)
     assert_type(are_orthogonal((1, 0), (0, 1)), bool)
     assert_type(
-        are_affine_parametric_lines_equivalent(
+        are_equivalent_parametric_lines(
             (t, 2 * t),
             (1 + t, 2 + 2 * t),
             parameter=t,
@@ -308,6 +312,18 @@ def test_input_types_accept_and_validate_sympy_json() -> None:
     assert_type(_input_to_set(set_input), sympy.Set)
     assert_type(derivative(expr_input, d=x), sympy.Expr)
     assert_type(integrate(expr_input, d=x), sympy.Expr)
+    assert_type(dot_product((expr_input,), (1,)), sympy.Expr)
+    assert_type(is_zero_vector((expr_input,)), bool)
+    assert_type(are_parallel((expr_input,), (1,)), bool)
+    assert_type(are_orthogonal((expr_input,), (1,)), bool)
+    assert_type(
+        are_equivalent_parametric_lines(
+            (expr_input,),
+            (expr_input,),
+            parameter="x",
+        ),
+        bool,
+    )
     assert_type(latex(set_input), str)
     assert _input_to_expr(expr_input) == x**2 + 1
     assert _input_to_set(set_input) == sympy.Interval(0, 1)
