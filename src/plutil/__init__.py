@@ -66,6 +66,7 @@ from .lenses import (
     NoPreferences,
     Question,
     SympyQuestion,
+    set_group_rich_score,
 )
 from .partial_credit import (
     award_interval_clusivity_credit,
@@ -141,6 +142,7 @@ __all__: Final[tuple[str, ...]] = (
     "require_expr",
     "rule",
     "setrec",
+    "set_group_rich_score",
     "sign",
     "spint",
     "to_expr",

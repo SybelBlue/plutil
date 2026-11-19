@@ -59,6 +59,36 @@ lens.set_rich_score(
 )
 ```
 
+## `set_group_rich_score(lenses, score, *, feedback=None, preserve_higher=False) -> bool`
+
+Assign one score and optional feedback to every component of a multi-element
+mathematical answer. Pass already-constructed lenses so each component can use
+the appropriate lens type. Existing element weights are preserved.
+
+The return value is `True` when at least one component score is written. With
+`preserve_higher=True`, each component is considered independently: equal or
+higher existing scores remain untouched while lower or missing scores are
+updated. An empty group returns `False`. Repeated lenses that refer to the same
+answer name in the same question data are scored only once.
+
+```python
+from plutil import SympyQuestion, set_group_rich_score
+
+
+def grade(data):
+    vector = [
+        SympyQuestion(data, "component-x", variables="x"),
+        SympyQuestion(data, "component-y", variables="x"),
+        SympyQuestion(data, "component-z", variables="x"),
+    ]
+    set_group_rich_score(
+        vector,
+        0.75,
+        feedback="Your components are mutually consistent.",
+        preserve_higher=True,
+    )
+```
+
 ## `MultipleChoiceQuestion`
 
 `MultipleChoiceQuestion` extends the standard `BaseQuestion[str]` lens for
