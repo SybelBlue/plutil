@@ -60,7 +60,7 @@ def reject_set_outside_domain(
     lens: SympyQuestion,
     domain: Domain,
     *,
-    nested_set_checking:  Literal["require-flat", "recurse", "ignore"] = "require-flat",
+    nested_set_checking: Literal["require-flat", "recurse", "ignore"] = "require-flat",
     message: str = "Every value in the set must be in the domain stated in the question.",
 ) -> bool:
     """Add a format error when a submitted set extends outside ``domain``.
