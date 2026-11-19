@@ -34,6 +34,7 @@ Each lens wraps `data` for one `answers-name` from `question.html`. See [Getting
 | [Choices](https://plutil.readthedocs.io/en/latest/guide/choices.html) | `plutil.choices` | `pl-multiple-choice` / `pl-checkbox` option builders |
 | [Formatting](https://plutil.readthedocs.io/en/latest/guide/formatting.html) | `plutil.fmt`, `plutil.defmt`, `plutil.symbolic_decimals` | Deterministic number formatting and parsing, exact decimal input |
 | [Functions](https://plutil.readthedocs.io/en/latest/guide/functions.html) | `plutil.functions` | Domains, evaluation, translate/scale, rearranging equations |
+| [Geometry](https://plutil.readthedocs.io/en/latest/guide/geometry.html) | `plutil.geometry` | Symbolic vector relationships and affine parametric-line equivalence |
 | [Calculus & feedback](https://plutil.readthedocs.io/en/latest/guide/calculus.html) | `plutil.calculus`, `plutil.feedback` | Derivatives, tangent lines, integrals, stock feedback |
 | [Random values](https://plutil.readthedocs.io/en/latest/guide/rand.html) | `plutil.rand` | Random numbers, polynomials, partitions, factories |
 | [Symbolic obfuscations](https://plutil.readthedocs.io/en/latest/guide/obfuscations.html) | `plutil.obfuscations` | Equivalent expressions built from trigonometric identities |

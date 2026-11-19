@@ -25,6 +25,9 @@ from plutil import (
     SetLike,
     SympyInput,
     SympyValue,
+    are_affine_parametric_lines_equivalent,
+    are_orthogonal,
+    are_parallel,
     check_implicit_equivalence,
     defmt,
     domain,
@@ -32,6 +35,7 @@ from plutil import (
     function_names,
     is_finite_integer,
     is_finite_real_number,
+    is_zero_vector,
     latex,
     lim_latex,
     obfuscations,
@@ -224,6 +228,22 @@ def test_numeric_predicates_narrow_objects_to_sympy_expressions() -> None:
 
     if is_finite_integer(finite_integer):
         assert_type(finite_integer, sympy.Expr)
+
+
+def test_geometry_predicates_return_booleans() -> None:
+    t = sympy.Symbol("t")
+
+    assert_type(is_zero_vector((0, 0)), bool)
+    assert_type(are_parallel((1, 2), (2, 4)), bool)
+    assert_type(are_orthogonal((1, 0), (0, 1)), bool)
+    assert_type(
+        are_affine_parametric_lines_equivalent(
+            (t, 2 * t),
+            (1 + t, 2 + 2 * t),
+            parameter=t,
+        ),
+        bool,
+    )
 
 
 def test_multiple_choice_lens_has_a_typed_boolean_award() -> None:

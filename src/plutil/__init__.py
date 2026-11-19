@@ -1,6 +1,6 @@
 from typing import Final
 
-from . import choices, fabc, feedback, fmt, obfuscations, rand
+from . import choices, fabc, feedback, fmt, geometry, obfuscations, rand
 from .assumptions import (
     AssumptionsTypedDict,
     check,
@@ -59,6 +59,12 @@ from .functions import (
     finite_at,
     rearrange_eqn,
 )
+from .geometry import (
+    are_affine_parametric_lines_equivalent,
+    are_orthogonal,
+    are_parallel,
+    is_zero_vector,
+)
 from .lenses import (
     CheckboxQuestion,
     Data,
@@ -105,6 +111,9 @@ __all__: Final[tuple[str, ...]] = (
     "SympyValue",
     "award_interval_clusivity_credit",
     "award_partial_credit",
+    "are_affine_parametric_lines_equivalent",
+    "are_orthogonal",
+    "are_parallel",
     "check",
     "check_implicit_equivalence",
     "choices",
@@ -123,6 +132,7 @@ __all__: Final[tuple[str, ...]] = (
     "finite_at",
     "fmt",
     "function_names",
+    "geometry",
     "getrec",
     "give_triviality_feedback",
     "grade_implicit_equivalence",
@@ -131,6 +141,7 @@ __all__: Final[tuple[str, ...]] = (
     "is_finite_integer",
     "is_finite_real_number",
     "is_trivial",
+    "is_zero_vector",
     "json_to_sympy",
     "latex",
     "lim_latex",

@@ -16,6 +16,7 @@
    plutil.feedback
    plutil.fmt
    plutil.functions
+   plutil.geometry
    plutil.lenses
    plutil.obfuscations
    plutil.partial_credit
