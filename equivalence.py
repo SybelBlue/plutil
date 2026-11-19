@@ -1868,6 +1868,60 @@ def check_implicit_equivalence(
     )
 
 
+def grade_implicit_equivalence(
+    lens: SympyQuestion,
+    *,
+    condition: sp.Basic | bool = True,
+    domains: VariableDomains | None = None,
+    witnesses: ImplicitWitnesses | None = None,
+    strategy: ImplicitStrategy = "auto",
+    on_inconclusive: InconclusivePolicy = "reject",
+    timeout_seconds: float = 1.0,
+    seed: int | None = None,
+    slices_per_variable: int = 5,
+) -> ImplicitEquivalenceResult | None:
+    """Grade an implicit-equation answer through a symbolic question lens.
+
+    The lens supplies the parsed submission, authored correct answer, accepted
+    variables, answer weight, and answer name. Existing format errors and
+    missing or non-expression submissions are left untouched and return
+    ``None``. Otherwise, the structured checker result is returned after the
+    answer receives full or no credit according to ``result.accepted``.
+
+    Raises:
+        TypeError: If the authored correct answer is not a SymPy expression.
+        ValueError: If a checker option or implicit-equation input is outside
+            the supported contract.
+    """
+    if lens.format_error is not None:
+        return None
+    submitted = lens.submitted_answer
+    if not isinstance(submitted, sp.Expr):
+        return None
+
+    correct = lens.correct_answer
+    if not isinstance(correct, sp.Expr):
+        raise TypeError(
+            f"correct answer for {lens.answers_name!r} must be a SymPy expression"
+        )
+
+    result = check_implicit_equivalence(
+        correct,
+        lens,
+        variables=lens.variables,
+        condition=condition,
+        domains=domains,
+        witnesses=witnesses,
+        strategy=strategy,
+        on_inconclusive=on_inconclusive,
+        timeout_seconds=timeout_seconds,
+        seed=seed,
+        slices_per_variable=slices_per_variable,
+    )
+    lens.set_rich_score(float(result.accepted), weight=lens.weight)
+    return result
+
+
 def equivalent(
     a: sp.Expr,
     b: sp.Expr,
