@@ -579,6 +579,166 @@ def _validate_function_ranges_for_frame(
             )
 
 
+def _validate_mapping_keys(
+    mapping: Mapping[object, object],
+    *,
+    required: frozenset[str],
+    optional: frozenset[str] = frozenset(),
+    label: str,
+) -> None:
+    keys = set(mapping)
+    missing = required - keys
+    unexpected = keys - required - optional
+    if missing:
+        raise TypeError(f"{label} is missing keys: {', '.join(sorted(missing))}")
+    if unexpected:
+        raise TypeError(
+            f"{label} has unexpected keys: {', '.join(sorted(map(str, unexpected)))}"
+        )
+
+
+def _validate_stored_extent(value: object, *, label: str) -> None:
+    if not isinstance(value, list) or len(value) != 2:
+        raise TypeError(f"{label} must contain exactly two numbers")
+    lower = _finite_real(cast(ExprInput, value[0]), label=f"{label} lower bound")
+    upper = _finite_real(cast(ExprInput, value[1]), label=f"{label} upper bound")
+    if lower > upper:
+        raise TypeError(f"{label} must be ordered from low to high")
+
+
+def _validate_stored_sketch(value: dict[object, object], *, answers_name: str) -> None:
+    _validate_mapping_keys(
+        value,
+        required=SketchParams.__required_keys__,
+        label="stored sketch",
+    )
+    if value["answers_name"] != answers_name:
+        raise TypeError("stored sketch belongs to a different answer")
+    if not isinstance(value["attrs"], str):
+        raise TypeError("stored sketch attrs must be a string")
+    if (
+        isinstance(value["weight"], bool)
+        or not isinstance(value["weight"], int)
+        or value["weight"] < 0
+    ):
+        raise TypeError("stored sketch weight must be a nonnegative integer")
+    if (
+        isinstance(value["width"], bool)
+        or not isinstance(value["width"], int)
+        or not 0 < value["width"] <= 900
+    ):
+        raise TypeError("stored sketch width must be an integer from 1 to 900")
+    if (
+        isinstance(value["height"], bool)
+        or not isinstance(value["height"], int)
+        or value["height"] < 1
+    ):
+        raise TypeError("stored sketch height must be a positive integer")
+    for name in ("enforce_bounds", "read_only", "overlay_solution", "allow_blank"):
+        if not isinstance(value[name], bool):
+            raise TypeError(f"stored sketch {name} must be a boolean")
+    x_bounds = _bounds(cast(SketchBoundsInput, value["x_bounds"]), axis="x")
+    _bounds(cast(SketchBoundsInput, value["y_bounds"]), axis="y")
+
+    tools = value["tools"]
+    if not isinstance(tools, list):
+        raise TypeError("stored sketch tools must be a list")
+    tool_ids: set[str] = set()
+    for index, raw_tool in enumerate(tools):
+        label = f"stored sketch tool {index}"
+        if not isinstance(raw_tool, dict):
+            raise TypeError(f"{label} must be a mapping")
+        _validate_mapping_keys(
+            raw_tool,
+            required=SketchToolParams.__required_keys__,
+            label=label,
+        )
+        tool_id = raw_tool["id"]
+        if not isinstance(tool_id, str):
+            raise TypeError(f"{label} ID must be a string")
+        _validate_tool_id(tool_id)
+        if tool_id in tool_ids:
+            raise TypeError(f"stored sketch has duplicate tool ID {tool_id!r}")
+        tool_ids.add(tool_id)
+        if raw_tool["type"] not in _TOOL_OPTION_NAMES:
+            raise TypeError(f"{label} has an unsupported type")
+        if not isinstance(raw_tool["attrs"], str):
+            raise TypeError(f"{label} attrs must be a string")
+        if not isinstance(raw_tool["read_only"], bool) or not isinstance(
+            raw_tool["helper"], bool
+        ):
+            raise TypeError(f"{label} flags must be booleans")
+        group = raw_tool["group"]
+        if group is not None and (not isinstance(group, str) or not group.strip()):
+            raise TypeError(f"{label} group must be a nonblank string or None")
+        signature = raw_tool["_signature"]
+        if not isinstance(signature, list) or any(
+            not isinstance(item, list)
+            or len(item) != 2
+            or not all(isinstance(part, str) for part in item)
+            for item in signature
+        ):
+            raise TypeError(f"{label} signature is malformed")
+
+    drawings: list[SketchDrawingParams] = []
+    for state in ("initial", "solution"):
+        raw_drawings = value[state]
+        if not isinstance(raw_drawings, list):
+            raise TypeError(f"stored sketch {state} drawings must be a list")
+        for index, raw_drawing in enumerate(raw_drawings):
+            label = f"stored sketch {state} drawing {index}"
+            if not isinstance(raw_drawing, dict):
+                raise TypeError(f"{label} must be a mapping")
+            _validate_mapping_keys(
+                raw_drawing,
+                required=frozenset(("tool_id", "attrs")),
+                optional=frozenset(
+                    (
+                        "x_extent",
+                        "y_extent",
+                        "symbolic_function",
+                        "function_range",
+                    )
+                ),
+                label=label,
+            )
+            if raw_drawing["tool_id"] not in tool_ids:
+                raise TypeError(f"{label} refers to an unknown tool")
+            if not isinstance(raw_drawing["attrs"], str):
+                raise TypeError(f"{label} attrs must be a string")
+            for extent_name in ("x_extent", "y_extent"):
+                if extent_name in raw_drawing:
+                    _validate_stored_extent(
+                        raw_drawing[extent_name],
+                        label=f"{label} {extent_name}",
+                    )
+            if "symbolic_function" in raw_drawing and not isinstance(
+                raw_drawing["symbolic_function"], bool
+            ):
+                raise TypeError(f"{label} symbolic_function must be a boolean")
+            if "function_range" in raw_drawing:
+                function_range = raw_drawing["function_range"]
+                if not isinstance(function_range, list):
+                    raise TypeError(f"{label} function_range must be a list")
+                normalized_range = _function_range(
+                    cast(SketchFunctionRangeInput, function_range)
+                )
+                if normalized_range is None:
+                    raise TypeError(f"{label} function_range must have an endpoint")
+            drawings.append(cast(SketchDrawingParams, raw_drawing))
+
+    _validate_toolbar(
+        cast(list[SketchToolParams], tools),
+        width=cast(int, value["width"]),
+        read_only=cast(bool, value["read_only"]),
+    )
+    _validate_function_ranges_for_frame(
+        drawings,
+        x_bounds=x_bounds,
+        width=cast(int, value["width"]),
+    )
+
+
 @dataclass(frozen=True, slots=True, init=False, eq=False)
 class Tool[ToolTypeT: SketchToolType]:
     """One registered, sketch-owned drawing tool and drawing factory."""
@@ -1164,11 +1324,10 @@ class _SketchAuthoringMixin:
                 "solution": [],
             }
             self._sync_sketch_attrs()
-        elif (
-            not isinstance(existing, dict)
-            or existing.get("answers_name") != self.answers_name
-        ):
-            raise TypeError(f"params[{key!r}] is not a sketch authored for this answer")
+        elif not isinstance(existing, dict):
+            raise TypeError(f"params[{key!r}] is not a stored sketch mapping")
+        else:
+            _validate_stored_sketch(existing, answers_name=self.answers_name)
 
     @property
     def params(self) -> SketchParams:

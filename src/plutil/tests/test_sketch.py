@@ -79,6 +79,29 @@ def test_sketch_reconnect_does_not_rewrite_params() -> None:
     assert data["params"] == before
 
 
+def test_sketch_reconnect_rejects_malformed_and_obsolete_specs() -> None:
+    missing_data = question_data()
+    missing = SketchQuestion(missing_data, "graph")
+    del cast(dict[str, Any], missing.params)["x_bounds"]
+    with pytest.raises(TypeError, match="missing keys: x_bounds"):
+        SketchQuestion(missing_data, "graph", must_exist=True)
+
+    obsolete_data = question_data()
+    obsolete = SketchQuestion(obsolete_data, "graph")
+    obsolete.tools.create(type="point", id="points")
+    cast(dict[str, Any], obsolete.params["tools"][0])["_auto"] = True
+    with pytest.raises(TypeError, match="unexpected keys: _auto"):
+        SketchQuestion(obsolete_data, "graph", must_exist=True)
+
+    reference_data = question_data()
+    reference = SketchQuestion(reference_data, "graph")
+    points = reference.tools.create(type="point", id="points")
+    reference.initial.add(points.create(1, 2))
+    reference.params["initial"][0]["tool_id"] = "missing"
+    with pytest.raises(TypeError, match="unknown tool"):
+        SketchQuestion(reference_data, "graph", must_exist=True)
+
+
 def test_sketch_must_exist_rejects_missing_spec_without_creating_one() -> None:
     data = question_data()
 
