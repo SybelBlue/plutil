@@ -45,6 +45,7 @@ from .common import (
     to_expr,
 )
 from .partial_credit import PartialCreditRule, award_partial_credit
+from .sketch import _SketchAuthoringMixin
 
 _question_data_types: dict[tuple[type, type], type] = {}
 
@@ -490,6 +491,24 @@ class PartialScoreProxy:
         elif f in fdict:
             del fdict[self.answers_name]
 
+    @property
+    def correct_answer_shown(self) -> bool:
+        """Return whether PrairieLearn is displaying the correct answer."""
+        return self.data["correct_answer_shown"]
+
+    @property
+    def format_error(self) -> str | None:
+        """Return the answer's format error, if present."""
+        return self.data.get("format_errors", {}).get(self.answers_name)
+
+    @format_error.setter
+    def format_error(self, message: str | None):
+        format_errors = self.data.setdefault("format_errors", {})
+        if message is None:
+            format_errors.pop(self.answers_name, None)
+        else:
+            format_errors[self.answers_name] = message
+
 
 @dataclass(slots=True)
 class BaseQuestion[AnswerT](PartialScoreProxy):
@@ -522,24 +541,6 @@ class BaseQuestion[AnswerT](PartialScoreProxy):
         return cast(
             AnswerT | None, self.data["submitted_answers"].get(self.answers_name)
         )
-
-    @property
-    def correct_answer_shown(self) -> bool:
-        """Return whether PrairieLearn is displaying the correct answer."""
-        return self.data["correct_answer_shown"]
-
-    @property
-    def format_error(self) -> str | None:
-        """Return the answer's format error, if present."""
-        return self.data.get("format_errors", {}).get(self.answers_name)
-
-    @format_error.setter
-    def format_error(self, message: str | None):
-        format_errors = self.data.setdefault("format_errors", {})
-        if message is None:
-            format_errors.pop(self.answers_name, None)
-        else:
-            format_errors[self.answers_name] = message
 
     def as_sympy_lens(self, variables: OneOrMore[Variable] = ()) -> "SympyQuestion":
         """Return a symbolic lens for this answer using ``variables``."""
@@ -595,6 +596,24 @@ def set_group_rich_score(
             or changed
         )
     return changed
+
+
+@dataclass(slots=True)
+class SketchQuestion(_SketchAuthoringMixin, PartialScoreProxy):
+    """A typed authoring lens for one PrairieLearn ``pl-sketch`` element.
+
+    Unlike standard input elements, ``pl-sketch`` does not populate
+    ``correct_answers[answers_name]`` or ``submitted_answers[answers_name]``.
+    This lens therefore shares scoring and feedback behavior with other answer
+    lenses without inheriting those incompatible answer accessors.
+    """
+
+    _: KW_ONLY
+    must_exist: bool = False
+
+    def __post_init__(self) -> None:
+        """Create or reconnect to this sketch's Mustache-ready parameters."""
+        self._initialize_sketch(must_exist=self.must_exist)
 
 
 def _normalize_choice_html(value: str) -> str:

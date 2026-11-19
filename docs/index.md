@@ -14,6 +14,7 @@ New here? Start with {doc}`getting-started`.
 | {doc}`guide/grading` | Rich scores, multiple-choice/checkbox credit, and rule-based partial credit |
 | {doc}`guide/implicit-equations` | Bounded exact and witness-based equivalence for implicit algebraic equations |
 | {doc}`guide/choices` | Building `pl-multiple-choice` and `pl-checkbox` options from `server.py` |
+| {doc}`guide/sketch` | Building `pl-sketch` tools, drawings, solutions, and frame bounds from `server.py` |
 | {doc}`guide/formatting` | Deterministic number formatting (`fmt`), parsing it back (`defmt`), exact decimal input |
 | {doc}`guide/functions` | Domains, evaluation, translating/scaling, and rearranging equations |
 | {doc}`guide/calculus` | Derivatives, tangent lines, integrals, missing-constant credit, stock feedback |
@@ -39,6 +40,7 @@ guide/common
 guide/grading
 guide/implicit-equations
 guide/choices
+guide/sketch
 guide/formatting
 guide/functions
 guide/calculus
