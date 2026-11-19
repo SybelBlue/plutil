@@ -25,6 +25,29 @@ derivative(x**3, d=(x, x))  # -> 6*x
 derivative(x**2 * y**3, d=(x, y))  # -> 6*x*y**2
 ```
 
+### `parametric_derivative(f_t, *, t, d, simplify=True) -> Expr`
+
+Differentiate the parametrized expression `f_t` along a coordinate parametrized
+by `t`. As with `derivative`, pass a sequence to `d` to differentiate
+repeatedly, in order.
+
+```python
+from plutil.calculus import parametric_derivative
+from sympy.abc import t
+
+# dy/dx for x(t) = t**2 and y(t) = t**3
+parametric_derivative(t**3, t=t, d=t**2)  # -> 3*t/2
+
+# d²y/dx² for the same curve
+parametric_derivative(t**3, t=t, d=(t**2, t**2))  # -> 3/(4*t)
+```
+
+Each entry in `d` is the parametrized coordinate for that differentiation, so
+the sequence may also contain different coordinates. The parameter `t` may be
+a string or a SymPy symbol. The final result is simplified by default; pass
+`simplify=False` to preserve the expression produced directly by the
+derivative and quotient operations.
+
 ### `tangent_of(f, **point) -> Expr`
 
 Return the tangent line to `f` at a point. Bind the input variable the same

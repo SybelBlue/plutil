@@ -16,6 +16,7 @@ from plutil.calculus import (
     derivative_,
     integrate,
     mean_value_theorem,
+    parametric_derivative,
     secant_of,
     secant_of_,
     tangent_line_of,
@@ -55,6 +56,61 @@ def test_derivative_rejects_empty_sequence():
 
 def test_derivative_partial_accepts_sequence():
     assert eq(derivative_(d=(x, x))(sympy.sin(x)), -sympy.sin(x))
+
+
+def test_parametric_derivative_of_curve_coordinate():
+    t = sympy.Symbol("t")
+
+    result = parametric_derivative(f_t=t**3, t=t, d=t**2)
+
+    assert eq(result, sympy.Rational(3, 2) * t)
+
+
+@pytest.mark.parametrize("parameter", ["t", sympy.Symbol("t")])
+def test_parametric_derivative_sequence_repeats_differentiation(parameter):
+    t = sympy.Symbol("t")
+
+    result = parametric_derivative(t**3, t=parameter, d=(t**2, t**2))
+
+    assert eq(result, sympy.Rational(3, 4) / t)
+
+
+def test_parametric_derivative_sequence_supports_different_coordinates():
+    t = sympy.Symbol("t")
+
+    result = parametric_derivative(t**4, t=t, d=(t**2, t**3))
+
+    assert eq(result, sympy.Rational(4, 3) / t)
+
+
+def test_parametric_derivative_rejects_empty_sequence():
+    t = sympy.Symbol("t")
+
+    with pytest.raises(ValueError, match="at least one parametrized coordinate"):
+        parametric_derivative(t**3, t=t, d=())
+
+
+@pytest.mark.parametrize(
+    ("simplify", "expected"),
+    [
+        (
+            False,
+            lambda t: (-(sympy.sin(t) ** 2) / sympy.cos(t) ** 2 - 1) / sympy.cos(t),
+        ),
+        (True, lambda t: -1 / sympy.cos(t) ** 3),
+    ],
+)
+def test_parametric_derivative_simplification_modes(simplify, expected):
+    t = sympy.Symbol("t")
+
+    result = parametric_derivative(
+        sympy.cos(t),
+        t=t,
+        d=(sympy.sin(t), sympy.sin(t)),
+        simplify=simplify,
+    )
+
+    assert result == expected(t)
 
 
 def test_integrate_indefinite_adds_constant():
