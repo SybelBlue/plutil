@@ -96,6 +96,33 @@ def derivative_(
     return lambda f: derivative(f, d=d, evaluate=evaluate)
 
 
+def parametric_derivative(
+    f_t: ExprInput,
+    *,
+    t: Variable,
+    d: OneOrMore[ExprInput],
+    simplify: bool = True,
+) -> sympy.Expr:
+    """Differentiate ``f_t`` along coordinates parametrized by ``t``.
+
+    Each coordinate in ``d`` applies ``(d/dt) / (d coordinate/dt)``. A
+    sequence differentiates repeatedly, in order: ``d=(x_t, x_t)`` computes
+    the second derivative of ``f_t`` with respect to ``x_t``.
+
+    The final result is simplified unless ``simplify=False``.
+
+    Raises:
+        ValueError: If ``d`` is an empty sequence.
+    """
+    coordinates = tuple(_normalize_one_or_more(d))
+    if not coordinates:
+        raise ValueError("`d` must contain at least one parametrized coordinate")
+    result = _input_to_expr(f_t)
+    for coordinate in coordinates:
+        result = derivative(result, d=t) / derivative(coordinate, d=t)
+    return _finish(result, simplify)
+
+
 def integrate(
     f: ExprInput,
     *,

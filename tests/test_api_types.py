@@ -39,7 +39,12 @@ from plutil import (
     require_expr,
     to_expr,
 )
-from plutil.calculus import approximate_area, derivative, integrate
+from plutil.calculus import (
+    approximate_area,
+    derivative,
+    integrate,
+    parametric_derivative,
+)
 from plutil.choices import checkbox, multiple_choice
 from plutil.common import _input_to_expr, _input_to_set, eq, str_to_sympy
 from plutil.functions import eval_at, evalf_at
@@ -85,6 +90,8 @@ def test_expression_apis_return_sympy_expressions() -> None:
     assert_type(require_expr(conservative_value), sympy.Expr)
     assert_type(derivative(value, d=x), sympy.Expr)
     assert_type(derivative(value, d=(x, "x")), sympy.Expr)
+    assert_type(parametric_derivative(value, t=x, d=x), sympy.Expr)
+    assert_type(parametric_derivative(value, t=x, d=(x, x)), sympy.Expr)
     assert_type(integrate(value, d=x), sympy.Expr)
     assert_type(eval_at(value, x=2), sympy.Expr)
     assert_type(evalf_at(value, x=2), float)
