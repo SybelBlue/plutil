@@ -390,6 +390,21 @@ def test_real_variable_assumption_is_applied_to_parsed_inputs(
     assert result.counterexample == {real_x: sp.Integer(-1)}
 
 
+def test_real_variable_alignment_preserves_rational_power_structure() -> None:
+    plain_x = sp.Symbol("x")
+    real_x = sp.Symbol("x", real=True)
+    candidate = cast(Any, pl.to_json(sp.sqrt(plain_x**2)))
+
+    result = check_implicit_equivalence(
+        real_x,
+        candidate,
+        variables=real_x,
+    )
+
+    assert result.verdict == "equivalent"
+    assert result.exact
+
+
 def test_implicit_witnesses_is_keyword_only() -> None:
     fields = ImplicitWitnesses.__dataclass_fields__.values()
 
@@ -1973,6 +1988,22 @@ def test_parse_helper_accepts_a_real_variable_with_plain_serialized_symbols() ->
     assert validate_implicit_polynomial_input(
         SympyQuestion(data, "answer", variables=real_x)
     )
+    assert data["format_errors"] == {}
+
+
+def test_expression_parse_helper_preserves_power_structure_for_real_variables() -> None:
+    plain_x = sp.Symbol("x")
+    real_x = sp.Symbol("x", real=True)
+    submitted = pl.to_json(sp.sqrt(plain_x**2))
+    data = question_data(
+        submitted_answers={"answer": submitted},
+        format_errors={},
+    )
+
+    assert validate_implicit_expression_input(
+        SympyQuestion(data, "answer", variables=real_x)
+    )
+    assert data["submitted_answers"]["answer"] == submitted
     assert data["format_errors"] == {}
 
 

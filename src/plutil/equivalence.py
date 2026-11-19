@@ -179,7 +179,27 @@ def _align_symbols_by_name[T: sp.Basic](
             continue
         if symbol != declared:
             replacements[symbol] = declared
-    return cast(T, value.xreplace(replacements))
+
+    def replace(item: sp.Basic) -> sp.Basic:
+        if item in replacements:
+            return replacements[item]
+        if not item.args:
+            return item
+        arguments = tuple(replace(argument) for argument in item.args)
+        if arguments == item.args:
+            return item
+        if isinstance(item, sp.Add):
+            return sp.Add(*cast(tuple[sp.Expr, ...], arguments), evaluate=False)
+        if isinstance(item, sp.Mul):
+            return sp.Mul(*cast(tuple[sp.Expr, ...], arguments), evaluate=False)
+        if isinstance(item, sp.Pow):
+            base, exponent = cast(tuple[sp.Expr, sp.Expr], arguments)
+            return sp.Pow(base, exponent, evaluate=False)
+        if isinstance(item, (Relational, BooleanFunction)):
+            return item.func(*arguments, evaluate=False)
+        return item.func(*arguments)
+
+    return cast(T, replace(value))
 
 
 def _implicit_input_expr(
