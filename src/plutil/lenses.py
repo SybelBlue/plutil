@@ -557,6 +557,46 @@ class Question(BaseQuestion[object]):
     """A question lens whose parsed answers are arbitrary Python objects."""
 
 
+def set_group_rich_score(
+    lenses: Sequence[BaseQuestion[Any]],
+    score: float,
+    *,
+    feedback: str | None = None,
+    preserve_higher: bool = False,
+) -> bool:
+    """Apply one rich score to a group of answer lenses.
+
+    Existing element weights are preserved. Repeated lenses for the same
+    answer in the same question data are scored once, and an empty group makes
+    no changes.
+
+    Returns:
+        ``True`` when at least one component score is written, otherwise
+        ``False``. With ``preserve_higher=True``, components whose existing
+        score is equal or higher are left unchanged independently.
+    """
+    changed = False
+    seen: set[tuple[int, str]] = set()
+    for lens in lenses:
+        component = (id(lens.data), lens.answers_name)
+        if component in seen:
+            continue
+        seen.add(component)
+
+        existing = lens.score_dict
+        weight = existing.get("weight") if existing is not None else None
+        changed = (
+            lens.set_rich_score(
+                score,
+                weight=weight,
+                feedback=feedback,
+                preserve_higher=preserve_higher,
+            )
+            or changed
+        )
+    return changed
+
+
 def _normalize_choice_html(value: str) -> str:
     return html.unescape(value).strip()
 

@@ -13,6 +13,7 @@ from plutil.lenses import (
     Params,
     Question,
     SympyQuestion,
+    set_group_rich_score,
 )
 from plutil.tests.helpers import question_data
 
@@ -331,6 +332,133 @@ def test_set_rich_score_preserves_higher_applies_explicit_weight_only_on_write(
 
     assert lens.set_rich_score(0.6, weight=7, preserve_higher=True) is True
     assert data["partial_scores"]["answer"] == {"score": 0.6, "weight": 7}
+    assert calls == [data]
+
+
+@pytest.mark.parametrize("score", [1.0, 0.4])
+def test_set_group_rich_score_applies_full_or_partial_score_with_feedback(
+    monkeypatch, score: float
+) -> None:
+    calls: list[pl.QuestionData] = []
+    monkeypatch.setattr(
+        lenses_mod.pl, "set_weighted_score_data", lambda data: calls.append(data)
+    )
+    data = question_data(
+        partial_scores={
+            "x": {"score": 0.0, "weight": 2},
+            "y": {"score": 0.0, "weight": 3},
+        }
+    )
+
+    changed = set_group_rich_score(
+        [Question(data, "x"), SympyQuestion(data, "y")],
+        score,
+        feedback="Consistent components",
+    )
+
+    assert changed is True
+    assert data["partial_scores"] == {
+        "x": {"score": score, "weight": 2, "feedback": "Consistent components"},
+        "y": {"score": score, "weight": 3, "feedback": "Consistent components"},
+    }
+    assert calls == [data, data]
+
+
+def test_set_group_rich_score_preserves_higher_component_by_component(
+    monkeypatch,
+) -> None:
+    calls: list[pl.QuestionData] = []
+    monkeypatch.setattr(
+        lenses_mod.pl, "set_weighted_score_data", lambda data: calls.append(data)
+    )
+    data = question_data(
+        partial_scores={
+            "higher": {
+                "score": 0.9,
+                "weight": 2,
+                "feedback": "Native full credit",
+            },
+            "lower": {"score": 0.2, "weight": 4, "feedback": "Old feedback"},
+        }
+    )
+
+    changed = set_group_rich_score(
+        [Question(data, "higher"), Question(data, "lower")],
+        0.6,
+        feedback="Group feedback",
+        preserve_higher=True,
+    )
+
+    assert changed is True
+    assert data["partial_scores"] == {
+        "higher": {
+            "score": 0.9,
+            "weight": 2,
+            "feedback": "Native full credit",
+        },
+        "lower": {"score": 0.6, "weight": 4, "feedback": "Group feedback"},
+    }
+    assert calls == [data]
+
+
+def test_set_group_rich_score_returns_false_when_every_score_is_preserved(
+    monkeypatch,
+) -> None:
+    calls: list[pl.QuestionData] = []
+    monkeypatch.setattr(
+        lenses_mod.pl, "set_weighted_score_data", lambda data: calls.append(data)
+    )
+    data = question_data(
+        partial_scores={
+            "equal": {"score": 0.6, "weight": 2},
+            "higher": {"score": 1.0, "weight": 3},
+        }
+    )
+
+    changed = set_group_rich_score(
+        [Question(data, "equal"), Question(data, "higher")],
+        0.6,
+        preserve_higher=True,
+    )
+
+    assert changed is False
+    assert data["partial_scores"] == {
+        "equal": {"score": 0.6, "weight": 2},
+        "higher": {"score": 1.0, "weight": 3},
+    }
+    assert calls == []
+
+
+def test_set_group_rich_score_empty_group_returns_false(monkeypatch) -> None:
+    calls: list[pl.QuestionData] = []
+    monkeypatch.setattr(
+        lenses_mod.pl, "set_weighted_score_data", lambda data: calls.append(data)
+    )
+
+    assert set_group_rich_score([], 1.0, feedback="Unused") is False
+    assert calls == []
+
+
+def test_set_group_rich_score_scores_repeated_component_once(monkeypatch) -> None:
+    calls: list[pl.QuestionData] = []
+    monkeypatch.setattr(
+        lenses_mod.pl, "set_weighted_score_data", lambda data: calls.append(data)
+    )
+    data = question_data(partial_scores={"x": {"score": 0.0, "weight": 5}})
+    lens = Question(data, "x")
+
+    changed = set_group_rich_score(
+        [lens, lens, Question(data, "x")],
+        0.5,
+        feedback="One write",
+    )
+
+    assert changed is True
+    assert data["partial_scores"]["x"] == {
+        "score": 0.5,
+        "weight": 5,
+        "feedback": "One write",
+    }
     assert calls == [data]
 
 
