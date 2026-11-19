@@ -81,10 +81,16 @@ import sympy as sp
 
 from plutil import (
     SympyQuestion,
-    check_implicit_equivalence,
+    grade_implicit_equivalence,
     parse_symbolic_decimals,
     validate_implicit_expression_input,
 )
+
+
+def generate(data):
+    x, y = sp.symbols("x y")
+    answer = SympyQuestion(data, "curve", variables=(x, y))
+    answer.correct_answer = x - y**2
 
 
 def parse(data):
@@ -97,20 +103,29 @@ def parse(data):
 def grade(data):
     x, y = sp.symbols("x y")
     answer = SympyQuestion(data, "curve", variables=(x, y))
-    result = check_implicit_equivalence(
-        x - y**2,
+    result = grade_implicit_equivalence(
         answer,
-        variables=(x, y),
         condition=x >= 0,
     )
-    answer.score = float(result.accepted)
+
+    if result is not None:
+        data["params"]["grading_method"] = result.method
 ```
 
-Passing the answer lens to the checker reads the parsed submission without
-modifying PrairieLearn's `data`. Parse and grade are independent executions:
-the parse helper stores only the ordinary parsed answer or format error, and the
-checker repeats the powered-domain proof using the grading region. No proof
-state is stored in `data` or assumed to survive between phases.
+`grade_implicit_equivalence` reads the correct answer, parsed submission,
+variables, answer name, and weight from the same lens. It sets full or no credit
+from `result.accepted` and returns the unchanged `ImplicitEquivalenceResult` so
+the question can record diagnostics such as the method, timeout, reason, or
+counterexample. It returns `None` without grading when parsing already produced
+a format error or there is no parsed expression submission. A non-expression
+correct answer is an authoring error and raises `TypeError`.
+
+Parse and grade are independent executions: the parse helper stores only the
+ordinary parsed answer or format error, and grading repeats the powered-domain
+proof using the supplied region. No proof state is stored in `data` or assumed
+to survive between phases. The lower-level `check_implicit_equivalence` also
+accepts a lens as its candidate when callers need a read-only check without
+score mutation.
 
 Use `validate_implicit_polynomial_input` instead when the question intentionally
 requires a strict polynomial answer; that API continues to reject rational
