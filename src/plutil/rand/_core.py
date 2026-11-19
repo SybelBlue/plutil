@@ -38,6 +38,35 @@ def choices[T](pop: Sequence[T], *args, **kwargs) -> Sequence[T]:
     return base.choices(pop, *args, **kwargs)
 
 
+def combination[T](
+    pop: Sequence[T],
+    k: py.int,
+    *,
+    output_order: Literal["index", "rev-index", "rand"] = "index",
+) -> tuple[T, ...]:
+    """Return one uniformly sampled ``k``-combination of ``pop``.
+
+    With the default ``output_order="index"``, selected elements retain their
+    order in ``pop``, matching the tuples produced by
+    :func:`itertools.combinations`. Use ``output_order="rev-index"`` to return
+    them in reverse population-index order, or ``output_order="rand"`` to
+    shuffle them with :func:`ordering`. Repeated values are treated as distinct
+    population positions.
+
+    Raises:
+        ValueError: If ``k`` is negative or greater than the population size,
+            or if ``output_order`` is unsupported.
+    """
+    if output_order not in ("index", "rev-index", "rand"):
+        raise ValueError("output_order must be 'index', 'rev-index', or 'rand'")
+
+    indices = sorted(base.sample(range(len(pop)), k))
+    selected = tuple(pop[index] for index in indices)
+    if output_order == "rand":
+        return tuple(ordering(selected))
+    return selected[::-1] if output_order == "rev-index" else selected
+
+
 def ordering[T](pop: Sequence[T]) -> list[T]:
     """Return the elements of ``pop`` in a random order.
 
@@ -251,6 +280,7 @@ __all__ = (
     "bool",
     "choice",
     "choices",
+    "combination",
     "complex",
     "coprimes",
     "float",

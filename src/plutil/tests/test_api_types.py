@@ -52,6 +52,16 @@ from plutil.functions import eval_at, evalf_at
 
 def test_rand_factory_preserves_generator_return_types() -> None:
     assert_type(rand.mbool(), Literal["true", "false"])
+    population = cast(tuple[int, ...], (1, 2, 3))
+    assert_type(rand.combination(population, 2), tuple[int, ...])
+    assert_type(
+        rand.combination(population, 2, output_order="rev-index"),
+        tuple[int, ...],
+    )
+    assert_type(
+        rand.combination(population, 2, output_order="rand"),
+        tuple[int, ...],
+    )
     integer_factory = rand.factory(rand.int, 1, 2)
     integer_callable: Callable[[], int] = integer_factory
     assert_type(integer_factory, rand.Factory[int])

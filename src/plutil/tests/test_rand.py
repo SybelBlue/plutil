@@ -156,6 +156,78 @@ def test_randchoices_factory_delays_and_repeats_evaluation(
     ]
 
 
+def test_randcombination_samples_positions_and_preserves_population_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[range, int]] = []
+    population = ("red", "green", "blue", "orange")
+
+    def fake_sample(options: range, k: int) -> list[int]:
+        calls.append((options, k))
+        return [3, 1]
+
+    monkeypatch.setattr(rand.base, "sample", fake_sample)
+
+    assert rand.combination(population, 2) == ("green", "orange")
+    assert calls == [(range(4), 2)]
+
+
+def test_randcombination_can_reverse_population_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(rand.base, "sample", lambda options, k: [1, 3])
+
+    assert rand.combination(
+        ("red", "green", "blue", "orange"),
+        2,
+        output_order="rev-index",
+    ) == ("orange", "green")
+
+
+def test_randcombination_can_randomize_output_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    shuffle_calls: list[list[str]] = []
+
+    monkeypatch.setattr(rand.base, "sample", lambda options, k: [3, 1])
+
+    def reverse(values: list[str]) -> None:
+        shuffle_calls.append(values.copy())
+        values.reverse()
+
+    monkeypatch.setattr(rand.base, "shuffle", reverse)
+
+    assert rand.combination(
+        ("red", "green", "blue", "orange"),
+        2,
+        output_order="rand",
+    ) == ("orange", "green")
+    assert shuffle_calls == [["green", "orange"]]
+
+
+@pytest.mark.parametrize("k", [-1, 4])
+def test_randcombination_rejects_invalid_sizes(k: int) -> None:
+    with pytest.raises(ValueError):
+        rand.combination(("red", "green", "blue"), k)
+
+
+def test_randcombination_rejects_unsupported_output_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_if_sampled(*args: object, **kwargs: object) -> None:
+        pytest.fail("invalid output order should be rejected before sampling")
+
+    monkeypatch.setattr(rand.base, "sample", fail_if_sampled)
+    invalid_order: Any = "random"
+
+    with pytest.raises(ValueError, match="output_order"):
+        rand.combination(
+            ("red", "green", "blue"),
+            2,
+            output_order=invalid_order,
+        )
+
+
 def test_randint_includes_bounds_and_respects_step(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

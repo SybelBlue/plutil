@@ -71,6 +71,22 @@ give values different selection probabilities.
 rolls = rand.choices(range(1, 7), weights=(1, 1, 1, 1, 1, 3), k=4)
 ```
 
+## `rand.combination(population, k, *, output_order="index") -> tuple[T, ...]`
+
+Choose one `k`-combination uniformly without constructing every possible
+combination. With `output_order="index"`, the selected values retain their order
+in the population. Set it to `"rev-index"` to return them in reverse
+population-index order or `"rand"` to shuffle them with `rand.ordering`.
+
+```python
+pair = rand.combination(("red", "green", "blue"), 2)
+# ("red", "green") or ("red", "blue") or ("green", "blue")
+reverse_pair = rand.combination(("red", "green", "blue"), 2, output_order="rev-index")
+# ("green", "red") or ("blue", "red") or ("blue", "green")
+shuffled_pair = rand.combination(("red", "green", "blue"), 2, output_order="rand")
+# any of the above 6 choices, ie. a random permutation
+```
+
 ## `rand.int(low, high, *, exclude=(), exclude_if=None, step=1, randsign=False) -> int`
 
 Choose an integer from an inclusive arithmetic progression. Use `exclude` or
@@ -208,6 +224,7 @@ next_choices = rand.factory(
     weights=(1, 1, 3),
     k=2,
 )
+next_pair = rand.factory(rand.combination, ("red", "green", "blue"), 2)
 next_integer = rand.factory(rand.int, 1, 10)
 next_float = rand.factory(rand.float, 0.0, 1.0, step=0.1)
 next_complex = rand.factory(rand.complex, 0j, 3 + 6j, step=1 + 2j)
