@@ -423,6 +423,8 @@ def _validate_toolbar(
 class _SketchAuthoringMixin:
     """Implementation mixin for :class:`plutil.lenses.SketchQuestion`."""
 
+    __slots__ = ()
+
     data: pl.QuestionData
     answers_name: str
 

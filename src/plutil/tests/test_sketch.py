@@ -77,6 +77,14 @@ def test_sketch_must_exist_rejects_missing_spec_without_creating_one() -> None:
     assert "typo_sketch_html" not in data["params"]
 
 
+def test_sketch_lens_has_no_instance_dictionary() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+
+    assert not hasattr(sketch, "__dict__")
+    with pytest.raises(AttributeError):
+        sketch.x_bound = (-1, 1)  # type: ignore[attr-defined]
+
+
 def test_configure_and_set_frame_update_rendered_attributes() -> None:
     data = question_data()
     sketch = SketchQuestion(data, 'graph & "axes"')
