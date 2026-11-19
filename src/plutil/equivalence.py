@@ -154,6 +154,10 @@ class _CadEnvelopeError(_ImplicitInputError):
         self.reason = reason
 
 
+class _CadBackendError(RuntimeError):
+    """The powered-expression backend could not produce an exact decision."""
+
+
 def _align_symbols_by_name[T: sp.Basic](
     value: T,
     variables: OneOrMore[Variable],
@@ -645,10 +649,10 @@ def _abstract_powered_formula(
     except timeout_utils.TimeoutExceptionError:
         raise
     except Exception as exc:
-        raise RuntimeError(f"cad-error:{type(exc).__name__}") from exc
+        raise _CadBackendError(f"cad-error:{type(exc).__name__}") from exc
 
     if abstraction is None:
-        raise RuntimeError("cad-error:abstraction-unsupported")
+        raise _CadBackendError("cad-error:abstraction-unsupported")
 
     generated = tuple(abstraction.variables)
     all_variables = (*variables, *generated)
@@ -762,8 +766,8 @@ def validate_implicit_expression_input(
     real and defined everywhere in the supplied region. This helper is intended
     for a PrairieLearn ``parse(data)`` function; deterministically invalid input
     receives a format error and its submitted answer is cleared. A CAD timeout
-    leaves the answer intact so grading can fail closed as inconclusive instead
-    of blaming a transient server timeout on the student.
+    or backend failure leaves the answer intact so grading can fail closed as
+    inconclusive instead of blaming an infrastructure failure on the student.
     """
     if lens.format_error is not None:
         return False
@@ -831,14 +835,18 @@ def validate_implicit_expression_input(
                 timeout_seconds=timeout_seconds,
             )
             if not decision.domain_valid:
-                if decision.timed_out:
+                if decision.timed_out or (decision.reason or "").startswith(
+                    "cad-error:"
+                ):
                     return True
                 detail = decision.reason or "cad-domain-unproved"
                 raise _ImplicitInputError(
                     "could not prove that rational powers are real and defined "
                     f"throughout the comparison region ({detail})"
                 )
-    except (RuntimeError, _ImplicitInputError) as exc:
+    except _CadBackendError:
+        return True
+    except _ImplicitInputError as exc:
         lens.format_error = (
             f"Your answer is not a supported implicit expression: {exc}."
         )

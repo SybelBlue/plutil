@@ -1597,6 +1597,93 @@ def test_expression_parse_helper_leaves_answer_intact_on_cad_timeout(
     assert data["format_errors"] == {}
 
 
+def test_expression_parse_helper_propagates_timeout_setup_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    x = sp.Symbol("x")
+    submitted = pl.to_json(sp.sqrt(x))
+    data = question_data(
+        submitted_answers={"answer": submitted},
+        format_errors={},
+    )
+
+    class BrokenTimeout(AbstractContextManager[None]):
+        def __enter__(self) -> None:
+            raise RuntimeError("existing timer")
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+    monkeypatch.setattr(
+        equivalence.timeout_utils,
+        "SignalTimeout",
+        lambda *args, **kwargs: BrokenTimeout(),
+    )
+
+    with pytest.raises(RuntimeError, match="existing timer"):
+        validate_implicit_expression_input(
+            SympyQuestion(data, "answer", variables=x),
+            condition=x >= 0,
+        )
+
+    assert data["submitted_answers"]["answer"] == submitted
+    assert data["format_errors"] == {}
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        lambda *args, **kwargs: None,
+        lambda *args, **kwargs: (_ for _ in ()).throw(KeyError("broken")),
+    ],
+)
+def test_expression_parse_helper_leaves_answer_intact_on_abstraction_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: Callable[..., Any],
+) -> None:
+    from plutil._vendor.sympy_extras.assumptions import bounds
+
+    x = sp.Symbol("x")
+    submitted = pl.to_json(sp.sqrt(x))
+    data = question_data(
+        submitted_answers={"answer": submitted},
+        format_errors={},
+    )
+    monkeypatch.setattr(bounds, "polynomial_abstraction", replacement)
+
+    assert validate_implicit_expression_input(
+        SympyQuestion(data, "answer", variables=x),
+        condition=x >= 0,
+    )
+    assert data["submitted_answers"]["answer"] == submitted
+    assert data["format_errors"] == {}
+
+
+def test_expression_parse_helper_leaves_answer_intact_on_cad_backend_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    x = sp.Symbol("x")
+    submitted = pl.to_json(sp.sqrt(x))
+    data = question_data(
+        submitted_answers={"answer": submitted},
+        format_errors={},
+    )
+    monkeypatch.setattr(
+        equivalence,
+        "_run_cad",
+        lambda *args, **kwargs: equivalence._CadRunResult(
+            reason="cad-error:ImportError"
+        ),
+    )
+
+    assert validate_implicit_expression_input(
+        SympyQuestion(data, "answer", variables=x),
+        condition=x >= 0,
+    )
+    assert data["submitted_answers"]["answer"] == submitted
+    assert data["format_errors"] == {}
+
+
 @pytest.mark.parametrize(
     ("options", "message"),
     [
