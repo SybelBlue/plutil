@@ -957,7 +957,7 @@ def _point_value(
     if isinstance(residual, sp.Poly):
         return cast(sp.Expr, residual.eval(dict(point)))
     value = cast(sp.Expr, residual.subs(list(point.items())))
-    if value.is_real is False or value.is_finite is False:
+    if value.is_real is not True or value.is_finite is not True:
         raise _ImplicitInputError(
             "a powered residual is not a finite real value at a witness"
         )

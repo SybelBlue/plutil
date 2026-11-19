@@ -283,6 +283,19 @@ def test_candidate_cannot_hide_a_later_incorrect_authored_witness() -> None:
         )
 
 
+def test_nonreal_powered_reference_is_rejected_at_an_authored_witness() -> None:
+    x, y = sp.symbols("x y")
+    reference = x ** sp.Rational(1, 3) + sp.sqrt(y)
+
+    with pytest.raises(ValueError, match="finite real value at a witness"):
+        check_implicit_equivalence(
+            reference,
+            x - y,
+            variables=(x, y),
+            witnesses=ImplicitWitnesses(neq={x: -1, y: -1}),
+        )
+
+
 def test_aborted_authored_witness_pass_cannot_enable_heuristic_acceptance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
