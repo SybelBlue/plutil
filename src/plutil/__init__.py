@@ -46,6 +46,7 @@ from .equivalence import (
     ImplicitWitnesses,
     check_implicit_equivalence,
     equivalent,
+    grade_implicit_equivalence,
     validate_implicit_expression_input,
     validate_implicit_polynomial_input,
 )
@@ -124,6 +125,7 @@ __all__: Final[tuple[str, ...]] = (
     "function_names",
     "getrec",
     "give_triviality_feedback",
+    "grade_implicit_equivalence",
     "grade_sympy_set",
     "hypot",
     "is_finite_integer",
