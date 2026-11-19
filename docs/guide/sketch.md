@@ -169,9 +169,7 @@ serialized for PrairieLearn but cannot determine both fitted x-bounds. Supply
 vertical bounds explicitly when functions are present:
 
 ```python
-functions = sketch.tools.create(
-    type="spline", id="functions", read_only=True
-)
+functions = sketch.tools.create(type="spline", id="functions", read_only=True)
 sketch.solution += functions.create(function="1/x", x=(-5, 5))
 sketch.fit_frame(y_bounds=(-6, 6))
 ```
