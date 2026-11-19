@@ -121,9 +121,11 @@ Padding is a fraction added to each end of an inferred span. The origin is
 included by default, and `minimum_span` prevents a single point from collapsing
 an axis.
 
-Symbolic functions contribute their x-range, but `fit_frame()` does not sample
-their y-values: discontinuities and vertical asymptotes make sampled bounds
-unreliable. Supply vertical bounds explicitly when functions are present:
+Symbolic functions contribute an explicitly supplied x-range, but
+`fit_frame()` does not treat the current frame as an intrinsic range and does
+not sample their y-values: discontinuities and vertical asymptotes make sampled
+bounds unreliable. Supply vertical bounds explicitly when functions are
+present:
 
 ```python
 sketch.solution.add_function("1/x", x=(-5, 5))
@@ -131,4 +133,5 @@ sketch.fit_frame(y_bounds=(-6, 6))
 ```
 
 Explicit `x_bounds` or `y_bounds` passed to `fit_frame()` are used unchanged;
-padding applies only to inferred axes.
+padding applies only to inferred axes. Horizontal and vertical lines similarly
+contribute only their fixed coordinate, not the frame-spanning axis.

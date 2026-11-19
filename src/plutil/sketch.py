@@ -864,7 +864,6 @@ class SketchLayer:
             self.state,
             resolved,
             (("coordinates", _format_number(y_value)),),
-            x_extent=self.sketch.x_bounds,
             y_extent=(y_value, y_value),
         )
         return resolved
@@ -892,7 +891,6 @@ class SketchLayer:
             resolved,
             (("coordinates", _format_number(x_value)),),
             x_extent=(x_value, x_value),
-            y_extent=self.sketch.y_bounds,
         )
         return resolved
 
@@ -974,7 +972,7 @@ class SketchLayer:
     ) -> str:
         """Add a symbolic function drawing and return the tool ID used."""
         function_text = _function(function)
-        function_bounds = self.sketch.x_bounds if x is None else _bounds(x, axis="x")
+        function_bounds = None if x is None else _bounds(x, axis="x")
         resolved = self._tool(
             tool_id,
             tool_type,
@@ -982,7 +980,7 @@ class SketchLayer:
             read_only=read_only,
         )
         attributes: list[tuple[str, object]] = [("function", function_text)]
-        if x is not None:
+        if function_bounds is not None:
             attributes.append(
                 (
                     "x-range",

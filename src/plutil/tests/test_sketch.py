@@ -295,6 +295,35 @@ def test_fit_frame_can_override_one_axis() -> None:
     assert sketch.y_bounds == (0.0, 6.0)
 
 
+def test_fit_frame_ignores_frame_spanning_drawing_axes() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    sketch.initial.add_horizontal_line(3)
+    sketch.initial.add_vertical_line(15)
+    sketch.initial.add_point((10, 10))
+    sketch.initial.add_point((20, 20))
+
+    sketch.fit_frame(padding=0, include_origin=False)
+
+    assert sketch.x_bounds == (10.0, 20.0)
+    assert sketch.y_bounds == (3.0, 20.0)
+
+
+def test_fit_frame_ignores_implicit_function_range() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    sketch.solution.add_function("x**2")
+    sketch.initial.add_point((10, 0))
+    sketch.initial.add_point((20, 1))
+
+    sketch.fit_frame(
+        padding=0,
+        include_origin=False,
+        y_bounds=(-1, 5),
+    )
+
+    assert sketch.x_bounds == (10.0, 20.0)
+    assert sketch.y_bounds == (-1.0, 5.0)
+
+
 def test_authored_params_render_the_documented_mustache_contract() -> None:
     data = question_data()
     sketch = SketchQuestion(data, "given-graph")
