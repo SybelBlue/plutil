@@ -18,11 +18,11 @@ from .common import (
     _input_to_expr,
     _normalize_one_or_more,
     _var_names,
-    latex,
     require_expr,
     var_name,
     var_to_symbol,
 )
+from .fmt import latex
 
 
 def _check_result_is_solution(result) -> bool:

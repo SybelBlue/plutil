@@ -3,16 +3,28 @@
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, is_dataclass
 from decimal import Decimal, localcontext
-from typing import Any, Final, Literal, cast
+from typing import Any, Final, Literal, cast, overload
+from warnings import deprecated
 
 import numpy as np
 import prairielearn as pl
+import prairielearn.sympy_utils as psu
 import sympy
 
-from .common import LatexableValue, RatioPowerStyle, latex
+from .common import (
+    ExprInput,
+    LatexableValue,
+    RatioPowerStyle,
+    Variable,
+    _input_to_expr,
+    require_expr,
+    to_expr,
+    var_to_symbol,
+)
 
 type JsonValue = (
     None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
@@ -88,6 +100,7 @@ __all__: Final[tuple[str, ...]] = (
     "currency",
     "json",
     "latex",
+    "lim_latex",
     "matrix_latex",
     "mbool",
     "mustache",
@@ -116,6 +129,370 @@ _MATRIX_FORMATS: Final = frozenset(("bmatrix", "pmatrix"))
 def mbool(value: Any) -> Literal["true", "false"]:
     """Return a Mustache boolean string from the truthiness of ``value``."""
     return "true" if value else "false"
+
+
+_INV_TRIG_OPERATOR_RE: re.Pattern[str] | None = None
+_DISPLAY_OPERATOR_RE: re.Pattern[str] | None = None
+_RATIO_POWER_STYLE_UNSET: Final[object] = object()
+_RATIO_POWER_STYLE_DEFAULT: Final[RatioPowerStyle] = cast(
+    RatioPowerStyle, _RATIO_POWER_STYLE_UNSET
+)
+_SIMPLIFY_RATIO_POWERS_UNSET: Final[bool] = cast(bool, _RATIO_POWER_STYLE_UNSET)
+_RATIO_POWER_STYLES: Final = frozenset(("radical", "stacked", "linear"))
+
+
+def _resolve_ratio_power_style(
+    ratio_power_style: RatioPowerStyle | object,
+    simplify_ratio_powers: bool | object,
+) -> RatioPowerStyle:
+    if (
+        ratio_power_style is not _RATIO_POWER_STYLE_UNSET
+        and simplify_ratio_powers is not _RATIO_POWER_STYLE_UNSET
+    ):
+        raise TypeError(
+            "Pass either `ratio_power_style` or deprecated "
+            "`simplifyRatioPowers`, not both"
+        )
+    if simplify_ratio_powers is not _RATIO_POWER_STYLE_UNSET:
+        return "radical" if simplify_ratio_powers else "stacked"
+    if ratio_power_style is _RATIO_POWER_STYLE_UNSET:
+        return "radical"
+    if not isinstance(ratio_power_style, str) or ratio_power_style not in (
+        _RATIO_POWER_STYLES
+    ):
+        raise ValueError("ratio_power_style must be 'radical', 'stacked', or 'linear'")
+    return cast(RatioPowerStyle, ratio_power_style)
+
+
+@overload
+def latex(
+    expr: LatexableValue,
+    *,
+    log_base: ExprInput | None = None,
+    reparse: bool = False,
+    displaystyle: bool = True,
+    ratio_power_style: RatioPowerStyle = "radical",
+) -> str: ...
+
+
+@overload
+@deprecated(
+    "Use `ratio_power_style='radical'` or `ratio_power_style='stacked'` instead.",
+    category=None,
+)
+def latex(
+    expr: LatexableValue,
+    *,
+    log_base: ExprInput | None = None,
+    reparse: bool = False,
+    displaystyle: bool = True,
+    simplifyRatioPowers: bool,
+) -> str: ...
+
+
+def latex(
+    expr: LatexableValue,
+    *,
+    log_base: ExprInput | None = None,
+    reparse: bool = False,
+    displaystyle: bool = True,
+    ratio_power_style: RatioPowerStyle = _RATIO_POWER_STYLE_DEFAULT,
+    simplifyRatioPowers: bool = _SIMPLIFY_RATIO_POWERS_UNSET,
+) -> str:
+    """Render an expression as display-style LaTeX suitable for PrairieLearn.
+
+    ``ratio_power_style`` controls non-unit rational powers such as ``n**(3/2)``:
+    ``"radical"`` renders ``\\sqrt{n^{3}}``, ``"stacked"`` renders
+    ``n^{\\dfrac{3}{2}}``, and ``"linear"`` renders ``n^{3/2}``. Unit-numerator
+    powers such as ``n**(1/2)`` retain root notation in every style.
+
+    A tuple (Python or ``sympy.Tuple``) renders as a parenthesized,
+    comma-separated list whose entries are each rendered with the same options, e.g. ``(x / 2, 1)`` renders as
+    ``\\left(\\dfrac{x}{2}, 1\\right)``.
+
+    ``simplifyRatioPowers`` is deprecated. ``True`` maps to ``"radical"`` and
+    ``False`` maps to ``"stacked"``.
+    """
+    style = _resolve_ratio_power_style(ratio_power_style, simplifyRatioPowers)
+    if isinstance(expr, (tuple, sympy.Tuple)):
+        items = cast(
+            tuple[LatexableValue, ...],
+            expr.args if isinstance(expr, sympy.Tuple) else expr,
+        )
+        entries = ", ".join(
+            latex(
+                entry,
+                log_base=log_base,
+                reparse=reparse,
+                displaystyle=displaystyle,
+                ratio_power_style=style,
+            )
+            for entry in items
+        )
+        return rf"\left({entries}\right)"
+
+    if isinstance(expr, sympy.Limit):
+        e, z, z0, direction = expr.args
+        if not isinstance(z, sympy.Symbol):
+            raise TypeError(f"Expected a limit variable, got {type(z).__name__}")
+        if not isinstance(direction, sympy.Symbol):
+            raise TypeError(
+                f"Expected a limit direction, got {type(direction).__name__}"
+            )
+        return lim_latex(
+            body=require_expr(e),
+            var=z,
+            val=require_expr(z0),
+            dir=direction,
+            log_base=log_base,
+            reparse=reparse,
+            displaystyle=displaystyle,
+            ratio_power_style=style,
+        )
+
+    global _DISPLAY_OPERATOR_RE, _INV_TRIG_OPERATOR_RE
+    _INV_TRIG_OPERATOR_RE = _INV_TRIG_OPERATOR_RE or re.compile(
+        r"\\operatorname{a(sin|cos|tan|csc|sec|cot)}"
+    )
+    if psu.is_sympy_json(expr):
+        parsed = to_expr(expr)
+    else:
+        parsed = sympy.sympify(expr) if reparse else expr
+    if style == "radical" and isinstance(parsed, sympy.Basic):
+        parsed = parsed.replace(_is_ratio_power, _display_ratio_power)
+    if style == "linear" and isinstance(parsed, sympy.Basic):
+        parsed = parsed.replace(_is_large_operator, _inline_operator_limits)
+    unparsed = str(sympy.latex(parsed, fold_frac_powers=style == "linear"))
+    rendered = _INV_TRIG_OPERATOR_RE.sub(r"\\operatorname{\1}^{-1}", unparsed).replace(
+        r"\int\limits", r"\int"
+    )
+    if displaystyle:
+        _DISPLAY_OPERATOR_RE = _DISPLAY_OPERATOR_RE or re.compile(r"\\(sum|int|prod)")
+        rendered = _DISPLAY_OPERATOR_RE.sub(r"\\displaystyle \g<0>", rendered)
+        rendered = rendered.replace(r"\frac", r"\dfrac")
+    if log_base is None:
+        return rendered
+    if log_base == math.e:
+        return rendered.replace(r"\log", r"\ln")
+    parsed_log_base = _input_to_expr(log_base)
+    if parsed_log_base == sympy.E:
+        return rendered.replace(r"\log", r"\ln")
+
+    return rendered.replace(r"\log", rf"\log_{{{sympy.latex(parsed_log_base)}}}")
+
+
+def _is_ratio_power(value: sympy.Basic) -> bool:
+    if not isinstance(value, sympy.Pow) or not isinstance(value.exp, sympy.Rational):
+        return False
+    return value.exp.q != 1 and abs(value.exp.p) != 1
+
+
+def _display_ratio_power(value: sympy.Pow) -> sympy.Expr:
+    """Rewrite ``b**(p/q)`` as an unevaluated ``(b**|p|)**(1/q)``, inverted if ``p < 0``.
+
+    The result is display-only: the radical form is not equivalent to the
+    original power on every domain.
+    """
+    exponent = cast(sympy.Rational, value.exp)
+    radicand = sympy.Pow(value.base, abs(exponent.p), evaluate=False)
+    root = sympy.Pow(radicand, sympy.Rational(1, exponent.q), evaluate=False)
+    return sympy.Pow(root, -1, evaluate=False) if exponent.p < 0 else root
+
+
+_LARGE_OPERATORS: Final = (sympy.Integral, sympy.Sum, sympy.Product)
+
+
+class _InlineFractions(sympy.Expr):
+    """Display-only wrapper that renders short fractions in its argument as ``p / q``."""
+
+    def _latex(self, printer: Any) -> str:
+        settings = printer._settings
+        previous = settings["fold_short_frac"]
+        settings["fold_short_frac"] = True
+        try:
+            return cast(str, printer._print(self.args[0]))
+        finally:
+            settings["fold_short_frac"] = previous
+
+
+def _is_large_operator(value: sympy.Basic) -> bool:
+    return isinstance(value, _LARGE_OPERATORS)
+
+
+def _inline_operator_limits(value: sympy.Basic) -> sympy.Basic:
+    """Wrap the bounds of an integral, sum, or product so they render as ``p / q``.
+
+    The result is display-only; the wrapped bounds are not usable for evaluation.
+    """
+    limits = (
+        (limit[0], *(_InlineFractions(bound) for bound in limit[1:]))
+        for limit in cast(Any, value).limits
+    )
+    return type(value)(cast(Any, value).function, *limits)
+
+
+@overload
+def lim_latex(
+    *,
+    var: Variable,
+    val: ExprInput,
+    dir: Literal["+", "-", "+-"] | str | sympy.Symbol | None = None,
+    body: ExprInput,
+    log_base: ExprInput | None = None,
+    reparse: bool = False,
+    displaystyle: bool = True,
+    ratio_power_style: RatioPowerStyle = "radical",
+) -> str: ...
+
+
+@overload
+def lim_latex(
+    *,
+    var: Sequence[Variable] | sympy.Tuple,
+    val: Sequence[ExprInput] | sympy.Tuple,
+    dir: None = None,
+    body: ExprInput,
+    log_base: ExprInput | None = None,
+    reparse: bool = False,
+    displaystyle: bool = True,
+    ratio_power_style: RatioPowerStyle = "radical",
+) -> str: ...
+
+
+@overload
+@deprecated(
+    "Use `ratio_power_style='radical'` or `ratio_power_style='stacked'` instead.",
+    category=None,
+)
+def lim_latex(
+    *,
+    var: Variable,
+    val: ExprInput,
+    dir: Literal["+", "-", "+-"] | str | sympy.Symbol | None = None,
+    body: ExprInput,
+    log_base: ExprInput | None = None,
+    reparse: bool = False,
+    displaystyle: bool = True,
+    simplifyRatioPowers: bool,
+) -> str: ...
+
+
+@overload
+@deprecated(
+    "Use `ratio_power_style='radical'` or `ratio_power_style='stacked'` instead.",
+    category=None,
+)
+def lim_latex(
+    *,
+    var: Sequence[Variable] | sympy.Tuple,
+    val: Sequence[ExprInput] | sympy.Tuple,
+    dir: None = None,
+    body: ExprInput,
+    log_base: ExprInput | None = None,
+    reparse: bool = False,
+    displaystyle: bool = True,
+    simplifyRatioPowers: bool,
+) -> str: ...
+
+
+def lim_latex(
+    *,
+    var: Variable | Sequence[Variable] | sympy.Tuple,
+    val: ExprInput | Sequence[ExprInput] | sympy.Tuple,
+    dir: Literal["+", "-", "+-"] | str | sympy.Symbol | None = None,
+    body: ExprInput,
+    log_base: ExprInput | None = None,
+    reparse: bool = False,
+    displaystyle: bool = True,
+    ratio_power_style: RatioPowerStyle = _RATIO_POWER_STYLE_DEFAULT,
+    simplifyRatioPowers: bool = _SIMPLIFY_RATIO_POWERS_UNSET,
+) -> str:
+    """Render a display-style limit expression as a LaTeX fragment.
+
+    For a multivariable limit, pass ``var`` and ``val`` as nonempty Python
+    sequences or :class:`sympy.Tuple` objects of equal length. A direction is
+    only supported for scalar limits, so ``dir`` must be ``None`` in that case.
+
+    ``ratio_power_style`` and deprecated ``simplifyRatioPowers`` behave as in
+    :func:`latex`.
+    """
+    style = _resolve_ratio_power_style(ratio_power_style, simplifyRatioPowers)
+    direction = rf"^{{{dir}}}" if dir and dir not in ("+-", "-+") else ""
+    var_items = _limit_sequence(var)
+    val_items = _limit_sequence(val)
+    if (var_items is None) != (val_items is None):
+        raise TypeError("var and val must both be scalars or both be sequences")
+
+    if var_items is None or val_items is None:
+        var_value: LatexableValue = var_to_symbol(cast(Variable, var))
+        val_value: LatexableValue = _input_to_expr(cast(ExprInput, val))
+    else:
+        if not var_items:
+            raise ValueError("var must be a nonempty sequence")
+        if not val_items:
+            raise ValueError("val must be a nonempty sequence")
+        if len(var_items) != len(val_items):
+            raise ValueError(
+                "var and val sequences must have matching lengths "
+                f"(got {len(var_items)} and {len(val_items)})"
+            )
+        if dir is not None:
+            raise ValueError("dir must be None for a multivariable limit")
+
+        variables: list[sympy.Symbol] = []
+        for index, variable in enumerate(var_items):
+            if not isinstance(variable, (str, sympy.Symbol)):
+                raise TypeError(
+                    f"var[{index}] must be a string or SymPy Symbol, "
+                    f"got {type(variable).__name__}"
+                )
+            variables.append(var_to_symbol(variable))
+
+        values: list[sympy.Expr] = []
+        for index, value in enumerate(val_items):
+            try:
+                values.append(_input_to_expr(cast(ExprInput, value)))
+            except TypeError as exc:
+                raise TypeError(f"val[{index}] must be an expression input") from exc
+
+        var_value = tuple(variables)
+        val_value = tuple(values)
+
+    var_tex = latex(
+        var_value,
+        log_base=log_base,
+        reparse=reparse,
+        displaystyle=displaystyle,
+        ratio_power_style=style,
+    )
+    val_tex = latex(
+        val_value,
+        log_base=log_base,
+        reparse=reparse,
+        displaystyle=displaystyle,
+        ratio_power_style=style,
+    )
+    body_expr = _input_to_expr(body)
+    body_tex = latex(
+        body_expr,
+        log_base=log_base,
+        reparse=reparse,
+        displaystyle=displaystyle,
+        ratio_power_style=style,
+    )
+    if len(sympy.Add.make_args(body_expr)) > 1:
+        body_tex = rf"\left({body_tex}\right)"
+    disp_prefix = r"\displaystyle " if displaystyle else ""
+    return rf"{disp_prefix}\lim_{{{var_tex} \to {val_tex}{direction}}} {{{body_tex}}}"
+
+
+def _limit_sequence(value: object) -> tuple[object, ...] | None:
+    """Return a supported limit coordinate sequence, or ``None`` for a scalar."""
+    if isinstance(value, sympy.Tuple):
+        return value.args
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return tuple(value)
+    return None
 
 
 def matrix_latex(

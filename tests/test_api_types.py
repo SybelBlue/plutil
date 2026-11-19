@@ -53,7 +53,12 @@ from plutil.calculus import (
     parametric_derivative,
 )
 from plutil.choices import checkbox, multiple_choice
-from plutil.common import _input_to_expr, _input_to_set, eq, str_to_sympy
+from plutil.common import (
+    _input_to_expr,
+    _input_to_set,
+    eq,
+    str_to_sympy,
+)
 from plutil.functions import eval_at, evalf_at
 from plutil.vectors import are_equivalent_parametric_lines, is_zero
 
@@ -160,6 +165,7 @@ def test_formatting_apis_return_strings() -> None:
     assert_type(fmt.currency(1, currency=currency_code, latex=True), str)
     assert_type(fmt.quantity(1, "V", prefix=prefix), str)
     assert_type(fmt.latex(x + 1), str)
+    assert_type(fmt.lim_latex(var=x, val=0, body=x + 1), str)
     assert_type(lim_latex(var=x, val=0, body=x + 1), str)
     assert_type(lim_latex(var=(x, "y"), val=(0, 0), body=x + 1), str)
     assert_type(

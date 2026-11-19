@@ -31,8 +31,6 @@ from .common import (
     hypot,
     is_trivial,
     json_to_sympy,
-    latex,
-    lim_latex,
     mbool,
     require_expr,
     setrec,
@@ -50,6 +48,7 @@ from .equivalence import (
     validate_implicit_expression_input,
     validate_implicit_polynomial_input,
 )
+from .fmt import latex, lim_latex
 from .functions import (
     domain,
     eval_at,

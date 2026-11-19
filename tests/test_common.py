@@ -17,14 +17,13 @@ from plutil.common import (
     hypot,
     is_trivial,
     json_to_sympy,
-    latex,
-    lim_latex,
     setrec,
     sign,
     spint,
     str_to_sympy,
     truncate_to_significant_digits,
 )
+from plutil.fmt import latex, lim_latex
 from plutil.lenses import Question, SympyQuestion
 from plutil.tests.helpers import question_data
 
@@ -466,7 +465,7 @@ def test_latex_dispatches_limits_to_lim_latex(monkeypatch: pytest.MonkeyPatch):
         calls.append(kwargs)
         return "rendered limit"
 
-    monkeypatch.setattr(common_mod, "lim_latex", fake_lim_latex)
+    monkeypatch.setattr(plutil.fmt, "lim_latex", fake_lim_latex)
 
     rendered = latex(limit, log_base=2, reparse=True, displaystyle=False)
 
