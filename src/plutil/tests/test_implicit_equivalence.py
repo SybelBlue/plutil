@@ -1332,6 +1332,25 @@ def test_blank_candidate_lens_does_not_hide_author_setup_errors() -> None:
         )
 
 
+def test_blank_candidate_lens_does_not_hide_authored_witness_errors() -> None:
+    x = sp.Symbol("x")
+    data = cast(
+        pl.QuestionData,
+        {
+            "submitted_answers": {},
+            "format_errors": {},
+        },
+    )
+
+    with pytest.raises(ValueError, match="reference residual"):
+        check_implicit_equivalence(
+            x,
+            SympyQuestion(data, "answer", variables=x),
+            variables=x,
+            witnesses=ImplicitWitnesses(eq={x: 1}),
+        )
+
+
 def test_rational_power_degree_is_rejected_before_abstraction() -> None:
     x = sp.Symbol("x")
 

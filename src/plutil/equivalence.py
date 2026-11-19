@@ -1045,7 +1045,7 @@ def _sample_witness_coordinate(
 
 def _check_authored_witnesses(
     reference: sp.Poly | sp.Expr,
-    candidate: sp.Poly | sp.Expr,
+    candidate: sp.Poly | sp.Expr | None,
     variables: tuple[sp.Symbol, ...],
     condition: Boolean,
     domains: Mapping[sp.Symbol, sp.Set],
@@ -1097,6 +1097,8 @@ def _check_authored_witnesses(
     inconclusive_reason = (
         "reference-witness-inconclusive" if reference_inconclusive else None
     )
+    if candidate is None:
+        return _SliceEvidence(None, (), reason=inconclusive_reason)
     for expected_zero, point in candidate_points:
         try:
             candidate_zero = _point_is_zero(
@@ -1653,6 +1655,17 @@ def check_implicit_equivalence(
         else candidate
     )
     if candidate_value is None:
+        _check_authored_witnesses(
+            reference_residual,
+            None,
+            symbols,
+            base_condition,
+            normalized_domains,
+            witnesses or ImplicitWitnesses(),
+            seed=seed,
+            timeout_seconds=timeout_seconds,
+            deadline=time.monotonic() + timeout_seconds,
+        )
         return _result(
             "inconclusive",
             exact=False,
