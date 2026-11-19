@@ -33,6 +33,7 @@ from plutil import (
     is_finite_integer,
     is_finite_real_number,
     latex,
+    lim_latex,
     obfuscations,
     rand,
     require_expr,
@@ -134,6 +135,16 @@ def test_formatting_apis_return_strings() -> None:
     assert_type(fmt.currency(1, currency=currency_code, latex=True), str)
     assert_type(fmt.quantity(1, "V", prefix=prefix), str)
     assert_type(fmt.latex(x + 1), str)
+    assert_type(lim_latex(var=x, val=0, body=x + 1), str)
+    assert_type(lim_latex(var=(x, "y"), val=(0, 0), body=x + 1), str)
+    assert_type(
+        lim_latex(
+            var=sympy.Tuple(x, sympy.Symbol("y")),
+            val=sympy.Tuple(0, 0),
+            body=x,
+        ),
+        str,
+    )
     assert_type(fmt.matrix_latex(((1, x), (x + 1, 0)), format=matrix_format), str)
     assert_type(fmt.matrix_latex(np.array([[1, 2]]), transpose=True), str)
     assert_type(

@@ -702,6 +702,91 @@ def test_lim_latex_renders_two_sided_limit():
     assert rendered == r"\displaystyle \lim_{x \to 3} {x^{2}}"
 
 
+def test_lim_latex_renders_multivariable_limit():
+    y = sympy.Symbol("y")
+
+    rendered = lim_latex(var=(x, y), val=(0, 0), body=x**2 + y**2)
+
+    assert rendered == (
+        r"\displaystyle \lim_{\left(x, y\right) \to \left(0, 0\right)} "
+        r"{\left(x^{2} + y^{2}\right)}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("var", "val"),
+    [
+        (["x", "y"], [0, 0]),
+        (sympy.Tuple(x, sympy.Symbol("y")), sympy.Tuple(0, 0)),
+    ],
+)
+def test_lim_latex_accepts_python_sequences_and_sympy_tuples(var, val):
+    rendered = lim_latex(var=var, val=val, body=x)
+
+    assert rendered == (
+        r"\displaystyle \lim_{\left(x, y\right) \to \left(0, 0\right)} {x}"
+    )
+
+
+def test_lim_latex_forwards_latex_options_to_multivariable_values():
+    y, n = sympy.symbols("y n")
+
+    rendered = lim_latex(
+        var=(x, y),
+        val=(sympy.log(x), n ** sympy.Rational(3, 2)),
+        body=x,
+        log_base=2,
+        displaystyle=False,
+        ratio_power_style="linear",
+    )
+
+    assert rendered == (
+        r"\lim_{\left(x, y\right) \to \left(\log_{2}{\left(x \right)}, "
+        r"n^{3/2}\right)} {x}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("var", "val"),
+    [
+        ((x, sympy.Symbol("y")), 0),
+        (x, (0, 0)),
+    ],
+)
+def test_lim_latex_rejects_mixed_scalar_and_sequence_inputs(var, val):
+    with pytest.raises(TypeError, match="both be scalars or both be sequences"):
+        lim_latex(var=var, val=val, body=x)
+
+
+@pytest.mark.parametrize(
+    ("var", "val", "message"),
+    [
+        ((), (), "var must be a nonempty sequence"),
+        ((x,), (), "val must be a nonempty sequence"),
+        ((x, sympy.Symbol("y")), (0,), "matching lengths.*2 and 1"),
+    ],
+)
+def test_lim_latex_rejects_invalid_multivariable_shape(var, val, message):
+    with pytest.raises(ValueError, match=message):
+        lim_latex(var=var, val=val, body=x)
+
+
+@pytest.mark.parametrize("direction", ["+", "+-", sympy.Symbol("-")])
+def test_lim_latex_rejects_direction_for_multivariable_limit(direction):
+    with pytest.raises(ValueError, match="dir must be None"):
+        lim_latex(var=(x, "y"), val=(0, 0), dir=direction, body=x)
+
+
+def test_lim_latex_identifies_invalid_multivariable_variable():
+    with pytest.raises(TypeError, match=r"var\[1\].*got int"):
+        lim_latex(var=(x, 2), val=(0, 0), body=x)  # type: ignore[arg-type]
+
+
+def test_lim_latex_identifies_invalid_multivariable_value():
+    with pytest.raises(TypeError, match=r"val\[1\].*expression input"):
+        lim_latex(var=(x, "y"), val=(0, object()), body=x)  # type: ignore[arg-type]
+
+
 @pytest.mark.parametrize(
     ("body", "body_latex"),
     [
