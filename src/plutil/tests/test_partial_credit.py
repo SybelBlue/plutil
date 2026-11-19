@@ -122,8 +122,8 @@ def test_award_interval_clusivity_credit_compares_symbolic_endpoints(
         lambda data: calls.append(data),
     )
     variable = sympy.Symbol("x", real=True)
-    correct = sympy.Interval(-abs(variable), abs(variable))
-    submitted = sympy.Interval.open(-abs(variable), abs(variable))
+    correct = sympy.Interval.open(-abs(variable), abs(variable))
+    submitted = sympy.Interval(-abs(variable), abs(variable))
     data = question_data(submitted_answers={"answer": pl.to_json(submitted)})
     lens = SympyQuestion(data, "answer", variables=variable)
     lens.correct_answer = correct

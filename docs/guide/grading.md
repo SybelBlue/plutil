@@ -195,16 +195,17 @@ x = sp.Symbol("x", real=True)
 
 def generate(data):
     domain = SympyQuestion(data, "domain", variables=x)
-    domain.correct_answer = sp.Interval(-abs(x), abs(x))
+    domain.correct_answer = sp.Interval.open(-abs(x), abs(x))
 
 
 def grade(data):
     domain = SympyQuestion(data, "domain", variables=x)
+    # A submitted interval of [-|x|, |x|] gains partial credit under this scheme.
     award_interval_clusivity_credit(domain)
 ```
 
-Here the correct interval is $[-|x|, |x|]$, so the same `x` accepted by the
-lens also appears symbolically in both boundary values.
+Here the correct interval is $(-|x|, |x|)$, while the closed submission
+$[-|x|, |x|]$ has the same symbolic boundary values but incorrect clusivity.
 
 The default score is `0.5`, and the default feedback asks the student to check
 which finite endpoints are included. Pass a custom `partial_score` or
