@@ -1079,6 +1079,33 @@ def test_powered_solver_abstracts_once_and_shares_one_timeout(
     assert timeout_calls == 1
 
 
+def test_powered_solver_stops_after_an_invalid_domain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from plutil._vendor.sympy_extras.polys.cad import qe
+
+    x, y = sp.symbols("x y")
+    decide_calls = 0
+    original_decide = qe.decide
+
+    def counted_decide(*args: Any, **kwargs: Any) -> Any:
+        nonlocal decide_calls
+        decide_calls += 1
+        return original_decide(*args, **kwargs)
+
+    monkeypatch.setattr(qe, "decide", counted_decide)
+
+    result = check_implicit_equivalence(
+        sp.sqrt(x) + y,
+        x - y**2,
+        variables=(x, y),
+    )
+
+    assert result.verdict == "inconclusive"
+    assert result.reason == "cad-domain-invalid"
+    assert decide_calls == 1
+
+
 def test_authored_witnesses_and_cad_share_one_timeout_budget(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -1299,6 +1299,7 @@ def _run_cad(
     requests: tuple[_CadRequest, ...],
     *,
     timeout_seconds: float,
+    stop_on_false: bool = False,
 ) -> _CadRunResult:
     """Run one or more CAD decisions behind one timeout and error boundary."""
     try:
@@ -1312,7 +1313,10 @@ def _run_cad(
         with timeout:
             for formula, quantifiers in requests:
                 try:
-                    results.append(decide(formula, list(quantifiers)))
+                    result = decide(formula, list(quantifiers))
+                    results.append(result)
+                    if stop_on_false and not result:
+                        break
                 except timeout_utils.TimeoutExceptionError:
                     raise
                 except Exception as exc:  # noqa: BLE001 - isolate CAD backend
@@ -1361,7 +1365,11 @@ def _powered_cad_decide(
             )
         )
 
-    run = _run_cad(tuple(requests), timeout_seconds=timeout_seconds)
+    run = _run_cad(
+        tuple(requests),
+        timeout_seconds=timeout_seconds,
+        stop_on_false=True,
+    )
     if not run.results:
         return _PoweredCadDecision(
             domain_valid=False,
