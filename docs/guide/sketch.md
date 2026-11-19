@@ -61,8 +61,10 @@ def generate(data):
         allow_blank=True,
         width=640,
         height=420,
+    ).set_frame(
+        x=(-5, 5),
+        y=(-3, 6),
     )
-    sketch.set_frame(x=(-5, 5), y=(-3, 6))
 
     points = sketch.tools.create(type="point", id="given-points", color="blue")
     paths = sketch.tools.create(type="polyline", id="paths", color="blue")
@@ -84,6 +86,8 @@ and PrairieLearn symbolic JSON. `sketch.weight` reads and writes the element
 weight; use `set_rich_score(weight=...)` when setting a partial-score weight.
 Drawing dataclasses reject symbolic, complex, and nonfinite coordinates when
 constructed rather than producing a sketch that fails later during prepare.
+Both `configure()` and `set_frame()` return the sketch, so canvas and frame
+configuration can be chained as above.
 
 In grading or another phase that should reconnect rather than create authoring
 params, require the generated spec to exist so answer-name typos fail early:

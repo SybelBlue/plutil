@@ -123,6 +123,17 @@ def test_configure_and_set_frame_update_rendered_attributes() -> None:
     assert 'allow-blank="true"' in attrs
 
 
+def test_configure_and_set_frame_are_chainable() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+
+    result = sketch.configure(read_only=True).set_frame(x=(-2, 3), y=(-4, 5))
+
+    assert result is sketch
+    assert sketch.params["read_only"] is True
+    assert sketch.x_bounds == (-2.0, 3.0)
+    assert sketch.y_bounds == (-4.0, 5.0)
+
+
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [

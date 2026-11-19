@@ -1091,8 +1091,8 @@ class _SketchAuthoringMixin:
         read_only: bool | None = None,
         overlay_solution: bool | None = None,
         allow_blank: bool | None = None,
-    ) -> None:
-        """Update canvas options, retaining unspecified PrairieLearn defaults."""
+    ) -> Self:
+        """Update canvas options and return this sketch for chaining."""
         if weight is not None and (
             isinstance(weight, bool) or not isinstance(weight, int) or weight < 0
         ):
@@ -1135,14 +1135,15 @@ class _SketchAuthoringMixin:
             if value is not None:
                 params[name] = value
         self._sync_sketch_attrs()
+        return self
 
     def set_frame(
         self,
         *,
         x: SketchBoundsInput | None = None,
         y: SketchBoundsInput | None = None,
-    ) -> None:
-        """Set one or both validated frame bounds."""
+    ) -> Self:
+        """Set one or both validated frame bounds and return this sketch."""
         if x is None and y is None:
             raise ValueError("set_frame requires x and/or y bounds")
         if x is not None:
@@ -1150,6 +1151,7 @@ class _SketchAuthoringMixin:
         if y is not None:
             self.params["y_bounds"] = list(_bounds(y, axis="y"))
         self._sync_sketch_attrs()
+        return self
 
     def fit_frame(
         self,
