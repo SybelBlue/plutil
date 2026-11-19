@@ -25,6 +25,7 @@ SKETCH_TEMPLATE = """
 {{#params.given-graph_sketch}}
 <pl-sketch {{{attrs}}}>
   {{#tools}}<pl-sketch-tool {{{attrs}}}></pl-sketch-tool>{{/tools}}
+  {{#graders}}<pl-sketch-grade {{{attrs}}}></pl-sketch-grade>{{/graders}}
   {{#initial}}<pl-sketch-initial {{{attrs}}}></pl-sketch-initial>{{/initial}}
   {{#solution}}<pl-sketch-solution {{{attrs}}}></pl-sketch-solution>{{/solution}}
 </pl-sketch>
@@ -41,6 +42,8 @@ def test_sketch_uses_separate_params_with_prairielearn_defaults() -> None:
     assert sketch.params is data["params"]["given-graph_sketch"]
     assert sketch.x_bounds == (-5.0, 5.0)
     assert sketch.y_bounds == (-5.0, 5.0)
+    assert not sketch.params["grader_stages"]
+    assert not sketch.params["graders"]
     assert sketch.params["attrs"] == (
         'answers-name="given-graph" weight="1" x-range="-5,5" '
         'y-range="-5,5" width="800" height="450" enforce-bounds="false" '
@@ -60,11 +63,13 @@ def test_sketch_reconnects_without_resetting_authored_data() -> None:
     original = SketchQuestion(data, "graph")
     points = original.tools.create(type="point", id="points")
     original.initial.add(points.create(1, 2))
+    original.graders.create(type="count", tools=points, count=1)
 
     reconnected = SketchQuestion(data, "graph")
 
     assert reconnected.params is original.params
     assert len(reconnected.params["initial"]) == 1
+    assert len(reconnected.params["graders"]) == 1
 
 
 def test_sketch_reconnect_does_not_rewrite_params() -> None:
@@ -100,6 +105,23 @@ def test_sketch_reconnect_rejects_malformed_and_obsolete_specs() -> None:
     reference.params["initial"][0]["tool_id"] = "missing"
     with pytest.raises(TypeError, match="unknown tool"):
         SketchQuestion(reference_data, "graph", must_exist=True)
+
+    grader_data = question_data()
+    grader_sketch = SketchQuestion(grader_data, "graph")
+    grader_point = grader_sketch.tools.create(type="point", id="point")
+    grader_sketch.graders.create(type="count", tools=grader_point, count=1)
+    grader_sketch.params["graders"][0]["share"] = 0
+    with pytest.raises(TypeError, match="positive integer"):
+        SketchQuestion(grader_data, "graph", must_exist=True)
+
+    stage_data = question_data()
+    stage_sketch = SketchQuestion(stage_data, "graph")
+    stage_curve = stage_sketch.tools.create(type="spline", id="curve")
+    with stage_sketch.graders.stage():
+        stage_sketch.graders.create(type="defined-in", tools=stage_curve)
+    stage_sketch.params["grader_stages"].append({"stage": 2, "weight": 1})
+    with pytest.raises(TypeError, match="must not be empty"):
+        SketchQuestion(stage_data, "graph", must_exist=True)
 
 
 def test_sketch_must_exist_rejects_missing_spec_without_creating_one() -> None:
@@ -399,6 +421,372 @@ def test_tool_type_specific_options_serialize() -> None:
     assert 'opacity="0.25"' in attrs[2]
 
 
+def test_grader_registry_serializes_all_native_criteria() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    curve = sketch.tools.create(type="free-draw", id="curve", read_only=True)
+    point = sketch.tools.create(type="point", id="point", read_only=True)
+    line = sketch.tools.create(type="line", id="line", read_only=True)
+    polygon = sketch.tools.create(type="polygon", id="polygon", read_only=True)
+
+    sketch.graders.create(
+        type="count",
+        tools=(curve, point),
+        count=2,
+        mode="at-least",
+        x_range=(None, 3),
+        share=2,
+        tolerance=12,
+        feedback='Draw "two" & check.',
+        debug=True,
+    )
+    sketch.graders.create(type="match", tools=line, x=0, y=1, endpoint="start")
+    sketch.graders.create(type="defined-in", tools=(curve, polygon), x_range=(-2, 2))
+    sketch.graders.create(type="undefined-in", tools=point, x_range=(2, None))
+    sketch.graders.create(type="less-than", tools=curve, y=3, x_range=(-1, 1))
+    sketch.graders.create(type="greater-than", tools=curve, function="x**2")
+    sketch.graders.create(
+        type="match-function",
+        tools=curve,
+        function="sin(x)",
+        allow_undefined=True,
+    )
+    sketch.graders.create(type="monot-increasing", tools=curve)
+    sketch.graders.create(type="monot-decreasing", tools=line)
+    sketch.graders.create(type="concave-up", tools=curve)
+    sketch.graders.create(type="concave-down", tools=line)
+
+    graders = sketch.params["graders"]
+    assert [grader["type"] for grader in graders] == [
+        "count",
+        "match",
+        "defined-in",
+        "undefined-in",
+        "less-than",
+        "greater-than",
+        "match-function",
+        "monot-increasing",
+        "monot-decreasing",
+        "concave-up",
+        "concave-down",
+    ]
+    assert graders[0]["tool_ids"] == ["curve", "point"]
+    assert graders[0]["attrs"] == (
+        'type="count" tool-id="curve,point" count="2" mode="at-least" '
+        'x-range=",3" weight="2" tolerance="12" '
+        'feedback="Draw &quot;two&quot; &amp; check." debug="true"'
+    )
+    assert graders[1]["attrs"] == (
+        'type="match" tool-id="line" x="0" y="1" endpoint="start"'
+    )
+    assert 'allow-undefined="true"' in graders[6]["attrs"]
+
+
+def test_xy_flipped_graders_use_y_functions_and_ranges() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    curve = sketch.tools.create(type="spline", id="curve", read_only=True)
+    y = sp.Symbol("y")
+
+    sketch.graders.create(
+        type="match-function",
+        tools=curve,
+        function=sp.exp(y) + sp.Abs(y),
+        xy_flip=True,
+        y_range=(None, 2),
+    )
+    sketch.graders.create(
+        type="less-than",
+        tools=curve,
+        function=y**2,
+        xy_flip=True,
+        y_range=(-1, None),
+    )
+
+    assert sketch.params["graders"][0]["attrs"] == (
+        'type="match-function" tool-id="curve" function="e**(y) + abs(y)" '
+        'xy-flip="true" y-range=",2"'
+    )
+    assert sketch.params["graders"][1]["attrs"] == (
+        'type="less-than" tool-id="curve" function="y**2" xy-flip="true" y-range="-1,"'
+    )
+
+
+def test_grader_tools_are_graph_owned_distinct_handles_of_supported_types() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    other = SketchQuestion(question_data(), "other")
+    point = sketch.tools.create(type="point", id="point", read_only=True)
+    horizontal = sketch.tools.create(
+        type="horizontal-line", id="horizontal", read_only=True
+    )
+    vertical = sketch.tools.create(type="vertical-line", id="vertical", read_only=True)
+    polygon = sketch.tools.create(type="polygon", id="polygon", read_only=True)
+    line = sketch.tools.create(type="line", id="line", read_only=True)
+    foreign = other.tools.create(type="point", id="foreign", read_only=True)
+    create = cast(Any, sketch.graders.create)
+
+    with pytest.raises(ValueError, match="at least one"):
+        create(type="count", tools=(), count=1)
+    with pytest.raises(ValueError, match="distinct"):
+        create(type="count", tools=(point, point), count=1)
+    with pytest.raises(TypeError, match="Tool"):
+        create(type="count", tools="point", count=1)
+    with pytest.raises(ValueError, match="different sketch"):
+        create(type="count", tools=foreign, count=1)
+    with pytest.raises(ValueError, match="does not support"):
+        create(type="defined-in", tools=point)
+    with pytest.raises(ValueError, match="does not support"):
+        create(type="undefined-in", tools=horizontal)
+    with pytest.raises(ValueError, match="does not support"):
+        create(type="match-function", tools=line, function="x")
+    with pytest.raises(ValueError, match="does not support"):
+        create(type="less-than", tools=vertical, y=0)
+    with pytest.raises(ValueError, match="does not support"):
+        create(type="monot-increasing", tools=point)
+    with pytest.raises(ValueError, match="does not support"):
+        create(type="concave-up", tools=polygon)
+
+
+def test_match_grader_validates_coordinates_and_endpoints() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    point = sketch.tools.create(type="point", id="point", read_only=True)
+    line = sketch.tools.create(type="line", id="line", read_only=True)
+    horizontal = sketch.tools.create(
+        type="horizontal-line", id="horizontal", read_only=True
+    )
+    vertical = sketch.tools.create(type="vertical-line", id="vertical", read_only=True)
+    create = cast(Any, sketch.graders.create)
+
+    with pytest.raises(ValueError, match="x and/or y"):
+        create(type="match", tools=point)
+    with pytest.raises(ValueError, match="horizontal lines requires y"):
+        create(type="match", tools=horizontal, x=0)
+    with pytest.raises(ValueError, match="vertical lines requires x"):
+        create(type="match", tools=vertical, y=0)
+    with pytest.raises(ValueError, match="only supports line"):
+        create(type="match", tools=point, x=0, y=0, endpoint="either")
+    with pytest.raises(ValueError, match="requires both"):
+        create(type="match", tools=line, x=0, endpoint="start")
+    with pytest.raises(ValueError, match="finite real"):
+        create(type="match", tools=point, x=sp.oo)
+
+
+def test_function_and_axis_graders_reject_conflicting_inputs() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    curve = sketch.tools.create(type="spline", id="curve", read_only=True)
+    x, y = sp.symbols("x y")
+    create = cast(Any, sketch.graders.create)
+
+    with pytest.raises(ValueError, match="exactly one"):
+        create(type="less-than", tools=curve)
+    with pytest.raises(ValueError, match="exactly one"):
+        create(type="less-than", tools=curve, y=0, function=x)
+    with pytest.raises(ValueError, match="requires a function"):
+        create(type="less-than", tools=curve, y=0, xy_flip=True)
+    with pytest.raises(ValueError, match="uses y_range"):
+        create(
+            type="match-function",
+            tools=curve,
+            function=y,
+            xy_flip=True,
+            x_range=(-1, 1),
+        )
+    with pytest.raises(ValueError, match="uses x_range"):
+        create(type="match-function", tools=curve, function=x, y_range=(-1, 1))
+    with pytest.raises(ValueError, match="variable y"):
+        create(type="match-function", tools=curve, function=x, xy_flip=True)
+    with pytest.raises(ValueError, match="ordered"):
+        create(type="match-function", tools=curve, function=x, x_range=(1, -1))
+
+
+def test_graders_reject_invalid_criterion_options() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    point = sketch.tools.create(type="point", id="point", read_only=True)
+    curve = sketch.tools.create(type="spline", id="curve", read_only=True)
+    line = sketch.tools.create(type="line", id="line", read_only=True)
+    create = cast(Any, sketch.graders.create)
+
+    with pytest.raises(ValueError, match="count"):
+        create(type="count", tools=point, count=-1)
+    with pytest.raises(ValueError, match="count mode"):
+        create(type="count", tools=point, count=1, mode="sometimes")
+    with pytest.raises(ValueError, match="endpoint"):
+        create(type="match", tools=line, x=0, y=0, endpoint="middle")
+    with pytest.raises(TypeError, match="xy_flip"):
+        create(type="match-function", tools=curve, function="x", xy_flip="yes")
+    with pytest.raises(TypeError, match="allow_undefined"):
+        create(
+            type="match-function",
+            tools=curve,
+            function="x",
+            allow_undefined="yes",
+        )
+    with pytest.raises(ValueError, match="does not support grader options"):
+        create(type="count", tools=point, count=1, function="x")
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"share": 0}, "share"),
+        ({"share": -1}, "share"),
+        ({"share": True}, "share"),
+        ({"share": 1.5}, "share"),
+        ({"tolerance": -1}, "tolerance"),
+        ({"feedback": 1}, "feedback"),
+        ({"debug": "yes"}, "debug"),
+    ],
+)
+def test_graders_reject_invalid_common_options(
+    kwargs: dict[str, object], message: str
+) -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    point = sketch.tools.create(type="point", id="point", read_only=True)
+    create = cast(Any, sketch.graders.create)
+
+    with pytest.raises((TypeError, ValueError), match=message):
+        create(type="count", tools=point, count=1, **kwargs)
+
+
+def test_weighted_grader_stages_normalize_shares_and_preserve_order() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    point = sketch.tools.create(type="point", id="point")
+    curve = sketch.tools.create(type="spline", id="curve")
+    graders = sketch.graders
+
+    assert graders is sketch.graders
+    graders.create(type="count", tools=point, count=1, share=1)
+    with graders.stage(weight=2) as staged:
+        assert staged is graders
+        staged.create(type="defined-in", tools=curve, x_range=(-2, 2), share=1)
+        sketch.graders.create(
+            type="match-function", tools=curve, function="x**2", share=3
+        )
+    with sketch.graders.stage(weight=3):
+        sketch.graders.create(type="monot-increasing", tools=curve)
+
+    assert sketch.params["grader_stages"] == [
+        {"stage": 1, "weight": 2},
+        {"stage": 2, "weight": 3},
+    ]
+    assert [grader["share"] for grader in sketch.params["graders"]] == [1, 1, 3, 1]
+    assert [grader["stage"] for grader in sketch.params["graders"]] == [0, 1, 1, 2]
+    assert [grader["attrs"] for grader in sketch.params["graders"]] == [
+        'type="count" tool-id="point" count="1" weight="2"',
+        'type="defined-in" tool-id="curve" x-range="-2,2" stage="1"',
+        'type="match-function" tool-id="curve" function="x**2" weight="3" stage="1"',
+        'type="monot-increasing" tool-id="curve" weight="6" stage="2"',
+    ]
+
+
+def test_independent_criterion_rescales_existing_stage_weights() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    point = sketch.tools.create(type="point", id="point")
+
+    with sketch.graders.stage(weight=3):
+        sketch.graders.create(type="count", tools=point, count=1)
+        sketch.graders.create(type="count", tools=point, count=2)
+
+    assert [grader["attrs"] for grader in sketch.params["graders"]] == [
+        'type="count" tool-id="point" count="1" stage="1"',
+        'type="count" tool-id="point" count="2" stage="1"',
+    ]
+
+    sketch.graders.create(type="count", tools=point, count=3)
+
+    assert [grader["attrs"] for grader in sketch.params["graders"]] == [
+        'type="count" tool-id="point" count="1" weight="3" stage="1"',
+        'type="count" tool-id="point" count="2" weight="3" stage="1"',
+        'type="count" tool-id="point" count="3" weight="2"',
+    ]
+
+
+def test_grader_stage_failure_is_atomic() -> None:
+    data = question_data()
+    sketch = SketchQuestion(data, "graph")
+    point = sketch.tools.create(type="point", id="point")
+    before_params = copy.deepcopy(sketch.params)
+    before_markup = data["params"]["graph_sketch_html"]
+
+    with pytest.raises(RuntimeError, match="abort"), sketch.graders.stage(weight=2):
+        sketch.graders.create(type="count", tools=point, count=1)
+        raise RuntimeError("abort")
+
+    assert sketch.params == before_params
+    assert data["params"]["graph_sketch_html"] == before_markup
+
+    with pytest.raises(ValueError, match="count"), sketch.graders.stage():
+        sketch.graders.create(type="count", tools=point, count=1)
+        sketch.graders.create(type="count", tools=point, count=-1)
+
+    assert sketch.params == before_params
+    assert data["params"]["graph_sketch_html"] == before_markup
+
+    with pytest.raises(ValueError, match="at least one"), sketch.graders.stage():
+        pass
+
+    assert sketch.params == before_params
+    assert data["params"]["graph_sketch_html"] == before_markup
+
+
+def test_grader_stages_reject_nesting_and_discard_the_outer_stage() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    point = sketch.tools.create(type="point", id="point")
+
+    with pytest.raises(RuntimeError, match="cannot be nested"), sketch.graders.stage():
+        sketch.graders.create(type="count", tools=point, count=1)
+        with sketch.graders.stage():
+            pass
+
+    assert sketch.params["grader_stages"] == []
+    assert sketch.params["graders"] == []
+
+
+@pytest.mark.parametrize("weight", [0, -1, True, 1.5])
+def test_grader_stages_require_positive_integer_weights(weight: object) -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+
+    with (
+        pytest.raises(ValueError, match="positive integer"),
+        sketch.graders.stage(weight=cast(Any, weight)),
+    ):
+        pass
+
+    assert sketch.params["grader_stages"] == []
+
+
+def test_reconnected_grader_registry_continues_stage_numbering() -> None:
+    data = question_data()
+    original = SketchQuestion(data, "graph")
+    curve = original.tools.create(type="spline", id="curve")
+    with original.graders.stage():
+        original.graders.create(type="defined-in", tools=curve)
+    before = copy.deepcopy(data["params"])
+
+    reconnected = SketchQuestion(data, "graph", must_exist=True)
+    reconnected_curve = reconnected.tools.create(type="spline", id="curve")
+
+    assert data["params"] == before
+    assert reconnected.graders is reconnected.graders
+    assert reconnected.graders is not original.graders
+
+    with reconnected.graders.stage(weight=2):
+        reconnected.graders.create(type="concave-up", tools=reconnected_curve)
+
+    assert [stage["stage"] for stage in reconnected.params["grader_stages"]] == [1, 2]
+
+
+def test_identical_grader_calls_remain_separate_ordered_criteria() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    point = sketch.tools.create(type="point", id="point")
+
+    assert sketch.graders.create(type="count", tools=point, count=1) is None
+    assert sketch.graders.create(type="count", tools=point, count=1) is None
+
+    assert [grader["type"] for grader in sketch.params["graders"]] == [
+        "count",
+        "count",
+    ]
+
+
 def test_drawing_dataclasses_validate_eagerly_and_are_immutable() -> None:
     x = sp.Symbol("x")
     point = Point(sp.Rational(1, 2), sp.sqrt(2))
@@ -667,6 +1055,7 @@ def test_authored_params_render_the_documented_mustache_contract() -> None:
     sketch.configure(read_only=True, weight=0, allow_blank=True)
     points = sketch.tools.create(type="point", id="points", color='blue & "cyan"')
     functions = sketch.tools.create(type="spline", id="functions", read_only=True)
+    sketch.graders.create(type="count", tools=points, count=1)
     sketch.initial.add(points.create(1, 2))
     sketch.solution.add(functions.create(function="x**2", x=(-2, 2)))
 
@@ -688,6 +1077,11 @@ def test_authored_params_render_the_documented_mustache_contract() -> None:
     }
     tools = element.findall("pl-sketch-tool")
     assert tools[0].attrib["color"] == 'blue & "cyan"'
+    assert element.find("pl-sketch-grade").attrib == {
+        "type": "count",
+        "tool-id": "points",
+        "count": "1",
+    }
     assert element.find("pl-sketch-initial").attrib["coordinates"] == "(1,2)"
     assert element.find("pl-sketch-solution").attrib["function"] == "x**2"
 
@@ -699,6 +1093,7 @@ def test_complete_markup_param_stays_synchronized() -> None:
     sketch.set_frame(x=(-2, 3), y=(-1, 4))
     points = sketch.tools.create(type="point", id="points", color='blue & "cyan"')
     functions = sketch.tools.create(type="spline", id="functions", read_only=True)
+    sketch.graders.create(type="match", tools=points, x=1, y=2)
     sketch.initial.add(points.create(1, 2))
     sketch.solution.add(functions.create(function="x**2", x=(-2, 2)))
 
@@ -712,6 +1107,7 @@ def test_complete_markup_param_stays_synchronized() -> None:
     assert element.attrib["y-range"] == "-1,4"
     assert element.attrib["read-only"] == "true"
     assert element.find("pl-sketch-tool").attrib["color"] == 'blue & "cyan"'
+    assert element.find("pl-sketch-grade").attrib["type"] == "match"
     assert element.find("pl-sketch-initial").attrib["coordinates"] == "(1,2)"
     assert element.find("pl-sketch-solution").attrib["function"] == "x**2"
 

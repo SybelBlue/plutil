@@ -1,9 +1,9 @@
 # Sketch authoring
 
-`SketchQuestion` builds randomized `pl-sketch` tools, initial drawings, sample
-solutions, and frame bounds from `server.py`. It stores a Mustache-ready
-specification separately from the client state that PrairieLearn prepares for
-the sketch.
+`SketchQuestion` builds randomized `pl-sketch` tools, native grading criteria,
+initial drawings, sample solutions, and frame bounds from `server.py`. It stores
+a Mustache-ready specification separately from the client state that
+PrairieLearn prepares for the sketch.
 
 ## Question template
 
@@ -24,6 +24,9 @@ structured parameter instead:
   {{#tools}}
   <pl-sketch-tool {{{attrs}}}></pl-sketch-tool>
   {{/tools}}
+  {{#graders}}
+  <pl-sketch-grade {{{attrs}}}></pl-sketch-grade>
+  {{/graders}}
   {{#initial}}
   <pl-sketch-initial {{{attrs}}}></pl-sketch-initial>
   {{/initial}}
@@ -154,6 +157,120 @@ concise alias and works directly with both `sketch.initial` and
 `sketch.solution`. Tools are never inferred from a drawing, and solution tools
 are not implicitly read-only; set `read_only=True` explicitly when the tool
 should stay out of the student toolbar.
+
+## Native autograding
+
+`sketch.graders.create()` mirrors the literal-dispatched tool API. Its `type`
+selects one native `pl-sketch-grade` criterion, while `tools` receives one
+graph-bound `Tool` handle or a sequence of handles:
+
+```python
+from plutil import SketchQuestion
+from sympy.abc import x
+
+
+def generate(data):
+    sketch = SketchQuestion(data, "graph")
+    curve = sketch.tools.create(
+        type="free-draw",
+        id="student-curve",
+        color="blue",
+        limit=1,
+    )
+
+    with sketch.graders.stage(weight=1):
+        sketch.graders.create(
+            type="count",
+            tools=curve,
+            count=1,
+            feedback="Draw exactly one curve.",
+        )
+    with sketch.graders.stage(weight=3):
+        sketch.graders.create(
+            type="match-function",
+            tools=curve,
+            function=x**2,
+            x_range=(-2, 2),
+            tolerance=20,
+            feedback="Your curve does not match the expected function.",
+        )
+    sketch.solution.add(curve.create(function=x**2, x=(-2, 2)))
+```
+
+Criteria created outside a stage register immediately as independent native
+stage-zero checks. A stage block buffers its criteria and registers the whole
+stage atomically on successful exit; an exception discards the block. Stage
+order is block order, and every criterion in all preceding stages must pass
+before a later stage can earn credit. Empty and nested stage blocks are errors.
+
+`stage(weight=...)` sets the stage's total relative weight. A criterion's
+positive integer `share` defaults to 1 and divides that total among criteria in
+the same stage. For example, shares 1 and 3 earn one quarter and three quarters
+of their stage. For an independent criterion, `share` is its direct relative
+weight. The registry converts these values to minimal proportional integer
+weights accepted by PrairieLearn.
+
+Both `create()` and a completed stage preserve invocation order, and identical
+criteria remain separate. Passing raw tool IDs is not supported: handles keep
+tool ownership and criterion compatibility checked both statically and at
+runtime. The context manager also yields the same stable registry when a local
+name is more convenient:
+
+```python
+with sketch.graders.stage(weight=2) as graders:
+    graders.create(type="count", tools=curve, count=1, share=1)
+    graders.create(
+        type="defined-in",
+        tools=curve,
+        x_range=(-2, 2),
+        share=2,
+    )
+```
+
+Every native criterion is available through a literal `type`:
+
+| `type` | Criterion-specific options | Supported tools |
+| --- | --- | --- |
+| `count` | Required `count`; `mode="exact"`, `"at-least"`, or `"at-most"`; optional `x_range` | All |
+| `match` | `x` and/or `y`; optional line `endpoint="start"`, `"end"`, or `"either"` | All |
+| `defined-in` | Optional `x_range` | Free-draw, spline, polyline, polygon, line |
+| `undefined-in` | Optional `x_range` | All except horizontal line |
+| `less-than`, `greater-than` | Exactly one of `y` or `function`; optional range and `xy_flip` | All except vertical line |
+| `match-function` | Required `function`; optional range, `xy_flip`, and `allow_undefined` | Free-draw, point, spline, polyline |
+| `monot-increasing`, `monot-decreasing` | Optional `x_range` | Free-draw, spline, polyline, line |
+| `concave-up`, `concave-down` | Optional `x_range` | Free-draw, spline, polyline, line |
+
+All criteria accept `share`, `tolerance`, `feedback`, and `debug`. PrairieLearn
+computes the element score as the weighted average of the normalized criteria.
+Passing criteria in the current stage can earn partial credit even when another
+criterion in that stage fails, but that failure blocks every later stage.
+Independent criteria remain ungated. Tolerances are pixel distances or pixel
+counts whose exact meaning depends on the criterion.
+
+Ranges may leave either endpoint open. For example, `x_range=(None, 0)` emits
+`x-range=",0"`, while `(0, None)` emits `x-range="0,"`. Function-based
+criteria accept the same validated strings, SymPy expressions, and
+PrairieLearn symbolic JSON as solution drawings.
+
+Use `xy_flip=True` to grade a curve defined as `x = f(y)`. Supply a function
+of `y` and use `y_range` instead of `x_range`:
+
+```python
+from sympy.abc import y
+
+sketch.graders.create(
+    type="match-function",
+    tools=curve,
+    function=y**2,
+    xy_flip=True,
+    y_range=(-2, 2),
+)
+```
+
+The registry rejects empty or duplicate handle sequences, tools from another
+sketch, unsupported tool/criterion combinations, malformed functions or
+ranges, and conflicting arguments during `generate()` rather than deferring
+those errors to PrairieLearn's prepare phase.
 
 ## Fitting frame bounds
 
