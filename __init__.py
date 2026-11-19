@@ -75,6 +75,7 @@ from .partial_credit import (
 from .sets import (
     grade_sympy_set,
     reject_non_sympy_set_input,
+    reject_set_outside_domain,
 )
 from .symbolic_decimals import parse_symbolic_decimals
 
@@ -136,6 +137,7 @@ __all__: Final[tuple[str, ...]] = (
     "rand",
     "rearrange_eqn",
     "reject_non_sympy_set_input",
+    "reject_set_outside_domain",
     "require_expr",
     "rule",
     "setrec",
