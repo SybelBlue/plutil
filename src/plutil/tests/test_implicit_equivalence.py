@@ -1826,6 +1826,33 @@ def test_expression_parse_helper_propagates_author_setup_errors(
 
 
 @pytest.mark.parametrize(
+    ("submitted_answers", "format_errors"),
+    [
+        ({}, {}),
+        ({"answer": pl.to_json(sp.Symbol("x"))}, {"answer": "Original error."}),
+    ],
+)
+def test_expression_parse_helper_validates_setup_without_a_usable_submission(
+    submitted_answers: dict[str, Any],
+    format_errors: dict[str, str],
+) -> None:
+    x = sp.Symbol("x")
+    data = question_data(
+        submitted_answers=copy.deepcopy(submitted_answers),
+        format_errors=copy.deepcopy(format_errors),
+    )
+    original = copy.deepcopy(data)
+
+    with pytest.raises(ValueError, match="condition must be Boolean"):
+        validate_implicit_expression_input(
+            SympyQuestion(data, "answer", variables=x),
+            condition=x + 1,
+        )
+
+    assert data == original
+
+
+@pytest.mark.parametrize(
     ("condition", "domains", "reason"),
     [
         (

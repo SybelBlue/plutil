@@ -773,11 +773,8 @@ def validate_implicit_expression_input(
     or backend failure leaves the answer intact so grading can fail closed as
     inconclusive instead of blaming an infrastructure failure on the student.
     """
-    if lens.format_error is not None:
-        return False
+    has_format_error = lens.format_error is not None
     submitted = lens.submitted_answer
-    if submitted is None:
-        return False
 
     if timeout_seconds <= 0:
         raise ValueError("timeout_seconds must be positive")
@@ -806,6 +803,8 @@ def validate_implicit_expression_input(
         raise ValueError(
             f"the comparison region exceeds the CAD envelope ({authored_region_reason})"
         )
+    if has_format_error or submitted is None:
+        return False
 
     try:
         if not isinstance(submitted, sp.Expr):
