@@ -264,6 +264,7 @@ def test_sketch_lens_has_typed_layers_and_helpers() -> None:
     assert_type(sketch.solution, SketchLayer)
     assert_type(sketch.x_bounds, tuple[float, float])
     assert_type(sketch.y_bounds, tuple[float, float])
+    assert_type(sketch.weight, int)
     assert_type(sketch.configure(read_only=True), None)
     assert_type(sketch.set_frame(x=(-5, 5)), None)
     assert_type(sketch.add_tool("points", tool_type), str)

@@ -487,6 +487,16 @@ class _SketchAuthoringMixin:
         lower, upper = self.params["y_bounds"]
         return lower, upper
 
+    @property
+    def weight(self) -> int:
+        """Return the ``pl-sketch`` element weight."""
+        return self.params["weight"]
+
+    @weight.setter
+    def weight(self, weight: int) -> None:
+        """Set the ``pl-sketch`` element weight."""
+        self.configure(weight=weight)
+
     def configure(
         self,
         *,

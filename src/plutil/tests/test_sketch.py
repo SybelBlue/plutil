@@ -436,3 +436,23 @@ def test_sketch_lens_keeps_shared_score_and_format_error_behavior(
         "score": 0.5,
         "feedback": "Partial",
     }
+
+
+def test_sketch_weight_is_the_element_weight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data = question_data()
+    monkeypatch.setattr("plutil.lenses.pl.set_weighted_score_data", lambda data: None)
+    sketch = SketchQuestion(data, "graph")
+
+    sketch.configure(weight=0)
+    assert sketch.weight == 0
+    assert "graph" not in data["partial_scores"]
+
+    sketch.weight = 2
+    assert sketch.params["weight"] == 2
+    assert 'weight="2"' in sketch.params["attrs"]
+
+    sketch.set_rich_score(0.5, weight=3)
+    assert sketch.weight == 2
+    assert data["partial_scores"]["graph"].get("weight") == 3

@@ -71,8 +71,10 @@ def generate(data):
 
 Canvas options retain the corresponding PrairieLearn defaults until explicitly
 configured. Coordinate helpers accept two-element sequences containing native
-or constant SymPy real values. They reject symbolic, complex, and nonfinite
-coordinates rather than producing a sketch that fails later during prepare.
+or constant SymPy real values. `sketch.weight` reads and writes the element
+weight; use `set_rich_score(weight=...)` when setting a partial-score weight.
+Coordinate helpers reject symbolic, complex, and nonfinite coordinates rather
+than producing a sketch that fails later during prepare.
 
 The available layer helpers are:
 
