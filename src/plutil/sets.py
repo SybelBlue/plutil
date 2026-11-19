@@ -61,7 +61,7 @@ def reject_set_outside_domain(
     domain: Domain,
     *,
     nested_set_checking: Literal["require-flat", "recurse", "ignore"] = "require-flat",
-    message: str = "Every value in the set must be in the domain stated in the question.",
+    message: str | None = "Every value in the set must be in {domain}.",
 ) -> bool:
     """Add a format error when a submitted set extends outside ``domain``.
 
@@ -70,7 +70,9 @@ def reject_set_outside_domain(
     ``nested_set_checking`` rejects nested sets by default, recursively checks
     their leaves and interval containment with ``"recurse"``, or skips them with
     ``"ignore"``. Recursive checking rejects another kind of nested set that
-    cannot be enumerated as finite.
+    cannot be enumerated as finite. ``{domain}`` in ``message`` is replaced with
+    the string form of the authored domain. Pass ``None`` to reject the answer
+    with a blank format error and no feedback.
 
     Returns ``True`` when the validator adds the error and ``False`` when another
     format error exists, the submission is neither an interval nor an enumerable
@@ -106,7 +108,9 @@ def reject_set_outside_domain(
         )
 
     if rejected:
-        lens.format_error = message
+        lens.format_error = (
+            "" if message is None else message.replace("{domain}", str(domain))
+        )
         return True
 
     return False

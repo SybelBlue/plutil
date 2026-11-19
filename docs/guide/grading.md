@@ -18,6 +18,11 @@ interval as a subset of the domain, or `"ignore"` to skip nested sets while
 continuing to validate top-level non-set members. In recursive mode, another
 kind of nested set that cannot be enumerated as finite is rejected.
 
+The default message includes the authored domain: `"Every value in the set must
+be in {domain}."`. The `{domain}` token in any custom message is replaced with
+`str(domain)`. Pass `message=None` to record a blank format error, rejecting the
+answer without displaying feedback.
+
 ```python
 import sympy as sp
 
@@ -28,7 +33,7 @@ def parse(data):
     reject_set_outside_domain(
         SympyQuestion(data, "critical-points", variables="x"),
         sp.Interval(-2, 2),
-        message="Every critical point must be between -2 and 2.",
+        message="Every critical point must be in {domain}.",
     )
 ```
 

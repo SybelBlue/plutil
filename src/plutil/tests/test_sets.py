@@ -79,7 +79,7 @@ def test_reject_set_outside_domain_rejects_finite_set_member_outside_domain() ->
 
     assert rejected is True
     assert data["format_errors"]["answer"] == (
-        "Every value in the set must be in the domain stated in the question."
+        "Every value in the set must be in Interval(-1, 1)."
     )
 
 
@@ -181,6 +181,36 @@ def test_reject_set_outside_domain_uses_custom_message() -> None:
 
     assert rejected is True
     assert data["format_errors"]["answer"] == "Keep every value between -1 and 1."
+
+
+def test_reject_set_outside_domain_interpolates_domain_in_message() -> None:
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(sp.FiniteSet(sp.Rational(1, 2)))},
+        format_errors={},
+    )
+
+    rejected = reject_set_outside_domain(
+        SympyQuestion(data, "answer"),
+        sp.S.Integers,
+        message="Use only values from {domain}.",
+    )
+
+    assert rejected is True
+    assert data["format_errors"]["answer"] == "Use only values from Integers."
+
+
+def test_reject_set_outside_domain_none_message_marks_blank_format_error() -> None:
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(sp.FiniteSet(sp.Rational(1, 2)))},
+        format_errors={},
+    )
+    lens = SympyQuestion(data, "answer")
+
+    rejected = reject_set_outside_domain(lens, sp.S.Integers, message=None)
+
+    assert rejected is True
+    assert lens.format_error == ""
+    assert data["format_errors"] == {"answer": ""}
 
 
 def test_reject_set_outside_domain_requires_flat_sets_by_default() -> None:
