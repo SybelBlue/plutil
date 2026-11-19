@@ -49,7 +49,20 @@ from plutil.calculus import (
 from plutil.choices import checkbox, multiple_choice
 from plutil.common import _input_to_expr, _input_to_set, eq, str_to_sympy
 from plutil.functions import eval_at, evalf_at
-from plutil.sketch import SketchLayer, SketchParams, SketchToolType
+from plutil.sketch import (
+    Curve,
+    Function,
+    HorizontalLine,
+    Line,
+    Point,
+    Polygon,
+    Polyline,
+    SketchLayer,
+    SketchParams,
+    SketchTools,
+    Tool,
+    VerticalLine,
+)
 from plutil.tests.helpers import question_data
 
 
@@ -255,27 +268,39 @@ def test_multiple_choice_lens_has_a_typed_boolean_award() -> None:
 
 def test_sketch_lens_has_typed_layers_and_helpers() -> None:
     sketch = SketchQuestion(question_data(), "graph")
-    tool_type: SketchToolType = "point"
     coordinate: ExprInput = pl.sympy_to_json(sympy.Rational(1, 2))
     function: ExprInput = pl.sympy_to_json(x**2)
+
+    points = sketch.tools.create(type="point", id="points")
+    lines = sketch.tools.create(type="line", id="lines")
+    horizontal = sketch.tools.create(type="horizontal-line", id="horizontal")
+    vertical = sketch.tools.create(type="vertical-line", id="vertical")
+    polylines = sketch.tools.create(type="polyline", id="polylines")
+    polygons = sketch.tools.create(type="polygon", id="polygons")
+    splines = sketch.tools.create(type="spline", id="splines")
 
     assert_type(sketch.params, SketchParams)
     assert_type(sketch.initial, SketchLayer)
     assert_type(sketch.solution, SketchLayer)
+    assert_type(sketch.tools, SketchTools)
     assert_type(sketch.x_bounds, tuple[float, float])
     assert_type(sketch.y_bounds, tuple[float, float])
     assert_type(sketch.weight, int)
     assert_type(sketch.configure(read_only=True), None)
     assert_type(sketch.set_frame(x=(-5, 5)), None)
-    assert_type(sketch.add_tool("points", tool_type), str)
-    assert_type(sketch.initial.add_point((coordinate, coordinate)), str)
-    assert_type(sketch.initial.add_point((1, 2), tool_id="points"), str)
-    assert_type(sketch.initial.add_line((0, 0), (1, 1)), str)
-    assert_type(sketch.initial.add_polyline(((0, 0), (1, 1))), str)
-    assert_type(sketch.initial.add_polygon(((0, 0), (1, 0), (0, 1))), str)
-    assert_type(sketch.initial.add_curve(((0, 0), (1, 1))), str)
-    assert_type(sketch.solution.add_function(x**2, x=(-1, 1)), str)
-    assert_type(sketch.solution.add_function(function), str)
+    assert_type(points, Tool[Literal["point"]])
+    assert_type(lines, Tool[Literal["line"]])
+    assert_type(points.create(coordinate, coordinate), Point)
+    assert_type(lines.create((0, 0), (1, 1)), Line)
+    assert_type(horizontal.create(1), HorizontalLine)
+    assert_type(vertical.create(1), VerticalLine)
+    assert_type(polylines.create(((0, 0), (1, 1))), Polyline)
+    assert_type(polygons.create(((0, 0), (1, 0), (0, 1))), Polygon)
+    assert_type(splines.create(points=((0, 0), (1, 1))), Curve)
+    assert_type(splines.create(function=x**2, x=(-1, 1)), Function)
+    assert_type(splines.create(function=function), Function)
+    assert_type(sketch.initial.add(points.create(1, 2)), str)
+    assert_type(sketch.initial.__iadd__(points.create(3, 4)), SketchLayer)
     assert_type(sketch.fit_frame(y_bounds=(-1, 2)), None)
     assert_type(SketchQuestion(sketch.data, "graph", must_exist=True), SketchQuestion)
 

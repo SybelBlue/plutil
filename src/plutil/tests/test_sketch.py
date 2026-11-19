@@ -1,4 +1,5 @@
 import copy
+from dataclasses import FrozenInstanceError
 from typing import Any, cast
 
 import chevron
@@ -8,7 +9,16 @@ import pytest
 import sympy as sp
 
 from plutil import SketchQuestion
-from plutil.sketch import sketch_markup_param_name, sketch_param_name
+from plutil.sketch import (
+    Function,
+    Line,
+    Point,
+    Polygon,
+    Polyline,
+    Tool,
+    sketch_markup_param_name,
+    sketch_param_name,
+)
 from plutil.tests.helpers import question_data
 
 SKETCH_TEMPLATE = """
@@ -24,7 +34,6 @@ SKETCH_TEMPLATE = """
 
 def test_sketch_uses_separate_params_with_prairielearn_defaults() -> None:
     data = question_data()
-
     sketch = SketchQuestion(data, "given-graph")
 
     assert sketch_param_name("given-graph") == "given-graph_sketch"
@@ -49,7 +58,8 @@ def test_sketch_uses_separate_params_with_prairielearn_defaults() -> None:
 def test_sketch_reconnects_without_resetting_authored_data() -> None:
     data = question_data()
     original = SketchQuestion(data, "graph")
-    original.initial.add_point((1, 2))
+    points = original.tools.create(type="point", id="points")
+    original.initial.add(points.create(1, 2))
 
     reconnected = SketchQuestion(data, "graph")
 
@@ -59,7 +69,9 @@ def test_sketch_reconnects_without_resetting_authored_data() -> None:
 
 def test_sketch_reconnect_does_not_rewrite_params() -> None:
     data = question_data()
-    SketchQuestion(data, "graph").initial.add_point((1, 2))
+    sketch = SketchQuestion(data, "graph")
+    points = sketch.tools.create(type="point", id="points")
+    sketch.initial.add(points.create(1, 2))
     before = copy.deepcopy(data["params"])
 
     SketchQuestion(data, "graph", must_exist=True)
@@ -149,32 +161,56 @@ def test_set_frame_rejects_invalid_bounds(
         sketch.set_frame(**kwargs)  # type: ignore[arg-type]
 
 
-def test_auto_tools_reuse_matching_styles_and_separate_different_styles() -> None:
+def test_tool_registry_registers_immediately_and_preserves_order() -> None:
     sketch = SketchQuestion(question_data(), "graph")
 
-    filled = sketch.initial.add_point((0, 0), color="blue")
-    same = sketch.initial.add_point((1, 1), color="blue")
-    hollow = sketch.initial.add_point((2, 2), color="blue", hollow=True)
+    lines = sketch.tools.create(type="line", id="lines", color="red")
+    points = sketch.tools.create(type="point", id="points", color="blue")
 
-    assert filled == same == "_auto-point-1"
-    assert hollow == "_auto-point-2"
-    assert [tool["id"] for tool in sketch.params["tools"]] == [
-        "_auto-point-1",
-        "_auto-point-2",
-    ]
-    assert len(sketch.params["initial"]) == 3
-    assert not sketch.params["solution"]
+    assert lines.id == "lines"
+    assert points.id == "points"
+    assert [tool["id"] for tool in sketch.params["tools"]] == ["lines", "points"]
+    markup = sketch.data["params"]["graph_sketch_html"]
+    assert markup.index('id="lines"') < markup.index('id="points"')
 
 
-def test_solution_auto_tools_are_read_only_by_default() -> None:
+def test_equal_duplicate_tool_is_idempotent_and_conflict_is_atomic() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    first = sketch.tools.create(type="point", id="points", color="blue")
+
+    same = sketch.tools.create(type="point", id="points", color="blue")
+    before = copy.deepcopy(sketch.params["tools"])
+    with pytest.raises(ValueError, match="configured differently"):
+        sketch.tools.create(type="point", id="points", color="red")
+
+    assert same == first
+    assert sketch.params["tools"] == before
+
+
+def test_tools_cannot_be_constructed_standalone() -> None:
+    with pytest.raises(TypeError, match="sketch.tools.create"):
+        Tool()
+
+
+def test_tool_ids_reject_surrounding_whitespace() -> None:
     sketch = SketchQuestion(question_data(), "graph")
 
-    automatic = sketch.solution.add_function("x**2", color="green")
+    with pytest.raises(ValueError, match="surrounding whitespace"):
+        sketch.tools.create(type="point", id=" points")
 
-    assert automatic == "_auto-spline-1"
-    assert sketch.params["tools"][0]["read_only"] is True
-    assert 'read-only="true"' in sketch.params["tools"][0]["attrs"]
-    sketch.configure(width=240)
+
+def test_tool_validation_matches_pl_sketch_constraints() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    create = cast(Any, sketch.tools.create)
+
+    with pytest.raises(ValueError, match="does not support"):
+        create(type="spline", id="curve", hollow=True)
+    with pytest.raises(ValueError, match="both helper and read-only"):
+        sketch.tools.create(type="point", id="point", helper=True, read_only=True)
+    with pytest.raises(ValueError, match="dash style"):
+        sketch.tools.create(type="line", id="line", dash_style="invalid")
+    with pytest.raises(ValueError, match="between zero and one"):
+        sketch.tools.create(type="polygon", id="region", opacity=1.5)
 
 
 def test_toolbar_constraints_are_checked_before_mutation() -> None:
@@ -185,9 +221,9 @@ def test_toolbar_constraints_are_checked_before_mutation() -> None:
     assert sketch.params["width"] == 800
 
     sketch.configure(width=310)
-    sketch.initial.add_point((0, 0), color="color-1")
+    sketch.tools.create(type="point", id="point-1")
     with pytest.raises(ValueError, match="at least 380"):
-        sketch.initial.add_point((1, 1), color="color-2")
+        sketch.tools.create(type="point", id="point-2")
     assert len(sketch.params["tools"]) == 1
 
 
@@ -195,174 +231,196 @@ def test_toolbar_rejects_more_than_seven_icons() -> None:
     sketch = SketchQuestion(question_data(), "graph")
 
     for index in range(7):
-        sketch.add_tool(f"point-{index}", "point", color=f"color-{index}")
+        sketch.tools.create(type="point", id=f"point-{index}")
 
     with pytest.raises(ValueError, match="at most 7"):
-        sketch.add_tool("point-8", "point", color="color-8")
+        sketch.tools.create(type="point", id="point-8")
     assert len(sketch.params["tools"]) == 7
 
 
-def test_explicit_tools_validate_references_and_conflicts() -> None:
+def test_tool_type_specific_options_serialize() -> None:
     sketch = SketchQuestion(question_data(), "graph")
-    assert (
-        sketch.add_tool(
-            "open-points",
-            "point",
-            color="purple",
-            hollow=True,
-            read_only=True,
-        )
-        == "open-points"
+
+    sketch.tools.create(type="point", id="point", size=18, hollow=True)
+    sketch.tools.create(
+        type="line",
+        id="line",
+        dash_style="dashed",
+        direction_constraint="horizontal",
+        length_constraint=2,
+        arrowhead=8,
     )
-    assert sketch.initial.add_point((0, 1), tool_id="open-points") == "open-points"
+    sketch.tools.create(
+        type="polygon",
+        id="polygon",
+        fill_color="blue",
+        opacity=sp.Rational(1, 2),
+    )
 
-    with pytest.raises(ValueError, match="configured differently"):
-        sketch.add_tool("open-points", "point", hollow=False)
-    with pytest.raises(KeyError, match="unknown"):
-        sketch.initial.add_point((0, 0), tool_id="missing")
-    with pytest.raises(ValueError, match="has type"):
-        sketch.initial.add_line((0, 0), (1, 1), tool_id="open-points")
-    with pytest.raises(ValueError, match="style options"):
-        sketch.initial.add_point((0, 0), tool_id="open-points", color="blue")
-
-
-def test_tool_ids_reject_surrounding_whitespace() -> None:
-    sketch = SketchQuestion(question_data(), "graph")
-
-    with pytest.raises(ValueError, match="surrounding whitespace"):
-        sketch.add_tool(" points", "point")
-
-    sketch.add_tool("points", "point")
-    with pytest.raises(ValueError, match="surrounding whitespace"):
-        sketch.initial.add_point((0, 0), tool_id="points ")
+    attrs = [tool["attrs"] for tool in sketch.params["tools"]]
+    assert 'size="18"' in attrs[0] and 'hollow="true"' in attrs[0]
+    assert 'direction-constraint="horizontal"' in attrs[1]
+    assert 'length-constraint="2"' in attrs[1]
+    assert 'arrowhead="8"' in attrs[1]
+    assert 'fill-color="blue"' in attrs[2]
+    assert 'opacity="0.5"' in attrs[2]
 
 
-def test_automatic_tool_ids_use_a_reserved_namespace() -> None:
-    sketch = SketchQuestion(question_data(), "graph")
-
-    automatic = sketch.initial.add_point((0, 0), color="blue")
-    explicit = sketch.add_tool("point-1", "point", color="red")
-
-    assert automatic == "_auto-point-1"
-    assert explicit == "point-1"
-    assert sketch.initial.add_point((1, 1), tool_id=automatic) == automatic
-    with pytest.raises(ValueError, match="reserved"):
-        sketch.add_tool("_auto-point-2", "point")
-
-
-def test_tool_validation_matches_pl_sketch_constraints() -> None:
-    sketch = SketchQuestion(question_data(), "graph")
-
-    with pytest.raises(ValueError, match="does not support"):
-        sketch.add_tool("curve", "spline", hollow=True)
-    with pytest.raises(ValueError, match="both helper and read-only"):
-        sketch.add_tool("point", "point", helper=True, read_only=True)
-    with pytest.raises(ValueError, match="dash style"):
-        sketch.add_tool("line", "line", dash_style="invalid")
-    with pytest.raises(ValueError, match="between zero and one"):
-        sketch.add_tool("region", "polygon", opacity=1.5)
-
-
-def test_common_drawing_helpers_serialize_expected_shapes() -> None:
-    sketch = SketchQuestion(question_data(), "graph")
-
-    sketch.initial.add_line((0, 0), (1, 1), color="red")
-    sketch.initial.add_horizontal_line(2)
-    sketch.initial.add_vertical_line(-1)
-    sketch.initial.add_polyline([(0, 0), (1, 2), (3, 1)])
-    sketch.initial.add_polygon([(0, 0), (2, 0), (1, 1)], opacity=sp.Rational(1, 2))
-    sketch.initial.add_curve([(0, 0), (1, 1)], tool_type="free-draw")
-
-    attrs = [drawing["attrs"] for drawing in sketch.params["initial"]]
-    assert attrs == [
-        'tool-id="_auto-line-1" coordinates="(0,0),(1,1)"',
-        'tool-id="_auto-horizontal-line-1" coordinates="2"',
-        'tool-id="_auto-vertical-line-1" coordinates="-1"',
-        'tool-id="_auto-polyline-1" coordinates="(0,0),(1,2),(3,1)"',
-        'tool-id="_auto-polygon-1" coordinates="(0,0),(2,0),(1,1)"',
-        'tool-id="_auto-free-draw-1" coordinates="(0,0),(1,1)"',
-    ]
-    assert 'opacity="0.5"' in sketch.params["tools"][4]["attrs"]
-
-
-def test_points_accept_exact_sympy_values_and_reject_invalid_coordinates() -> None:
-    sketch = SketchQuestion(question_data(), "graph")
+def test_drawing_dataclasses_validate_eagerly_and_are_immutable() -> None:
     x = sp.Symbol("x")
+    point = Point(sp.Rational(1, 2), sp.sqrt(2))
 
-    sketch.initial.add_point((sp.Rational(1, 2), sp.sqrt(2)))
-    assert sketch.params["initial"][0]["attrs"] == (
-        'tool-id="_auto-point-1" coordinates="(0.5,1.4142135623731)"'
-    )
-
-    with pytest.raises(ValueError, match="exactly two"):
-        sketch.initial.add_point((1,))
+    assert point.x == 0.5
+    assert point.y == pytest.approx(2**0.5)
+    with pytest.raises(FrozenInstanceError):
+        point.x = 2  # type: ignore[misc]
     with pytest.raises(ValueError, match="finite real"):
-        sketch.initial.add_point((x, 1))
+        Point(x, 1)
     with pytest.raises(ValueError, match="finite real"):
-        sketch.initial.add_point((sp.I, 1))
+        Point(sp.I, 1)
     with pytest.raises(ValueError, match="at least 3"):
-        sketch.initial.add_polygon([(0, 0), (1, 1)])
+        Polygon([(0, 0), (1, 1)])
+
+
+def test_compound_drawings_accept_points_and_pairs_without_nested_bindings() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    point_tool = sketch.tools.create(type="point", id="points")
+    bound_point = point_tool.create(0, 0)
+
+    line = Line(bound_point, (1, 1))
+    polyline = Polyline([bound_point, (2, 2)])
+
+    assert cast(Point, line.start).tool is None
+    assert cast(tuple[Point, ...], polyline.points)[0].tool is None
+
+
+def test_tool_create_and_bind_enforce_drawing_compatibility() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    points = sketch.tools.create(type="point", id="points")
+    lines = sketch.tools.create(type="line", id="lines")
+
+    bound = points.bind(Point(1, 2))
+    assert bound.tool is points
+    with pytest.raises(ValueError, match="already bound"):
+        points.bind(bound)
+    with pytest.raises(ValueError, match="cannot create"):
+        lines.bind(Point(1, 2))
+
+
+def test_layer_rejects_unbound_and_foreign_drawings() -> None:
+    left = SketchQuestion(question_data(), "left")
+    right = SketchQuestion(question_data(), "right")
+    points = left.tools.create(type="point", id="points")
+
+    with pytest.raises(ValueError, match="must be bound"):
+        left.initial.add(Point(1, 2))
+    with pytest.raises(ValueError, match="different sketch"):
+        right.initial.add(points.create(1, 2))
+
+
+def test_common_drawings_serialize_expected_shapes() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    lines = sketch.tools.create(type="line", id="line", color="red")
+    horizontal = sketch.tools.create(type="horizontal-line", id="horizontal")
+    vertical = sketch.tools.create(type="vertical-line", id="vertical")
+    polylines = sketch.tools.create(type="polyline", id="polyline")
+    polygons = sketch.tools.create(
+        type="polygon", id="polygon", opacity=sp.Rational(1, 2)
+    )
+    curves = sketch.tools.create(type="free-draw", id="curve")
+
+    sketch.initial.add(lines.create((0, 0), (1, 1)))
+    sketch.initial.add(horizontal.create(2))
+    sketch.initial.add(vertical.create(-1))
+    sketch.initial.add(polylines.create([(0, 0), (1, 2), (3, 1)]))
+    sketch.initial.add(polygons.create([(0, 0), (2, 0), (1, 1)]))
+    sketch.initial.add(curves.create(points=[(0, 0), (1, 1)]))
+
+    assert [drawing["attrs"] for drawing in sketch.params["initial"]] == [
+        'tool-id="line" coordinates="(0,0),(1,1)"',
+        'tool-id="horizontal" coordinates="2"',
+        'tool-id="vertical" coordinates="-1"',
+        'tool-id="polyline" coordinates="(0,0),(1,2),(3,1)"',
+        'tool-id="polygon" coordinates="(0,0),(2,0),(1,1)"',
+        'tool-id="curve" coordinates="(0,0),(1,1)"',
+    ]
+
+
+def test_layer_iadd_alias_supports_direct_augmented_properties() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    points = sketch.tools.create(type="point", id="points")
+    solution = sketch.tools.create(type="spline", id="solution", read_only=True)
+
+    sketch.initial += points.create(1, 2)
+    sketch.solution += solution.create(function="x**2")
+
+    assert len(sketch.params["initial"]) == 1
+    assert len(sketch.params["solution"]) == 1
 
 
 def test_sketch_inputs_accept_prairielearn_symbolic_json() -> None:
     sketch = SketchQuestion(question_data(), "graph")
     x = sp.Symbol("x")
+    points = sketch.tools.create(type="point", id="points")
+    functions = sketch.tools.create(type="spline", id="functions", read_only=True)
 
     sketch.set_frame(
         x=(pl.sympy_to_json(sp.Integer(-2)), pl.sympy_to_json(sp.Integer(3)))
     )
-    sketch.initial.add_point(
-        (pl.sympy_to_json(sp.Rational(1, 2)), pl.sympy_to_json(sp.sqrt(2)))
+    sketch.initial.add(
+        points.create(
+            pl.sympy_to_json(sp.Rational(1, 2)),
+            pl.sympy_to_json(sp.sqrt(2)),
+        )
     )
-    sketch.solution.add_function(pl.sympy_to_json(sp.exp(x)))
+    sketch.solution.add(functions.create(function=pl.sympy_to_json(sp.exp(x))))
 
     assert sketch.x_bounds == (-2.0, 3.0)
     assert 'coordinates="(0.5,1.4142135623731)"' in sketch.params["initial"][0]["attrs"]
     assert 'function="e**(x)"' in sketch.params["solution"][0]["attrs"]
 
 
-def test_functions_validate_variables_and_require_y_bounds_when_fitting() -> None:
+def test_functions_validate_syntax_variables_and_ranges() -> None:
     sketch = SketchQuestion(question_data(), "graph")
     x, y = sp.symbols("x y")
+    functions = sketch.tools.create(type="spline", id="functions", read_only=True)
 
-    assert (
-        sketch.solution.add_function(x**2, x=(-2, 3), color="green") == "_auto-spline-1"
-    )
+    sketch.solution.add(functions.create(function=x**2, x=(-2, 3)))
+    sketch.solution.add(functions.create(function="x", x=(None, 3)))
+    sketch.solution.add(functions.create(function="x", x=(-3, None)))
+
     assert sketch.params["solution"][0]["attrs"] == (
-        'tool-id="_auto-spline-1" function="x**2" x-range="-2,3"'
+        'tool-id="functions" function="x**2" x-range="-2,3"'
     )
-    with pytest.raises(ValueError, match="explicit y_bounds"):
-        sketch.fit_frame()
-
-    sketch.fit_frame(y_bounds=(-1, 10), padding=0)
-    assert sketch.x_bounds == (-2.0, 3.0)
-    assert sketch.y_bounds == (-1.0, 10.0)
-
+    assert 'x-range=",3"' in sketch.params["solution"][1]["attrs"]
+    assert 'x-range="-3,"' in sketch.params["solution"][2]["attrs"]
     with pytest.raises(ValueError, match="variable x"):
-        sketch.initial.add_function(x + y)
+        Function(x + y)
     with pytest.raises(ValueError, match="blank"):
-        sketch.initial.add_function(" ")
+        Function(" ")
+    with pytest.raises(ValueError, match="ordered"):
+        Function("x", x=(2, 1))
 
 
 def test_functions_use_and_validate_sketchresponse_syntax() -> None:
-    sketch = SketchQuestion(question_data(), "graph")
     x = sp.Symbol("x")
 
-    sketch.solution.add_function(sp.exp(x) + sp.Abs(x) + sp.E * x)
-    assert 'function="e*x + e**(x) + abs(x)"' in sketch.params["solution"][0]["attrs"]
-
+    function = Function(sp.exp(x) + sp.Abs(x) + sp.E * x)
+    assert function.function == "e*x + e**(x) + abs(x)"
     with pytest.raises(TypeError, match="BitXor"):
-        sketch.initial.add_function("x^2")
+        Function("x^2")
     with pytest.raises(ValueError, match="function names"):
-        sketch.initial.add_function("y + t")
+        Function("y + t")
     with pytest.raises(ValueError, match="function names"):
-        sketch.initial.add_function(sp.gamma(x))
+        Function(sp.gamma(x))
 
 
 def test_fit_frame_uses_both_layers_padding_origin_and_minimum_span() -> None:
     sketch = SketchQuestion(question_data(), "graph")
-    sketch.initial.add_point((2, 4))
-    sketch.solution.add_line((3, -1), (5, 2))
+    points = sketch.tools.create(type="point", id="points")
+    lines = sketch.tools.create(type="line", id="lines", read_only=True)
+    sketch.initial.add(points.create(2, 4))
+    sketch.solution.add(lines.create((3, -1), (5, 2)))
 
     sketch.fit_frame(padding=0.1)
 
@@ -370,7 +428,8 @@ def test_fit_frame_uses_both_layers_padding_origin_and_minimum_span() -> None:
     assert sketch.y_bounds == pytest.approx((-1.5, 4.5))
 
     tight = SketchQuestion(question_data(), "point")
-    tight.initial.add_point((5, 5))
+    tight_points = tight.tools.create(type="point", id="points")
+    tight.initial.add(tight_points.create(5, 5))
     tight.fit_frame(padding=0, include_origin=False, minimum_span=2)
     assert tight.x_bounds == (4.0, 6.0)
     assert tight.y_bounds == (4.0, 6.0)
@@ -378,7 +437,8 @@ def test_fit_frame_uses_both_layers_padding_origin_and_minimum_span() -> None:
 
 def test_fit_frame_can_override_one_axis() -> None:
     sketch = SketchQuestion(question_data(), "graph")
-    sketch.initial.add_polyline([(2, 4), (4, 6)])
+    lines = sketch.tools.create(type="polyline", id="lines")
+    sketch.initial.add(lines.create([(2, 4), (4, 6)]))
 
     sketch.fit_frame(padding=0, x_bounds=(-10, 10))
 
@@ -386,41 +446,32 @@ def test_fit_frame_can_override_one_axis() -> None:
     assert sketch.y_bounds == (0.0, 6.0)
 
 
-def test_fit_frame_ignores_frame_spanning_drawing_axes() -> None:
+def test_fit_frame_ignores_frame_spanning_and_half_open_axes() -> None:
     sketch = SketchQuestion(question_data(), "graph")
-    sketch.initial.add_horizontal_line(3)
-    sketch.initial.add_vertical_line(15)
-    sketch.initial.add_point((10, 10))
-    sketch.initial.add_point((20, 20))
+    horizontal = sketch.tools.create(type="horizontal-line", id="horizontal")
+    vertical = sketch.tools.create(type="vertical-line", id="vertical")
+    points = sketch.tools.create(type="point", id="points")
+    functions = sketch.tools.create(type="spline", id="functions", read_only=True)
+    sketch.initial.add(horizontal.create(3))
+    sketch.initial.add(vertical.create(15))
+    sketch.initial.add(points.create(10, 10))
+    sketch.initial.add(points.create(20, 20))
+    sketch.solution.add(functions.create(function="x**2", x=(10, None)))
 
-    sketch.fit_frame(padding=0, include_origin=False)
+    sketch.fit_frame(padding=0, include_origin=False, y_bounds=(3, 20))
 
     assert sketch.x_bounds == (10.0, 20.0)
     assert sketch.y_bounds == (3.0, 20.0)
-
-
-def test_fit_frame_ignores_implicit_function_range() -> None:
-    sketch = SketchQuestion(question_data(), "graph")
-    sketch.solution.add_function("x**2")
-    sketch.initial.add_point((10, 0))
-    sketch.initial.add_point((20, 1))
-
-    sketch.fit_frame(
-        padding=0,
-        include_origin=False,
-        y_bounds=(-1, 5),
-    )
-
-    assert sketch.x_bounds == (10.0, 20.0)
-    assert sketch.y_bounds == (-1.0, 5.0)
 
 
 def test_authored_params_render_the_documented_mustache_contract() -> None:
     data = question_data()
     sketch = SketchQuestion(data, "given-graph")
     sketch.configure(read_only=True, weight=0, allow_blank=True)
-    sketch.initial.add_point((1, 2), color='blue & "cyan"')
-    sketch.solution.add_function("x**2", x=(-2, 2))
+    points = sketch.tools.create(type="point", id="points", color='blue & "cyan"')
+    functions = sketch.tools.create(type="spline", id="functions", read_only=True)
+    sketch.initial.add(points.create(1, 2))
+    sketch.solution.add(functions.create(function="x**2", x=(-2, 2)))
 
     rendered = chevron.render(SKETCH_TEMPLATE, cast(dict[str, Any], data))
     element = lxml.html.fragment_fromstring(rendered)
@@ -449,8 +500,10 @@ def test_complete_markup_param_stays_synchronized() -> None:
     sketch = SketchQuestion(data, "given-graph")
     sketch.configure(read_only=True, weight=0)
     sketch.set_frame(x=(-2, 3), y=(-1, 4))
-    sketch.initial.add_point((1, 2), color='blue & "cyan"')
-    sketch.solution.add_function("x**2", x=(-2, 2))
+    points = sketch.tools.create(type="point", id="points", color='blue & "cyan"')
+    functions = sketch.tools.create(type="spline", id="functions", read_only=True)
+    sketch.initial.add(points.create(1, 2))
+    sketch.solution.add(functions.create(function="x**2", x=(-2, 2)))
 
     rendered = chevron.render(
         "{{{params.given-graph_sketch_html}}}", cast(dict[str, Any], data)

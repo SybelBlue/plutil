@@ -6,11 +6,23 @@ their authoring data under ``params[f"{answers_name}_sketch"]`` because
 ``pl-sketch`` reserves ``params[answers_name]`` for its prepared client state.
 """
 
+from __future__ import annotations
+
 import ast
 import html
 import math
 from collections.abc import Iterable, Mapping, Sequence
-from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict, cast
+from dataclasses import dataclass, field, replace
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Literal,
+    NotRequired,
+    Self,
+    TypedDict,
+    cast,
+    overload,
+)
 
 import prairielearn as pl
 import sympy as sp
@@ -31,11 +43,12 @@ type SketchToolType = Literal[
     "horizontal-line",
     "vertical-line",
 ]
-type SketchCurveToolType = Literal["free-draw", "spline"]
 type SketchBounds = tuple[float, float]
 type SketchBoundsInput = Sequence[ExprInput]
 type SketchPointInput = Sequence[ExprInput]
 type SketchFunctionInput = str | ExprInput
+type SketchFunctionRange = tuple[float | None, float | None]
+type SketchFunctionRangeInput = Sequence[ExprInput | None]
 
 
 class SketchToolParams(TypedDict):
@@ -47,7 +60,6 @@ class SketchToolParams(TypedDict):
     read_only: bool
     helper: bool
     group: str | None
-    _auto: bool
     _signature: list[list[str]]
 
 
@@ -82,7 +94,6 @@ class SketchParams(TypedDict):
 
 _DASH_STYLES = frozenset(("solid", "dashed", "longdashed", "dotted", "dashdotted"))
 _DIRECTION_CONSTRAINTS = frozenset(("none", "horizontal", "vertical"))
-_AUTO_TOOL_ID_PREFIX = "_auto-"
 _FUNCTION_NAMES = frozenset(
     (
         "abs",
@@ -197,6 +208,30 @@ def _bounds(value: SketchBoundsInput, *, axis: str) -> SketchBounds:
     return lower, upper
 
 
+def _function_range(
+    value: SketchFunctionRangeInput | None,
+) -> SketchFunctionRange | None:
+    if value is None:
+        return None
+    if isinstance(value, (str, bytes)) or len(value) != 2:
+        raise ValueError("function x-range must contain exactly two endpoints")
+    lower = (
+        None
+        if value[0] is None
+        else _finite_real(value[0], label="function x-range lower bound")
+    )
+    upper = (
+        None
+        if value[1] is None
+        else _finite_real(value[1], label="function x-range upper bound")
+    )
+    if lower is not None and upper is not None and lower >= upper:
+        raise ValueError("function x-range must be ordered from low to high")
+    if lower is None and upper is None:
+        return None
+    return lower, upper
+
+
 def _point(value: SketchPointInput, *, label: str = "point") -> tuple[float, float]:
     if isinstance(value, (str, bytes)) or len(value) != 2:
         raise ValueError(f"{label} must contain exactly two coordinates")
@@ -206,20 +241,19 @@ def _point(value: SketchPointInput, *, label: str = "point") -> tuple[float, flo
     )
 
 
-def _points(
-    values: Iterable[SketchPointInput], *, minimum: int, label: str
-) -> tuple[tuple[float, float], ...]:
-    points = tuple(_point(value, label=f"{label} point") for value in values)
-    if len(points) < minimum:
-        raise ValueError(f"{label} requires at least {minimum} points")
-    return points
-
-
 def _coordinates(points: Sequence[tuple[float, float]]) -> str:
     return ",".join(
         f"({_format_number(x_value)},{_format_number(y_value)})"
         for x_value, y_value in points
     )
+
+
+def _coordinate_extents(
+    points: Sequence[tuple[float, float]],
+) -> tuple[SketchBounds, SketchBounds]:
+    x_values = [point[0] for point in points]
+    y_values = [point[1] for point in points]
+    return (min(x_values), max(x_values)), (min(y_values), max(y_values))
 
 
 def _attr_value(value: object) -> str:
@@ -420,6 +454,536 @@ def _validate_toolbar(
         )
 
 
+@dataclass(frozen=True, slots=True, init=False)
+class Tool[ToolTypeT: SketchToolType]:
+    """One registered, sketch-owned drawing tool and drawing factory."""
+
+    _sketch: SketchQuestion = field(repr=False, compare=False)
+    id: str
+    type: ToolTypeT
+    label: str | None
+    limit: int | None
+    color: str | None
+    helper: bool | None
+    read_only: bool | None
+    group: str | None
+    dash_style: str | None
+    direction_constraint: str | None
+    length_constraint: float | None
+    arrowhead: int | None
+    size: int | None
+    hollow: bool | None
+    fill_color: str | None
+    opacity: float | None
+
+    def __init__(self) -> None:
+        raise TypeError("tools must be created with sketch.tools.create()")
+
+    @classmethod
+    def _from_options(
+        cls,
+        sketch: SketchQuestion,
+        tool_id: str,
+        tool_type: ToolTypeT,
+        options: Mapping[str, object],
+    ) -> Tool[ToolTypeT]:
+        tool = object.__new__(cls)
+        object.__setattr__(tool, "_sketch", sketch)
+        object.__setattr__(tool, "id", tool_id)
+        object.__setattr__(tool, "type", tool_type)
+        for name in (
+            "label",
+            "limit",
+            "color",
+            "helper",
+            "read_only",
+            "group",
+            "dash_style",
+            "direction_constraint",
+            "length_constraint",
+            "arrowhead",
+            "size",
+            "hollow",
+            "fill_color",
+            "opacity",
+        ):
+            object.__setattr__(tool, name, options.get(name))
+        return tool
+
+    def _options(self) -> dict[str, object]:
+        return {
+            name: value
+            for name in (
+                "label",
+                "limit",
+                "color",
+                "helper",
+                "read_only",
+                "group",
+                "dash_style",
+                "direction_constraint",
+                "length_constraint",
+                "arrowhead",
+                "size",
+                "hollow",
+                "fill_color",
+                "opacity",
+            )
+            if (value := getattr(self, name)) is not None
+        }
+
+    @overload
+    def create(
+        self: Tool[Literal["point"]], x: ExprInput, y: ExprInput, /
+    ) -> Point: ...
+
+    @overload
+    def create(
+        self: Tool[Literal["line"]],
+        start: Point | SketchPointInput,
+        end: Point | SketchPointInput,
+        /,
+    ) -> Line: ...
+
+    @overload
+    def create(
+        self: Tool[Literal["horizontal-line"]], value: ExprInput, /
+    ) -> HorizontalLine: ...
+
+    @overload
+    def create(
+        self: Tool[Literal["vertical-line"]], value: ExprInput, /
+    ) -> VerticalLine: ...
+
+    @overload
+    def create(
+        self: Tool[Literal["polyline"]],
+        points: Iterable[Point | SketchPointInput],
+        /,
+    ) -> Polyline: ...
+
+    @overload
+    def create(
+        self: Tool[Literal["polygon"]],
+        points: Iterable[Point | SketchPointInput],
+        /,
+    ) -> Polygon: ...
+
+    @overload
+    def create(
+        self: Tool[Literal["spline"]],
+        *,
+        points: Iterable[Point | SketchPointInput],
+    ) -> Curve: ...
+
+    @overload
+    def create(
+        self: Tool[Literal["spline"]],
+        *,
+        function: SketchFunctionInput,
+        x: SketchFunctionRangeInput | None = None,
+    ) -> Function: ...
+
+    @overload
+    def create(
+        self: Tool[Literal["free-draw"]],
+        *,
+        points: Iterable[Point | SketchPointInput],
+    ) -> Curve: ...
+
+    @overload
+    def create(
+        self: Tool[Literal["free-draw"]],
+        *,
+        function: SketchFunctionInput,
+        x: SketchFunctionRangeInput | None = None,
+    ) -> Function: ...
+
+    def create(
+        self,
+        *args: object,
+        points: Iterable[Point | SketchPointInput] | None = None,
+        function: SketchFunctionInput | None = None,
+        x: SketchFunctionRangeInput | None = None,
+    ) -> Drawing:
+        """Create one drawing bound to this registered tool."""
+        if self.type == "point" and len(args) == 2 and points is function is x is None:
+            return Point(cast(ExprInput, args[0]), cast(ExprInput, args[1]), tool=self)
+        if self.type == "line" and len(args) == 2 and points is function is x is None:
+            return Line(
+                cast(Point | SketchPointInput, args[0]),
+                cast(Point | SketchPointInput, args[1]),
+                tool=self,
+            )
+        if (
+            self.type == "horizontal-line"
+            and len(args) == 1
+            and points is function is x is None
+        ):
+            return HorizontalLine(cast(ExprInput, args[0]), tool=self)
+        if (
+            self.type == "vertical-line"
+            and len(args) == 1
+            and points is function is x is None
+        ):
+            return VerticalLine(cast(ExprInput, args[0]), tool=self)
+        if self.type in {"polyline", "polygon"} and len(args) == 1:
+            if points is not None or function is not None or x is not None:
+                raise TypeError(
+                    f"{self.type} create() accepts only its points argument"
+                )
+            values = cast(Iterable[Point | SketchPointInput], args[0])
+            if self.type == "polyline":
+                return Polyline(values, tool=self)
+            return Polygon(values, tool=self)
+        if self.type in {"spline", "free-draw"} and not args:
+            if (points is None) == (function is None):
+                raise TypeError("curve tools require exactly one of points or function")
+            if points is not None:
+                if x is not None:
+                    raise TypeError("x is only supported for symbolic functions")
+                return Curve(points, tool=self)
+            return Function(cast(SketchFunctionInput, function), x=x, tool=self)
+        raise TypeError(f"invalid arguments for {self.type!r} tool create()")
+
+    def bind[DrawingT: Drawing](self, drawing: DrawingT) -> DrawingT:
+        """Return an unbound compatible drawing bound to this tool."""
+        if not isinstance(drawing, _Drawing):
+            raise TypeError("tool.bind() requires a sketch drawing")
+        if drawing.tool is not None:
+            raise ValueError("drawing is already bound to a tool")
+        if not _tool_accepts_drawing(self.type, drawing):
+            raise ValueError(
+                f"{self.type!r} tools cannot create {type(drawing).__name__}"
+            )
+        return cast(DrawingT, replace(drawing, tool=self))
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class _Drawing:
+    tool: Tool[SketchToolType] | None = field(default=None, repr=False, compare=False)
+
+
+@dataclass(frozen=True, slots=True)
+class Point(_Drawing):
+    """One point drawing."""
+
+    x: ExprInput
+    y: ExprInput
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "x", _finite_real(self.x, label="point x-coordinate"))
+        object.__setattr__(self, "y", _finite_real(self.y, label="point y-coordinate"))
+
+
+def _point_values(point: Point) -> tuple[float, float]:
+    return cast(float, point.x), cast(float, point.y)
+
+
+def _coerce_point(value: Point | SketchPointInput, *, label: str) -> Point:
+    if isinstance(value, Point):
+        return Point(value.x, value.y)
+    x_value, y_value = _point(value, label=label)
+    return Point(x_value, y_value)
+
+
+def _coerce_points(
+    values: Iterable[Point | SketchPointInput], *, minimum: int, label: str
+) -> tuple[Point, ...]:
+    points = tuple(_coerce_point(value, label=f"{label} point") for value in values)
+    if len(points) < minimum:
+        raise ValueError(f"{label} requires at least {minimum} points")
+    return points
+
+
+@dataclass(frozen=True, slots=True)
+class Line(_Drawing):
+    """One finite line-segment drawing."""
+
+    start: Point | SketchPointInput
+    end: Point | SketchPointInput
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "start", _coerce_point(self.start, label="line start"))
+        object.__setattr__(self, "end", _coerce_point(self.end, label="line end"))
+
+
+@dataclass(frozen=True, slots=True)
+class HorizontalLine(_Drawing):
+    """One full-width horizontal line drawing."""
+
+    y: ExprInput
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "y", _finite_real(self.y, label="horizontal line coordinate")
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class VerticalLine(_Drawing):
+    """One full-height vertical line drawing."""
+
+    x: ExprInput
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "x", _finite_real(self.x, label="vertical line coordinate")
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class Polyline(_Drawing):
+    """One connected polyline drawing."""
+
+    points: Iterable[Point | SketchPointInput]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "points",
+            _coerce_points(self.points, minimum=2, label="polyline"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class Polygon(_Drawing):
+    """One closed polygon drawing."""
+
+    points: Iterable[Point | SketchPointInput]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "points",
+            _coerce_points(self.points, minimum=3, label="polygon"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class Curve(_Drawing):
+    """One coordinate-defined spline or free-draw curve."""
+
+    points: Iterable[Point | SketchPointInput]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "points", _coerce_points(self.points, minimum=2, label="curve")
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class Function(_Drawing):
+    """One symbolic spline or free-draw function drawing."""
+
+    function: SketchFunctionInput
+    x: SketchFunctionRangeInput | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "function", _function(self.function))
+        object.__setattr__(self, "x", _function_range(self.x))
+
+
+type Drawing = (
+    Point | Line | HorizontalLine | VerticalLine | Polyline | Polygon | Curve | Function
+)
+
+
+def _tool_accepts_drawing(tool_type: SketchToolType, drawing: _Drawing) -> bool:
+    if tool_type == "point":
+        return isinstance(drawing, Point)
+    if tool_type == "line":
+        return isinstance(drawing, Line)
+    if tool_type == "horizontal-line":
+        return isinstance(drawing, HorizontalLine)
+    if tool_type == "vertical-line":
+        return isinstance(drawing, VerticalLine)
+    if tool_type == "polyline":
+        return isinstance(drawing, Polyline)
+    if tool_type == "polygon":
+        return isinstance(drawing, Polygon)
+    return tool_type in {"spline", "free-draw"} and isinstance(
+        drawing, (Curve, Function)
+    )
+
+
+class SketchTools:
+    """Tool registry belonging to one :class:`SketchQuestion`."""
+
+    __slots__ = ("sketch",)
+
+    def __init__(self, sketch: SketchQuestion) -> None:
+        self.sketch = sketch
+
+    @overload
+    def create(
+        self,
+        *,
+        type: Literal["point"],
+        id: str,
+        label: str | None = None,
+        limit: int | None = None,
+        color: str | None = None,
+        helper: bool | None = None,
+        read_only: bool | None = None,
+        group: str | None = None,
+        size: int | None = None,
+        hollow: bool | None = None,
+    ) -> Tool[Literal["point"]]: ...
+
+    @overload
+    def create(
+        self,
+        *,
+        type: Literal["line"],
+        id: str,
+        label: str | None = None,
+        limit: int | None = None,
+        color: str | None = None,
+        helper: bool | None = None,
+        read_only: bool | None = None,
+        group: str | None = None,
+        dash_style: str | None = None,
+        direction_constraint: str | None = None,
+        length_constraint: ExprInput | None = None,
+        arrowhead: int | None = None,
+    ) -> Tool[Literal["line"]]: ...
+
+    @overload
+    def create(
+        self,
+        *,
+        type: Literal["horizontal-line"],
+        id: str,
+        label: str | None = None,
+        limit: int | None = None,
+        color: str | None = None,
+        helper: bool | None = None,
+        read_only: bool | None = None,
+        group: str | None = None,
+        dash_style: str | None = None,
+    ) -> Tool[Literal["horizontal-line"]]: ...
+
+    @overload
+    def create(
+        self,
+        *,
+        type: Literal["vertical-line"],
+        id: str,
+        label: str | None = None,
+        limit: int | None = None,
+        color: str | None = None,
+        helper: bool | None = None,
+        read_only: bool | None = None,
+        group: str | None = None,
+        dash_style: str | None = None,
+    ) -> Tool[Literal["vertical-line"]]: ...
+
+    @overload
+    def create(
+        self,
+        *,
+        type: Literal["polyline"],
+        id: str,
+        label: str | None = None,
+        limit: int | None = None,
+        color: str | None = None,
+        helper: bool | None = None,
+        read_only: bool | None = None,
+        group: str | None = None,
+        dash_style: str | None = None,
+    ) -> Tool[Literal["polyline"]]: ...
+
+    @overload
+    def create(
+        self,
+        *,
+        type: Literal["polygon"],
+        id: str,
+        label: str | None = None,
+        limit: int | None = None,
+        color: str | None = None,
+        helper: bool | None = None,
+        read_only: bool | None = None,
+        group: str | None = None,
+        dash_style: str | None = None,
+        fill_color: str | None = None,
+        opacity: ExprInput | None = None,
+    ) -> Tool[Literal["polygon"]]: ...
+
+    @overload
+    def create(
+        self,
+        *,
+        type: Literal["spline"],
+        id: str,
+        label: str | None = None,
+        limit: int | None = None,
+        color: str | None = None,
+        helper: bool | None = None,
+        read_only: bool | None = None,
+        group: str | None = None,
+    ) -> Tool[Literal["spline"]]: ...
+
+    @overload
+    def create(
+        self,
+        *,
+        type: Literal["free-draw"],
+        id: str,
+        label: str | None = None,
+        limit: int | None = None,
+        color: str | None = None,
+        helper: bool | None = None,
+        read_only: bool | None = None,
+        group: str | None = None,
+    ) -> Tool[Literal["free-draw"]]: ...
+
+    def create(
+        self,
+        *,
+        type: SketchToolType,
+        id: str,
+        label: str | None = None,
+        limit: int | None = None,
+        color: str | None = None,
+        helper: bool | None = None,
+        read_only: bool | None = None,
+        group: str | None = None,
+        dash_style: str | None = None,
+        direction_constraint: str | None = None,
+        length_constraint: ExprInput | None = None,
+        arrowhead: int | None = None,
+        size: int | None = None,
+        hollow: bool | None = None,
+        fill_color: str | None = None,
+        opacity: ExprInput | None = None,
+    ) -> Tool[Any]:
+        """Create and immediately register one drawing tool."""
+        if type not in _TOOL_OPTION_NAMES:
+            raise ValueError(f"unsupported sketch tool type: {type!r}")
+        tool_id = _validate_tool_id(id)
+        options = _tool_options(
+            type,
+            label=label,
+            limit=limit,
+            color=color,
+            helper=helper,
+            read_only=read_only,
+            group=group,
+            dash_style=dash_style,
+            direction_constraint=direction_constraint,
+            length_constraint=length_constraint,
+            arrowhead=arrowhead,
+            size=size,
+            hollow=hollow,
+            fill_color=fill_color,
+            opacity=opacity,
+        )
+        tool = Tool._from_options(self.sketch, tool_id, type, options)
+        return self.sketch._register_tool(tool)
+
+
 class _SketchAuthoringMixin:
     """Implementation mixin for :class:`plutil.lenses.SketchQuestion`."""
 
@@ -471,14 +1035,29 @@ class _SketchAuthoringMixin:
         return cast(SketchParams, value)
 
     @property
-    def initial(self) -> "SketchLayer":
+    def initial(self) -> SketchLayer:
         """Return the initial-drawing layer."""
         return SketchLayer(cast("SketchQuestion", self), "initial")
 
+    @initial.setter
+    def initial(self, layer: SketchLayer) -> None:
+        if layer.sketch is not self or layer.state != "initial":
+            raise ValueError("initial can only receive its own augmented layer value")
+
     @property
-    def solution(self) -> "SketchLayer":
+    def solution(self) -> SketchLayer:
         """Return the sample-solution layer."""
         return SketchLayer(cast("SketchQuestion", self), "solution")
+
+    @solution.setter
+    def solution(self, layer: SketchLayer) -> None:
+        if layer.sketch is not self or layer.state != "solution":
+            raise ValueError("solution can only receive its own augmented layer value")
+
+    @property
+    def tools(self) -> SketchTools:
+        """Return this sketch's instance-bound tool registry."""
+        return SketchTools(cast("SketchQuestion", self))
 
     @property
     def x_bounds(self) -> SketchBounds:
@@ -632,134 +1211,38 @@ class _SketchAuthoringMixin:
         )
         self.set_frame(x=fitted_x, y=fitted_y)
 
-    def add_tool(
-        self,
-        tool_id: str,
-        tool_type: SketchToolType,
-        *,
-        label: str | None = None,
-        limit: int | None = None,
-        color: str | None = None,
-        helper: bool | None = None,
-        read_only: bool | None = None,
-        group: str | None = None,
-        dash_style: str | None = None,
-        direction_constraint: str | None = None,
-        length_constraint: ExprInput | None = None,
-        arrowhead: int | None = None,
-        size: int | None = None,
-        hollow: bool | None = None,
-        fill_color: str | None = None,
-        opacity: ExprInput | None = None,
-    ) -> str:
-        """Add an explicit drawing tool and return its ID."""
-        return self._store_tool(
-            tool_id,
-            tool_type,
-            auto=False,
-            options=_tool_options(
-                tool_type,
-                label=label,
-                limit=limit,
-                color=color,
-                helper=helper,
-                read_only=read_only,
-                group=group,
-                dash_style=dash_style,
-                direction_constraint=direction_constraint,
-                length_constraint=length_constraint,
-                arrowhead=arrowhead,
-                size=size,
-                hollow=hollow,
-                fill_color=fill_color,
-                opacity=opacity,
-            ),
-        )
-
-    def _store_tool(
-        self,
-        tool_id: str,
-        tool_type: SketchToolType,
-        *,
-        auto: bool,
-        options: Mapping[str, object],
-    ) -> str:
-        tool_id = _validate_tool_id(tool_id)
-        if not auto and tool_id.startswith(_AUTO_TOOL_ID_PREFIX):
-            raise ValueError(
-                f"tool IDs starting with {_AUTO_TOOL_ID_PREFIX!r} are reserved"
-            )
-        signature = _tool_signature(tool_type, options)
+    def _register_tool[ToolTypeT: SketchToolType](
+        self, tool: Tool[ToolTypeT]
+    ) -> Tool[ToolTypeT]:
+        if tool._sketch is not self:
+            raise ValueError("tool belongs to a different sketch")
+        options = tool._options()
+        signature = _tool_signature(tool.type, options)
         existing = next(
-            (tool for tool in self.params["tools"] if tool["id"] == tool_id), None
+            (item for item in self.params["tools"] if item["id"] == tool.id), None
         )
         if existing is not None:
             if existing["_signature"] == signature:
-                return tool_id
-            raise ValueError(f"tool ID {tool_id!r} is already configured differently")
+                return tool
+            raise ValueError(f"tool ID {tool.id!r} is already configured differently")
         group = options.get("group")
-        tool: SketchToolParams = {
-            "id": tool_id,
-            "type": tool_type,
-            "attrs": _tool_attrs(tool_id, tool_type, options),
+        params: SketchToolParams = {
+            "id": tool.id,
+            "type": tool.type,
+            "attrs": _tool_attrs(tool.id, tool.type, options),
             "read_only": options.get("read_only") is True,
             "helper": options.get("helper") is True,
             "group": cast(str | None, group),
-            "_auto": auto,
             "_signature": signature,
         }
         _validate_toolbar(
-            (*self.params["tools"], tool),
+            (*self.params["tools"], params),
             width=self.params["width"],
             read_only=self.params["read_only"],
         )
-        self.params["tools"].append(tool)
+        self.params["tools"].append(params)
         self._sync_sketch_markup()
-        return tool_id
-
-    def _resolve_tool(
-        self,
-        tool_id: str | None,
-        tool_type: SketchToolType,
-        options: Mapping[str, object],
-    ) -> str:
-        if tool_id is not None:
-            tool_id = _validate_tool_id(tool_id)
-            if options:
-                raise ValueError(
-                    "style options cannot be combined with an explicit tool_id; "
-                    "configure the tool with add_tool()"
-                )
-            existing = next(
-                (tool for tool in self.params["tools"] if tool["id"] == tool_id),
-                None,
-            )
-            if existing is None:
-                raise KeyError(f"unknown sketch tool ID: {tool_id!r}")
-            if existing["type"] != tool_type:
-                raise ValueError(
-                    f"tool {tool_id!r} has type {existing['type']!r}, not {tool_type!r}"
-                )
-            return tool_id
-
-        signature = _tool_signature(tool_type, options)
-        matching = next(
-            (
-                tool
-                for tool in self.params["tools"]
-                if tool["_auto"] and tool["_signature"] == signature
-            ),
-            None,
-        )
-        if matching is not None:
-            return matching["id"]
-        existing_ids = {tool["id"] for tool in self.params["tools"]}
-        index = 1
-        while (
-            candidate := f"{_AUTO_TOOL_ID_PREFIX}{tool_type}-{index}"
-        ) in existing_ids:
-            index += 1
-        return self._store_tool(candidate, tool_type, auto=True, options=options)
+        return tool
 
     def _append_drawing(
         self,
@@ -834,268 +1317,120 @@ class SketchLayer:
 
     __slots__ = ("sketch", "state")
 
-    sketch: "SketchQuestion"
+    sketch: SketchQuestion
     state: Literal["initial", "solution"]
 
     def __init__(
         self,
-        sketch: "SketchQuestion",
+        sketch: SketchQuestion,
         state: Literal["initial", "solution"],
     ) -> None:
         self.sketch = sketch
         self.state = state
 
-    def _tool(
-        self,
-        tool_id: str | None,
-        tool_type: SketchToolType,
-        **options: object,
-    ) -> str:
-        if (
-            self.state == "solution"
-            and tool_id is None
-            and options.get("read_only") is None
-        ):
-            options["read_only"] = True
-        normalized = _tool_options(tool_type, **options)  # pyright: ignore[reportArgumentType]
-        return self.sketch._resolve_tool(tool_id, tool_type, normalized)
-
-    def add_point(
-        self,
-        point: SketchPointInput,
-        *,
-        tool_id: str | None = None,
-        color: str | None = None,
-        size: int | None = None,
-        hollow: bool | None = None,
-        read_only: bool | None = None,
-    ) -> str:
-        """Add one point and return the tool ID used."""
-        x_value, y_value = _point(point)
-        resolved = self._tool(
-            tool_id,
-            "point",
-            color=color,
-            size=size,
-            hollow=hollow,
-            read_only=read_only,
-        )
-        self.sketch._append_drawing(
-            self.state,
-            resolved,
-            (("coordinates", _coordinates(((x_value, y_value),))),),
-            x_extent=(x_value, x_value),
-            y_extent=(y_value, y_value),
-        )
-        return resolved
-
-    def add_line(
-        self,
-        start: SketchPointInput,
-        end: SketchPointInput,
-        *,
-        tool_id: str | None = None,
-        color: str | None = None,
-        dash_style: str | None = None,
-        direction_constraint: str | None = None,
-        length_constraint: ExprInput | None = None,
-        arrowhead: int | None = None,
-        read_only: bool | None = None,
-    ) -> str:
-        """Add one finite line segment and return the tool ID used."""
-        points = (_point(start, label="line start"), _point(end, label="line end"))
-        resolved = self._tool(
-            tool_id,
-            "line",
-            color=color,
-            dash_style=dash_style,
-            direction_constraint=direction_constraint,
-            length_constraint=length_constraint,
-            arrowhead=arrowhead,
-            read_only=read_only,
-        )
-        self._add_coordinate_drawing(resolved, points)
-        return resolved
-
-    def add_horizontal_line(
-        self,
-        y: ExprInput,
-        *,
-        tool_id: str | None = None,
-        color: str | None = None,
-        dash_style: str | None = None,
-        read_only: bool | None = None,
-    ) -> str:
-        """Add a full-width horizontal line and return the tool ID used."""
-        y_value = _finite_real(y, label="horizontal line coordinate")
-        resolved = self._tool(
-            tool_id,
-            "horizontal-line",
-            color=color,
-            dash_style=dash_style,
-            read_only=read_only,
-        )
-        self.sketch._append_drawing(
-            self.state,
-            resolved,
-            (("coordinates", _format_number(y_value)),),
-            y_extent=(y_value, y_value),
-        )
-        return resolved
-
-    def add_vertical_line(
-        self,
-        x: ExprInput,
-        *,
-        tool_id: str | None = None,
-        color: str | None = None,
-        dash_style: str | None = None,
-        read_only: bool | None = None,
-    ) -> str:
-        """Add a full-height vertical line and return the tool ID used."""
-        x_value = _finite_real(x, label="vertical line coordinate")
-        resolved = self._tool(
-            tool_id,
-            "vertical-line",
-            color=color,
-            dash_style=dash_style,
-            read_only=read_only,
-        )
-        self.sketch._append_drawing(
-            self.state,
-            resolved,
-            (("coordinates", _format_number(x_value)),),
-            x_extent=(x_value, x_value),
-        )
-        return resolved
-
-    def add_polyline(
-        self,
-        points: Iterable[SketchPointInput],
-        *,
-        tool_id: str | None = None,
-        color: str | None = None,
-        dash_style: str | None = None,
-        read_only: bool | None = None,
-    ) -> str:
-        """Add a connected polyline and return the tool ID used."""
-        normalized = _points(points, minimum=2, label="polyline")
-        resolved = self._tool(
-            tool_id,
-            "polyline",
-            color=color,
-            dash_style=dash_style,
-            read_only=read_only,
-        )
-        self._add_coordinate_drawing(resolved, normalized)
-        return resolved
-
-    def add_polygon(
-        self,
-        points: Iterable[SketchPointInput],
-        *,
-        tool_id: str | None = None,
-        color: str | None = None,
-        dash_style: str | None = None,
-        fill_color: str | None = None,
-        opacity: ExprInput | None = None,
-        read_only: bool | None = None,
-    ) -> str:
-        """Add a closed polygon and return the tool ID used."""
-        normalized = _points(points, minimum=3, label="polygon")
-        resolved = self._tool(
-            tool_id,
-            "polygon",
-            color=color,
-            dash_style=dash_style,
-            fill_color=fill_color,
-            opacity=opacity,
-            read_only=read_only,
-        )
-        self._add_coordinate_drawing(resolved, normalized)
-        return resolved
-
-    def add_curve(
-        self,
-        points: Iterable[SketchPointInput],
-        *,
-        tool_type: SketchCurveToolType = "spline",
-        tool_id: str | None = None,
-        color: str | None = None,
-        read_only: bool | None = None,
-    ) -> str:
-        """Add a spline or free-draw curve through explicit points."""
-        normalized = _points(points, minimum=2, label="curve")
-        resolved = self._tool(
-            tool_id,
-            tool_type,
-            color=color,
-            read_only=read_only,
-        )
-        self._add_coordinate_drawing(resolved, normalized)
-        return resolved
-
-    def add_function(
-        self,
-        function: SketchFunctionInput,
-        *,
-        x: SketchBoundsInput | None = None,
-        tool_type: SketchCurveToolType = "spline",
-        tool_id: str | None = None,
-        color: str | None = None,
-        read_only: bool | None = None,
-    ) -> str:
-        """Add a symbolic function drawing and return the tool ID used."""
-        function_text = _function(function)
-        function_bounds = None if x is None else _bounds(x, axis="x")
-        resolved = self._tool(
-            tool_id,
-            tool_type,
-            color=color,
-            read_only=read_only,
-        )
-        attributes: list[tuple[str, object]] = [("function", function_text)]
-        if function_bounds is not None:
-            attributes.append(
-                (
-                    "x-range",
-                    ",".join(_format_number(value) for value in function_bounds),
-                )
+    def add(self, drawing: Drawing) -> str:
+        """Add one tool-bound drawing and return its registered tool ID."""
+        if not isinstance(drawing, _Drawing):
+            raise TypeError("layer.add() requires a sketch drawing")
+        tool = drawing.tool
+        if tool is None:
+            raise ValueError("drawing must be bound with a registered tool")
+        if tool._sketch is not self.sketch:
+            raise ValueError("drawing tool belongs to a different sketch")
+        if not _tool_accepts_drawing(tool.type, drawing):
+            raise ValueError(
+                f"{tool.type!r} tools cannot create {type(drawing).__name__}"
             )
-        self.sketch._append_drawing(
-            self.state,
-            resolved,
-            attributes,
-            x_extent=function_bounds,
-            symbolic_function=True,
-        )
-        return resolved
 
-    def _add_coordinate_drawing(
-        self, tool_id: str, points: Sequence[tuple[float, float]]
-    ) -> None:
-        x_values = [point[0] for point in points]
-        y_values = [point[1] for point in points]
+        attributes: list[tuple[str, object]]
+        x_extent: SketchBounds | None = None
+        y_extent: SketchBounds | None = None
+        symbolic_function = False
+        if isinstance(drawing, Point):
+            point = _point_values(drawing)
+            attributes = [("coordinates", _coordinates((point,)))]
+            x_extent = (point[0], point[0])
+            y_extent = (point[1], point[1])
+        elif isinstance(drawing, Line):
+            points = (
+                _point_values(cast(Point, drawing.start)),
+                _point_values(cast(Point, drawing.end)),
+            )
+            attributes = [("coordinates", _coordinates(points))]
+            x_extent, y_extent = _coordinate_extents(points)
+        elif isinstance(drawing, HorizontalLine):
+            value = cast(float, drawing.y)
+            attributes = [("coordinates", _format_number(value))]
+            y_extent = (value, value)
+        elif isinstance(drawing, VerticalLine):
+            value = cast(float, drawing.x)
+            attributes = [("coordinates", _format_number(value))]
+            x_extent = (value, value)
+        elif isinstance(drawing, (Polyline, Polygon, Curve)):
+            points = tuple(
+                _point_values(point)
+                for point in cast(tuple[Point, ...], drawing.points)
+            )
+            attributes = [("coordinates", _coordinates(points))]
+            x_extent, y_extent = _coordinate_extents(points)
+        elif isinstance(drawing, Function):
+            attributes = [("function", cast(str, drawing.function))]
+            function_range = cast(SketchFunctionRange | None, drawing.x)
+            if function_range is not None:
+                attributes.append(
+                    (
+                        "x-range",
+                        ",".join(
+                            "" if value is None else _format_number(value)
+                            for value in function_range
+                        ),
+                    )
+                )
+                if function_range[0] is not None and function_range[1] is not None:
+                    x_extent = cast(SketchBounds, function_range)
+            symbolic_function = True
+        else:
+            raise TypeError("unhandled sketch drawing type")
+
         self.sketch._append_drawing(
             self.state,
-            tool_id,
-            (("coordinates", _coordinates(points)),),
-            x_extent=(min(x_values), max(x_values)),
-            y_extent=(min(y_values), max(y_values)),
+            tool.id,
+            attributes,
+            x_extent=x_extent,
+            y_extent=y_extent,
+            symbolic_function=symbolic_function,
         )
+        return tool.id
+
+    def __iadd__(self, drawing: Drawing) -> Self:
+        """Add a drawing with ``layer += drawing``."""
+        self.add(drawing)
+        return self
 
 
 __all__ = [
+    "Curve",
+    "Drawing",
+    "Function",
+    "HorizontalLine",
+    "Line",
+    "Point",
+    "Polygon",
+    "Polyline",
     "SketchBounds",
     "SketchBoundsInput",
-    "SketchCurveToolType",
     "SketchDrawingParams",
     "SketchFunctionInput",
+    "SketchFunctionRange",
+    "SketchFunctionRangeInput",
     "SketchLayer",
     "SketchParams",
     "SketchPointInput",
     "SketchToolParams",
     "SketchToolType",
+    "SketchTools",
+    "Tool",
+    "VerticalLine",
     "sketch_markup_param_name",
     "sketch_param_name",
 ]

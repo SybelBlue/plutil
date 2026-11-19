@@ -45,7 +45,7 @@ wrap submission elements such as `pl-sketch`.
 ## Initial and solution drawings
 
 Create the lens in `generate()`, configure any nondefault canvas behavior, and
-add drawings through its `initial` and `solution` layers:
+declare the tools that will create its drawings:
 
 ```python
 from plutil import SketchQuestion
@@ -64,17 +64,26 @@ def generate(data):
     )
     sketch.set_frame(x=(-5, 5), y=(-3, 6))
 
-    sketch.initial.add_point((1, 2), color="blue")
-    sketch.initial.add_polyline(((-4, 0), (0, 3), (4, 1)), color="blue")
-    sketch.solution.add_function(x**2, x=(-2, 2), color="green")
+    points = sketch.tools.create(type="point", id="given-points", color="blue")
+    paths = sketch.tools.create(type="polyline", id="paths", color="blue")
+    answer = sketch.tools.create(
+        type="spline",
+        id="answer",
+        color="green",
+        read_only=True,
+    )
+
+    sketch.initial += points.create(1, 2)
+    sketch.initial += paths.create(((-4, 0), (0, 3), (4, 1)))
+    sketch.solution += answer.create(function=x**2, x=(-2, 2))
 ```
 
 Canvas options retain the corresponding PrairieLearn defaults until explicitly
-configured. Coordinate helpers accept two-element sequences containing native
-or constant SymPy real values. `sketch.weight` reads and writes the element
+configured. Coordinates accept native real values, constant SymPy expressions,
+and PrairieLearn symbolic JSON. `sketch.weight` reads and writes the element
 weight; use `set_rich_score(weight=...)` when setting a partial-score weight.
-Coordinate helpers reject symbolic, complex, and nonfinite coordinates rather
-than producing a sketch that fails later during prepare.
+Drawing dataclasses reject symbolic, complex, and nonfinite coordinates when
+constructed rather than producing a sketch that fails later during prepare.
 
 In grading or another phase that should reconnect rather than create authoring
 params, require the generated spec to exist so answer-name typos fail early:
@@ -85,43 +94,59 @@ sketch = SketchQuestion(data, "given-graph", must_exist=True)
 
 Reconnecting does not rewrite the stored params.
 
-The available layer helpers are:
+## Tool factories
 
-- `add_point(point)`
-- `add_line(start, end)`
-- `add_horizontal_line(y)` and `add_vertical_line(x)`
-- `add_polyline(points)` and `add_polygon(points)`
-- `add_curve(points, tool_type="spline" | "free-draw")`
-- `add_function(function, x=..., tool_type="spline" | "free-draw")`
-
-Each returns the tool ID it used. If `tool_id` is omitted, drawings with the
-same tool type and style reuse one deterministic tool. Different styles create
-different tools. Automatic tools created only for solution drawings default to
-`read_only=True`, keeping sample-solution styles out of the student toolbar;
-pass `read_only=False` when a visible tool is intentional. Their IDs use the
-reserved `_auto-` prefix, leaving author-defined IDs in a separate namespace.
-
-## Explicit tools
-
-Use `add_tool()` when several drawings must share advanced tool settings:
+`sketch.tools.create()` is overloaded on its literal `type`. It requires an
+explicit ID, registers the tool immediately, and returns a factory with the
+matching drawing signature:
 
 ```python
-open_points = sketch.add_tool(
-    "open-points",
-    "point",
+open_points = sketch.tools.create(
+    type="point",
+    id="open-points",
     color="purple",
     hollow=True,
     size=18,
     read_only=True,
 )
-sketch.initial.add_point((-1, 2), tool_id=open_points)
-sketch.initial.add_point((3, 4), tool_id=open_points)
+sketch.initial += open_points.create(-1, 2)
+sketch.initial += open_points.create(3, 4)
 ```
 
-An explicit `tool_id` must already exist and have the type required by the
-drawing helper. Configure its style in `add_tool()` rather than repeating style
-arguments on each drawing. The lens enforces PrairieLearn's seven-icon limit
-and minimum canvas width as tools or canvas options are added.
+Tool creation order is toolbar order, including tools that have not yet created
+a drawing. Repeating an ID with the same type and settings is idempotent;
+reusing it with different settings is an error. The literal overload also
+limits settings to those PrairieLearn supports for that tool type. The lens
+enforces PrairieLearn's seven-icon limit and minimum canvas width as tools or
+canvas options are added.
+
+The factory signatures are:
+
+- point: `tool.create(x, y)`
+- line: `tool.create(start, end)`
+- horizontal or vertical line: `tool.create(value)`
+- polyline or polygon: `tool.create(points)`
+- spline or free draw: `tool.create(points=...)` or
+  `tool.create(function=..., x=...)`
+
+The resulting immutable dataclasses are also available as
+`plutil.sketch.Point`, `Line`, `HorizontalLine`, `VerticalLine`, `Polyline`,
+`Polygon`, `Curve`, and `Function`. Constructing one directly leaves it
+unbound; use `tool.bind(drawing)` to bind a compatible value. A layer accepts
+only drawings bound to a tool from the same sketch:
+
+```python
+from plutil.sketch import Line
+
+axes = sketch.tools.create(type="line", id="axes", read_only=True)
+sketch.initial.add(axes.bind(Line((-4, 0), (4, 0))))
+```
+
+`layer.add(drawing)` returns the drawing's tool ID. `layer += drawing` is the
+concise alias and works directly with both `sketch.initial` and
+`sketch.solution`. Tools are never inferred from a drawing, and solution tools
+are not implicitly read-only; set `read_only=True` explicitly when the tool
+should stay out of the student toolbar.
 
 ## Fitting frame bounds
 
@@ -136,14 +161,18 @@ Padding is a fraction added to each end of an inferred span. The origin is
 included by default, and `minimum_span` prevents a single point from collapsing
 an axis.
 
-Symbolic functions contribute an explicitly supplied x-range, but
+Symbolic functions contribute an explicitly supplied, finite x-range, but
 `fit_frame()` does not treat the current frame as an intrinsic range and does
 not sample their y-values: discontinuities and vertical asymptotes make sampled
-bounds unreliable. Supply vertical bounds explicitly when functions are
-present:
+bounds unreliable. Half-open ranges such as `(None, 5)` or `(-5, None)` are
+serialized for PrairieLearn but cannot determine both fitted x-bounds. Supply
+vertical bounds explicitly when functions are present:
 
 ```python
-sketch.solution.add_function("1/x", x=(-5, 5))
+functions = sketch.tools.create(
+    type="spline", id="functions", read_only=True
+)
+sketch.solution += functions.create(function="1/x", x=(-5, 5))
 sketch.fit_frame(y_bounds=(-6, 6))
 ```
 
