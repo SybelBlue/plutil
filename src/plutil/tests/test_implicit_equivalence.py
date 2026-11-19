@@ -8,6 +8,7 @@ import prairielearn as pl
 import pytest
 import sympy as sp
 from prairielearn.internal.check_data import check_data
+from sympy.polys.polyerrors import CoercionFailed, DomainError
 
 from plutil import (
     ImplicitEquivalenceResult,
@@ -109,6 +110,29 @@ def test_point_zero_is_inconclusive_for_non_algebraic_identity() -> None:
 
     assert value.is_zero is None
     assert value.equals(0)
+    assert equivalence._point_is_zero(value, {}, timeout_seconds=1.0) is None
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        NotImplementedError("multiple candidates"),
+        CoercionFailed("unsupported coercion"),
+        DomainError("unsupported domain"),
+    ],
+)
+def test_point_zero_is_inconclusive_for_minimal_polynomial_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+) -> None:
+    value = sp.sqrt(sp.sin(1) ** 2 + sp.cos(1) ** 2) - 1
+    assert value.is_zero is None
+
+    def fail_minimal_polynomial(*args: object, **kwargs: object) -> None:
+        raise error
+
+    monkeypatch.setattr(equivalence.sp, "minimal_polynomial", fail_minimal_polynomial)
+
     assert equivalence._point_is_zero(value, {}, timeout_seconds=1.0) is None
 
 

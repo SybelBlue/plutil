@@ -29,7 +29,11 @@ from sympy.core.relational import (
     Unequality,
 )
 from sympy.logic.boolalg import Boolean, BooleanFunction
-from sympy.polys.polyerrors import CoercionFailed, NotAlgebraic, PolynomialError
+from sympy.polys.polyerrors import (
+    BasePolynomialError,
+    CoercionFailed,
+    PolynomialError,
+)
 
 from . import rand
 from .common import (
@@ -963,7 +967,7 @@ def _point_is_zero(
         with timeout:
             try:
                 minimum = sp.minimal_polynomial(value, indeterminate)
-            except (NotAlgebraic, PolynomialError, TypeError, ValueError):
+            except (BasePolynomialError, NotImplementedError, TypeError, ValueError):
                 return None
             minimum_at_zero = cast(sp.Expr, minimum.subs(indeterminate, 0))
             return minimum_at_zero.is_zero
