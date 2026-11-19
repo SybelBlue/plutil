@@ -16,6 +16,7 @@ from dataclasses import dataclass, field, replace
 from typing import (
     TYPE_CHECKING,
     Any,
+    ClassVar,
     Literal,
     NotRequired,
     Self,
@@ -937,21 +938,43 @@ class Tool[ToolTypeT: SketchToolType]:
         return cast(DrawingT, replace(drawing, tool=self))
 
 
+@dataclass(frozen=True, slots=True)
+class _DrawingSerialization:
+    attributes: tuple[tuple[str, object], ...]
+    x_extent: SketchBounds | None = None
+    y_extent: SketchBounds | None = None
+    symbolic_function: bool = False
+    function_range: SketchFunctionRange | None = None
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class _Drawing:
     tool: Tool[SketchToolType] | None = field(default=None, repr=False, compare=False)
+    _tool_types: ClassVar[frozenset[SketchToolType]] = frozenset()
+
+    def _serialize(self) -> _DrawingSerialization:
+        raise NotImplementedError
 
 
 @dataclass(frozen=True, slots=True)
 class Point(_Drawing):
     """One point drawing."""
 
+    _tool_types = frozenset(("point",))
     x: ExprInput
     y: ExprInput
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "x", _finite_real(self.x, label="point x-coordinate"))
         object.__setattr__(self, "y", _finite_real(self.y, label="point y-coordinate"))
+
+    def _serialize(self) -> _DrawingSerialization:
+        point = _point_values(self)
+        return _DrawingSerialization(
+            attributes=(("coordinates", _coordinates((point,))),),
+            x_extent=(point[0], point[0]),
+            y_extent=(point[1], point[1]),
+        )
 
 
 def _point_values(point: Point) -> tuple[float, float]:
@@ -978,6 +1001,7 @@ def _coerce_points(
 class Line(_Drawing):
     """One finite line-segment drawing."""
 
+    _tool_types = frozenset(("line",))
     start: Point | SketchPointInput
     end: Point | SketchPointInput
 
@@ -985,11 +1009,24 @@ class Line(_Drawing):
         object.__setattr__(self, "start", _coerce_point(self.start, label="line start"))
         object.__setattr__(self, "end", _coerce_point(self.end, label="line end"))
 
+    def _serialize(self) -> _DrawingSerialization:
+        points = (
+            _point_values(cast(Point, self.start)),
+            _point_values(cast(Point, self.end)),
+        )
+        x_extent, y_extent = _coordinate_extents(points)
+        return _DrawingSerialization(
+            attributes=(("coordinates", _coordinates(points)),),
+            x_extent=x_extent,
+            y_extent=y_extent,
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class HorizontalLine(_Drawing):
     """One full-width horizontal line drawing."""
 
+    _tool_types = frozenset(("horizontal-line",))
     y: ExprInput
 
     def __post_init__(self) -> None:
@@ -997,11 +1034,19 @@ class HorizontalLine(_Drawing):
             self, "y", _finite_real(self.y, label="horizontal line coordinate")
         )
 
+    def _serialize(self) -> _DrawingSerialization:
+        value = cast(float, self.y)
+        return _DrawingSerialization(
+            attributes=(("coordinates", _format_number(value)),),
+            y_extent=(value, value),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class VerticalLine(_Drawing):
     """One full-height vertical line drawing."""
 
+    _tool_types = frozenset(("vertical-line",))
     x: ExprInput
 
     def __post_init__(self) -> None:
@@ -1009,11 +1054,19 @@ class VerticalLine(_Drawing):
             self, "x", _finite_real(self.x, label="vertical line coordinate")
         )
 
+    def _serialize(self) -> _DrawingSerialization:
+        value = cast(float, self.x)
+        return _DrawingSerialization(
+            attributes=(("coordinates", _format_number(value)),),
+            x_extent=(value, value),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class Polyline(_Drawing):
     """One connected polyline drawing."""
 
+    _tool_types = frozenset(("polyline",))
     points: Iterable[Point | SketchPointInput]
 
     def __post_init__(self) -> None:
@@ -1023,11 +1076,23 @@ class Polyline(_Drawing):
             _coerce_points(self.points, minimum=2, label="polyline"),
         )
 
+    def _serialize(self) -> _DrawingSerialization:
+        points = tuple(
+            _point_values(point) for point in cast(tuple[Point, ...], self.points)
+        )
+        x_extent, y_extent = _coordinate_extents(points)
+        return _DrawingSerialization(
+            attributes=(("coordinates", _coordinates(points)),),
+            x_extent=x_extent,
+            y_extent=y_extent,
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class Polygon(_Drawing):
     """One closed polygon drawing."""
 
+    _tool_types = frozenset(("polygon",))
     points: Iterable[Point | SketchPointInput]
 
     def __post_init__(self) -> None:
@@ -1037,11 +1102,23 @@ class Polygon(_Drawing):
             _coerce_points(self.points, minimum=3, label="polygon"),
         )
 
+    def _serialize(self) -> _DrawingSerialization:
+        points = tuple(
+            _point_values(point) for point in cast(tuple[Point, ...], self.points)
+        )
+        x_extent, y_extent = _coordinate_extents(points)
+        return _DrawingSerialization(
+            attributes=(("coordinates", _coordinates(points)),),
+            x_extent=x_extent,
+            y_extent=y_extent,
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class Curve(_Drawing):
     """One coordinate-defined spline or free-draw curve."""
 
+    _tool_types = frozenset(("spline", "free-draw"))
     points: Iterable[Point | SketchPointInput]
 
     def __post_init__(self) -> None:
@@ -1049,17 +1126,52 @@ class Curve(_Drawing):
             self, "points", _coerce_points(self.points, minimum=2, label="curve")
         )
 
+    def _serialize(self) -> _DrawingSerialization:
+        points = tuple(
+            _point_values(point) for point in cast(tuple[Point, ...], self.points)
+        )
+        x_extent, y_extent = _coordinate_extents(points)
+        return _DrawingSerialization(
+            attributes=(("coordinates", _coordinates(points)),),
+            x_extent=x_extent,
+            y_extent=y_extent,
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class Function(_Drawing):
     """One symbolic spline or free-draw function drawing."""
 
+    _tool_types = frozenset(("spline", "free-draw"))
     function: SketchFunctionInput
     x: SketchFunctionRangeInput | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "function", _function(self.function))
         object.__setattr__(self, "x", _function_range(self.x))
+
+    def _serialize(self) -> _DrawingSerialization:
+        attributes: list[tuple[str, object]] = [("function", cast(str, self.function))]
+        function_range = cast(SketchFunctionRange | None, self.x)
+        x_extent: SketchBounds | None = None
+        if function_range is not None:
+            attributes.append(
+                (
+                    "x-range",
+                    ",".join(
+                        "" if value is None else _format_number(value)
+                        for value in function_range
+                    ),
+                )
+            )
+            if function_range[0] is not None and function_range[1] is not None:
+                x_extent = cast(SketchBounds, function_range)
+        return _DrawingSerialization(
+            attributes=tuple(attributes),
+            x_extent=x_extent,
+            symbolic_function=True,
+            function_range=function_range,
+        )
 
 
 type Drawing = (
@@ -1068,21 +1180,7 @@ type Drawing = (
 
 
 def _tool_accepts_drawing(tool_type: SketchToolType, drawing: _Drawing) -> bool:
-    if tool_type == "point":
-        return isinstance(drawing, Point)
-    if tool_type == "line":
-        return isinstance(drawing, Line)
-    if tool_type == "horizontal-line":
-        return isinstance(drawing, HorizontalLine)
-    if tool_type == "vertical-line":
-        return isinstance(drawing, VerticalLine)
-    if tool_type == "polyline":
-        return isinstance(drawing, Polyline)
-    if tool_type == "polygon":
-        return isinstance(drawing, Polygon)
-    return tool_type in {"spline", "free-draw"} and isinstance(
-        drawing, (Curve, Function)
-    )
+    return tool_type in drawing._tool_types
 
 
 class SketchTools:
@@ -1640,68 +1738,15 @@ class SketchLayer:
                 f"{tool.type!r} tools cannot create {type(drawing).__name__}"
             )
 
-        attributes: list[tuple[str, object]]
-        x_extent: SketchBounds | None = None
-        y_extent: SketchBounds | None = None
-        symbolic_function = False
-        if isinstance(drawing, Point):
-            point = _point_values(drawing)
-            attributes = [("coordinates", _coordinates((point,)))]
-            x_extent = (point[0], point[0])
-            y_extent = (point[1], point[1])
-        elif isinstance(drawing, Line):
-            points = (
-                _point_values(cast(Point, drawing.start)),
-                _point_values(cast(Point, drawing.end)),
-            )
-            attributes = [("coordinates", _coordinates(points))]
-            x_extent, y_extent = _coordinate_extents(points)
-        elif isinstance(drawing, HorizontalLine):
-            value = cast(float, drawing.y)
-            attributes = [("coordinates", _format_number(value))]
-            y_extent = (value, value)
-        elif isinstance(drawing, VerticalLine):
-            value = cast(float, drawing.x)
-            attributes = [("coordinates", _format_number(value))]
-            x_extent = (value, value)
-        elif isinstance(drawing, (Polyline, Polygon, Curve)):
-            points = tuple(
-                _point_values(point)
-                for point in cast(tuple[Point, ...], drawing.points)
-            )
-            attributes = [("coordinates", _coordinates(points))]
-            x_extent, y_extent = _coordinate_extents(points)
-        elif isinstance(drawing, Function):
-            attributes = [("function", cast(str, drawing.function))]
-            function_range = cast(SketchFunctionRange | None, drawing.x)
-            if function_range is not None:
-                attributes.append(
-                    (
-                        "x-range",
-                        ",".join(
-                            "" if value is None else _format_number(value)
-                            for value in function_range
-                        ),
-                    )
-                )
-                if function_range[0] is not None and function_range[1] is not None:
-                    x_extent = cast(SketchBounds, function_range)
-            symbolic_function = True
-        else:
-            raise TypeError("unhandled sketch drawing type")
-
+        serialized = drawing._serialize()
         self.sketch._append_drawing(
             self.state,
             tool.id,
-            attributes,
-            x_extent=x_extent,
-            y_extent=y_extent,
-            symbolic_function=symbolic_function,
-            function_range=(
-                cast(SketchFunctionRange | None, drawing.x)
-                if isinstance(drawing, Function)
-                else None
-            ),
+            serialized.attributes,
+            x_extent=serialized.x_extent,
+            y_extent=serialized.y_extent,
+            symbolic_function=serialized.symbolic_function,
+            function_range=serialized.function_range,
         )
         return tool.id
 
