@@ -444,6 +444,33 @@ def test_functions_validate_syntax_variables_and_ranges() -> None:
         Function("x", x=(2, 1))
 
 
+def test_half_open_function_ranges_remain_valid_for_the_canvas() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    functions = sketch.tools.create(type="spline", id="functions", read_only=True)
+
+    with pytest.raises(ValueError, match="filling open endpoints"):
+        sketch.solution.add(functions.create(function="x", x=(10, None)))
+    with pytest.raises(ValueError, match="filling open endpoints"):
+        sketch.solution.add(functions.create(function="x", x=(None, -10)))
+    assert sketch.params["solution"] == []
+
+    sketch.solution.add(functions.create(function="x", x=(-2, None)))
+    with pytest.raises(ValueError, match="filling open endpoints"):
+        sketch.set_frame(x=(-5, -3))
+    assert sketch.x_bounds == (-5.0, 5.0)
+
+
+def test_canvas_width_changes_revalidate_half_open_function_ranges() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    functions = sketch.tools.create(type="spline", id="functions", read_only=True)
+    sketch.solution.add(functions.create(function="x", x=(5.12, None)))
+
+    with pytest.raises(ValueError, match="filling open endpoints"):
+        sketch.configure(width=900)
+
+    assert sketch.params["width"] == 800
+
+
 def test_functions_use_and_validate_sketchresponse_syntax() -> None:
     x = sp.Symbol("x")
 
@@ -498,7 +525,7 @@ def test_fit_frame_ignores_frame_spanning_and_half_open_axes() -> None:
     sketch.initial.add(vertical.create(15))
     sketch.initial.add(points.create(10, 10))
     sketch.initial.add(points.create(20, 20))
-    sketch.solution.add(functions.create(function="x**2", x=(10, None)))
+    sketch.solution.add(functions.create(function="x**2", x=(4, None)))
 
     sketch.fit_frame(padding=0, include_origin=False, y_bounds=(3, 20))
 

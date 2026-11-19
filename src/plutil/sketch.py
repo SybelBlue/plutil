@@ -71,6 +71,7 @@ class SketchDrawingParams(TypedDict):
     x_extent: NotRequired[list[float]]
     y_extent: NotRequired[list[float]]
     symbolic_function: NotRequired[bool]
+    function_range: NotRequired[list[float | None]]
 
 
 class SketchParams(TypedDict):
@@ -456,6 +457,45 @@ def _validate_toolbar(
         raise ValueError(
             f"width must be at least {minimum_width} pixels for the sketch toolbar"
         )
+
+
+def _prepared_x_bounds(x_bounds: SketchBounds, *, width: int) -> SketchBounds:
+    scale = (x_bounds[1] - x_bounds[0]) / (width - 20)
+    margin = 10 * scale
+    return x_bounds[0] - margin, x_bounds[1] + margin
+
+
+def _validate_function_range_for_frame(
+    function_range: SketchFunctionRange,
+    *,
+    x_bounds: SketchBounds,
+    width: int,
+) -> None:
+    if function_range[0] is not None and function_range[1] is not None:
+        return
+    canvas_lower, canvas_upper = _prepared_x_bounds(x_bounds, width=width)
+    lower = canvas_lower if function_range[0] is None else function_range[0]
+    upper = canvas_upper if function_range[1] is None else function_range[1]
+    if lower >= upper:
+        raise ValueError(
+            "function x-range must be ordered after filling open endpoints "
+            "from the sketch frame"
+        )
+
+
+def _validate_function_ranges_for_frame(
+    drawings: Iterable[SketchDrawingParams],
+    *,
+    x_bounds: SketchBounds,
+    width: int,
+) -> None:
+    for drawing in drawings:
+        if (function_range := drawing.get("function_range")) is not None:
+            _validate_function_range_for_frame(
+                (function_range[0], function_range[1]),
+                x_bounds=x_bounds,
+                width=width,
+            )
 
 
 @dataclass(frozen=True, slots=True, init=False, eq=False)
@@ -1151,9 +1191,15 @@ class _SketchAuthoringMixin:
             **boolean_options,
         }
         params = cast(dict[str, Any], self.params)
+        proposed_width = self.params["width"] if width is None else width
+        _validate_function_ranges_for_frame(
+            (*self.params["initial"], *self.params["solution"]),
+            x_bounds=self.x_bounds,
+            width=proposed_width,
+        )
         _validate_toolbar(
             self.params["tools"],
-            width=self.params["width"] if width is None else width,
+            width=proposed_width,
             read_only=(self.params["read_only"] if read_only is None else read_only),
         )
         for name, value in updates.items():
@@ -1171,10 +1217,15 @@ class _SketchAuthoringMixin:
         """Set one or both validated frame bounds and return this sketch."""
         if x is None and y is None:
             raise ValueError("set_frame requires x and/or y bounds")
-        if x is not None:
-            self.params["x_bounds"] = list(_bounds(x, axis="x"))
-        if y is not None:
-            self.params["y_bounds"] = list(_bounds(y, axis="y"))
+        proposed_x = self.x_bounds if x is None else _bounds(x, axis="x")
+        proposed_y = self.y_bounds if y is None else _bounds(y, axis="y")
+        _validate_function_ranges_for_frame(
+            (*self.params["initial"], *self.params["solution"]),
+            x_bounds=proposed_x,
+            width=self.params["width"],
+        )
+        self.params["x_bounds"] = list(proposed_x)
+        self.params["y_bounds"] = list(proposed_y)
         self._sync_sketch_attrs()
         return self
 
@@ -1280,6 +1331,7 @@ class _SketchAuthoringMixin:
         x_extent: SketchBounds | None = None,
         y_extent: SketchBounds | None = None,
         symbolic_function: bool = False,
+        function_range: SketchFunctionRange | None = None,
     ) -> None:
         drawing: SketchDrawingParams = {
             "tool_id": tool_id,
@@ -1291,6 +1343,13 @@ class _SketchAuthoringMixin:
             drawing["y_extent"] = list(y_extent)
         if symbolic_function:
             drawing["symbolic_function"] = True
+        if function_range is not None:
+            _validate_function_range_for_frame(
+                function_range,
+                x_bounds=self.x_bounds,
+                width=self.params["width"],
+            )
+            drawing["function_range"] = list(function_range)
         self.params[state].append(drawing)
         self._sync_sketch_markup()
 
@@ -1426,6 +1485,11 @@ class SketchLayer:
             x_extent=x_extent,
             y_extent=y_extent,
             symbolic_function=symbolic_function,
+            function_range=(
+                cast(SketchFunctionRange | None, drawing.x)
+                if isinstance(drawing, Function)
+                else None
+            ),
         )
         return tool.id
 
