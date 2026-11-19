@@ -1,7 +1,7 @@
 import pytest
 import sympy as sp
 
-from plutil.geometry import (
+from plutil.vectors import (
     are_equivalent_parametric_lines,
     are_orthogonal,
     are_parallel,

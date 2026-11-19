@@ -234,7 +234,7 @@ def test_numeric_predicates_narrow_objects_to_sympy_expressions() -> None:
         assert_type(finite_integer, sympy.Expr)
 
 
-def test_geometry_predicates_return_booleans() -> None:
+def test_vector_predicates_return_booleans() -> None:
     t = sympy.Symbol("t")
     vector: VectorLike = (1, t)
     vector_input: VectorInput = vector
@@ -252,7 +252,7 @@ def test_geometry_predicates_return_booleans() -> None:
     )
 
 
-def test_geometry_products_return_symbolic_values() -> None:
+def test_vector_products_return_symbolic_values() -> None:
     assert_type(dot_product((1, 2), (3, 4)), sympy.Expr)
     assert_type(
         cross_product((1, 0, 0), (0, 1, 0)),

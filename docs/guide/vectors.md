@@ -1,13 +1,13 @@
 # Vector and line geometry
 
-Full API reference: {py:mod}`plutil.geometry`.
+Full API reference: {py:mod}`plutil.vectors`.
 
-The geometry helpers do not read or mutate PrairieLearn question data or
+The vector helpers do not read or mutate PrairieLearn question data or
 scores. Components accept expression values or serialized PrairieLearn
 symbolic inputs, which are converted to SymPy expressions. Vector relationship
-predicates use {py:func}`plutil.eq`. {py:data}`plutil.geometry.VectorLike`
+predicates use {py:func}`plutil.eq`. {py:data}`plutil.vectors.VectorLike`
 describes vectors of expression values, while
-{py:data}`plutil.geometry.VectorInput` also permits serialized symbolic
+{py:data}`plutil.vectors.VectorInput` also permits serialized symbolic
 components.
 
 ## Vector relationships

@@ -1,6 +1,6 @@
 from typing import Final
 
-from . import choices, fabc, feedback, fmt, geometry, obfuscations, rand
+from . import choices, fabc, feedback, fmt, obfuscations, rand, vectors
 from .assumptions import (
     AssumptionsTypedDict,
     check,
@@ -59,16 +59,6 @@ from .functions import (
     finite_at,
     rearrange_eqn,
 )
-from .geometry import (
-    VectorInput,
-    VectorLike,
-    are_equivalent_parametric_lines,
-    are_orthogonal,
-    are_parallel,
-    cross_product,
-    dot_product,
-    is_zero_vector,
-)
 from .lenses import (
     CheckboxQuestion,
     Data,
@@ -90,6 +80,17 @@ from .sets import (
     reject_set_outside_domain,
 )
 from .symbolic_decimals import parse_symbolic_decimals
+from .vectors import (
+    Vector,
+    VectorInput,
+    VectorLike,
+    are_equivalent_parametric_lines,
+    are_orthogonal,
+    are_parallel,
+    cross_product,
+    dot_product,
+    is_zero_vector,
+)
 
 __all__: Final[tuple[str, ...]] = (
     "AssumptionsTypedDict",
@@ -113,6 +114,7 @@ __all__: Final[tuple[str, ...]] = (
     "SympyInput",
     "SympyQuestion",
     "SympyValue",
+    "Vector",
     "VectorInput",
     "VectorLike",
     "are_equivalent_parametric_lines",
@@ -140,7 +142,6 @@ __all__: Final[tuple[str, ...]] = (
     "finite_at",
     "fmt",
     "function_names",
-    "geometry",
     "getrec",
     "give_triviality_feedback",
     "grade_implicit_equivalence",
@@ -170,4 +171,5 @@ __all__: Final[tuple[str, ...]] = (
     "truncate_to_significant_digits",
     "validate_implicit_expression_input",
     "validate_implicit_polynomial_input",
+    "vectors",
 )

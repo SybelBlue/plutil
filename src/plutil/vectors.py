@@ -183,7 +183,7 @@ def _broadly_equivalent(left: sp.Expr, right: sp.Expr) -> bool:
         key=lambda symbol: symbol.sort_key(),
     )
     replacements = {
-        symbol: sp.Symbol(f"_geometry_variable_{index}", real=True)
+        symbol: sp.Symbol(f"_vector_variable_{index}", real=True)
         for index, symbol in enumerate(symbols)
     }
     left_for_check = require_expr(left.xreplace(replacements))
