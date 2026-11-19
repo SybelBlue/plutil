@@ -148,7 +148,7 @@ def test_expression_apis_return_sympy_expressions() -> None:
 
 
 def test_formatting_apis_return_strings() -> None:
-    notation: fmt.Notation = "scientific"
+    notation: fmt.Notation = "general"
     currency_code: fmt.CurrencyCode = "USD"
     prefix: fmt.SIPrefix = "k"
     ratio_power_style: fmt.RatioPowerStyle = "linear"

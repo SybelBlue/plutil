@@ -31,7 +31,7 @@ type MatrixInput = (
 type MatrixFormat = Literal["bmatrix", "pmatrix"]
 """LaTeX environment used to delimit a matrix."""
 
-type Notation = Literal["standard", "scientific", "engineering", "compact"]
+type Notation = Literal["standard", "general", "scientific", "engineering", "compact"]
 type ExponentStyle = Literal["e", "times"]
 type CompactDisplay = Literal["short", "long"]
 type Grouping = Literal["none", "comma", "thin_space"]
@@ -100,7 +100,9 @@ _ROUNDING: Final = {
     "half_even": "ROUND_HALF_EVEN",
     "half_up": "ROUND_HALF_UP",
 }
-_NOTATIONS: Final = frozenset(("standard", "scientific", "engineering", "compact"))
+_NOTATIONS: Final = frozenset(
+    ("standard", "general", "scientific", "engineering", "compact")
+)
 _EXPONENT_STYLES: Final = frozenset(("e", "times"))
 _COMPACT_DISPLAYS: Final = frozenset(("short", "long"))
 _GROUPINGS: Final = frozenset(("none", "comma", "thin_space"))
@@ -376,9 +378,12 @@ def number(
 ) -> str:
     """Format a finite real number for display.
 
-    Standard notation defaults to zero through three fractional digits. The
-    scaled notations default to one through three significant digits.
-    Fractional- and significant-digit bounds are mutually exclusive.
+    Standard notation defaults to zero through three fractional digits. General
+    and scaled notations default to one through three significant digits.
+    General notation switches between standard and scientific notation using
+    the same exponent thresholds as Python's ``g`` format. Fractional- and
+    significant-digit bounds are mutually exclusive, and general notation does
+    not accept fractional-digit bounds.
     """
     _typecheck("notation", notation, _NOTATIONS)
     _typecheck("exponent_style", exponent_style, _EXPONENT_STYLES)
@@ -394,6 +399,8 @@ def number(
         min_significant_digits=min_significant_digits,
         max_significant_digits=max_significant_digits,
     )
+    if notation == "general" and digits.kind != "significant":
+        raise ValueError("general notation requires significant-digit bounds")
     if grouping is None:
         resolved_grouping: Grouping = "comma" if notation == "standard" else "none"
     else:
@@ -410,6 +417,15 @@ def number(
             rounding=rounding,
         )
         return rendered
+    if notation == "general":
+        return _format_general(
+            decimal_value,
+            digits=digits,
+            exponent_style=exponent_style,
+            grouping=resolved_grouping,
+            sign=sign,
+            rounding=rounding,
+        )
     if notation in ("scientific", "engineering"):
         return _format_exponential(
             decimal_value,
@@ -988,6 +1004,38 @@ def _format_exponential(
     )
     mantissa = _apply_sign(text, signed_rounded, sign)
     return f"{mantissa}{_render_exponent(exponent, exponent_style)}"
+
+
+def _format_general(
+    value: Decimal,
+    *,
+    digits: _DigitOptions,
+    exponent_style: ExponentStyle,
+    grouping: Grouping,
+    sign: SignDisplay,
+    rounding: RoundingMode,
+) -> str:
+    absolute = value.copy_abs()
+    rounded, _ = _round_significant(absolute, digits.maximum, rounding)
+    adjusted = rounded.adjusted() if rounded else 0
+    if rounded and (adjusted < -4 or adjusted >= digits.maximum):
+        return _format_exponential(
+            value,
+            digits=digits,
+            notation="scientific",
+            exponent_style=exponent_style,
+            grouping=grouping,
+            sign=sign,
+            rounding=rounding,
+        )
+    rendered, _ = _format_standard(
+        value,
+        digits=digits,
+        grouping=grouping,
+        sign=sign,
+        rounding=rounding,
+    )
+    return rendered
 
 
 def _format_compact(

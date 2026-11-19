@@ -12,9 +12,13 @@ which is the same function as the existing top-level `plutil.latex` export.
 ```python
 from decimal import Decimal
 
+import sympy
+
 from plutil import fmt
 
 fmt.number(1234.5678)  # "1,234.568"
+fmt.number(sympy.pi, notation="general", max_significant_digits=12)
+# "3.14159265359"
 fmt.number(12345, notation="engineering")  # "12.3e+3"
 fmt.number(12345, notation="compact")  # "12.3K"
 fmt.scientific(12345, exponent_style="times")  # "1.23 × 10^4"
@@ -164,13 +168,19 @@ callable-bearing params proxies, partial-credit transforms, and random
 factories have no package-specific serialization contract; format
 the underlying data intended for the template instead.
 
-`number` supports `standard`, `scientific`, `engineering`, and `compact`
-notation. Standard numbers default to zero through three fractional digits;
-scaled notation defaults to one through three significant digits. Pass
+`number` supports `standard`, `general`, `scientific`, `engineering`, and
+`compact` notation. General notation follows Python's `g` thresholds: after
+rounding, it uses scientific notation when the exponent is less than -4 or at
+least the maximum significant-digit count. Unlike Python, it retains plutil's
+exponent spelling (`1e-5` rather than `1e-05`). Standard numbers default to zero
+through three fractional digits; general and scaled notation default to one
+through three significant digits. Pass
 `min_fraction_digits`/`max_fraction_digits` or
 `min_significant_digits`/`max_significant_digits` to override those limits,
-but do not mix the two precision families. Grouping can be `none`, `comma`, or
-`thin_space`; rounding can be `half_even` (the default) or `half_up`.
+but do not mix the two precision families. General notation only accepts
+significant-digit bounds and defaults to no grouping. Grouping can be `none`,
+`comma`, or `thin_space`; rounding can be `half_even` (the default) or
+`half_up`.
 
 `currency` has fixed English data for USD, EUR, GBP, JPY, CNY, CAD, and AUD.
 Its display can be `symbol`, `code`, or `name`, and negative values can use a
