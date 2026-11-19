@@ -68,6 +68,7 @@ from .lenses import (
     SympyQuestion,
 )
 from .partial_credit import (
+    award_interval_clusivity_credit,
     award_partial_credit,
     rule,
 )
@@ -99,6 +100,7 @@ __all__: Final[tuple[str, ...]] = (
     "SympyInput",
     "SympyQuestion",
     "SympyValue",
+    "award_interval_clusivity_credit",
     "award_partial_credit",
     "check",
     "check_implicit_equivalence",

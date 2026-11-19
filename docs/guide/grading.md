@@ -178,6 +178,27 @@ controls the eventual write and, unlike the lens-local flag, compares against
 native scores that predate the lens. The defaults are unchanged for backwards
 compatibility.
 
+## `award_interval_clusivity_credit(lens, *, partial_score=0.5, feedback=<stock message>, preserve_higher=True) -> bool`
+
+Award partial credit when the submitted and correct answers are intervals with
+equivalent boundary values but different **clusivity**—whether each endpoint is
+included (closed) or excluded (open). Incorrect bounds, non-interval answers,
+and exact matches are left unchanged.
+
+```python
+from plutil import SympyQuestion, award_interval_clusivity_credit
+
+
+def grade(data):
+    award_interval_clusivity_credit(SympyQuestion(data, "domain"))
+```
+
+The default score is `0.5`, and the default feedback asks the student to check
+which finite endpoints are included. Pass a custom `partial_score` or
+`feedback`, or pass `feedback=None` to award credit without feedback.
+By default, an equal or higher native or previously assigned score is preserved;
+set `preserve_higher=False` to replace it.
+
 ## `partial_credit.rule(score, *, ...) -> PartialCreditRule`
 
 Create a rule for `award_partial_credit`. Pass one condition:

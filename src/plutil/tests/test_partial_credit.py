@@ -4,6 +4,7 @@ import sympy
 from sympy.abc import x
 
 import plutil.lenses as lenses_mod
+from plutil import award_interval_clusivity_credit
 from plutil.common import eq
 from plutil.functions import eval_at
 from plutil.lenses import SympyQuestion
@@ -14,6 +15,244 @@ from plutil.partial_credit import (
     rule,
 )
 from plutil.tests.helpers import question_data
+
+
+def _interval_question_data(
+    correct: sympy.Basic,
+    submitted: sympy.Basic,
+    *,
+    partial_score: pl.PartialScore | None = None,
+) -> pl.QuestionData:
+    return question_data(
+        submitted_answers={"answer": pl.to_json(submitted)},
+        correct_answers={"answer": pl.to_json(correct)},
+        partial_scores={} if partial_score is None else {"answer": partial_score},
+    )
+
+
+@pytest.mark.parametrize(
+    ("correct", "submitted"),
+    [
+        (sympy.Interval(0, 1), sympy.Interval.Lopen(0, 1)),
+        (sympy.Interval(0, 1), sympy.Interval.Ropen(0, 1)),
+        (sympy.Interval(0, 1), sympy.Interval.open(0, 1)),
+    ],
+    ids=("left", "right", "both"),
+)
+def test_award_interval_clusivity_credit_handles_endpoint_mistakes(
+    monkeypatch,
+    correct: sympy.Interval,
+    submitted: sympy.Interval,
+) -> None:
+    calls = []
+    monkeypatch.setattr(
+        lenses_mod.pl,
+        "set_weighted_score_data",
+        lambda data: calls.append(data),
+    )
+    data = _interval_question_data(correct, submitted)
+
+    awarded = award_interval_clusivity_credit(SympyQuestion(data, "answer"))
+
+    assert awarded is True
+    assert data["partial_scores"]["answer"] == {
+        "score": 0.5,
+        "feedback": (
+            "Your interval has the correct boundary values, but check which "
+            "finite endpoints are included."
+        ),
+    }
+    assert calls == [data]
+
+
+@pytest.mark.parametrize(
+    ("correct", "submitted"),
+    [
+        (sympy.Interval(0, 1), sympy.Interval.open(-1, 1)),
+        (sympy.Interval(0, 1), sympy.Interval.open(0, 2)),
+        (sympy.Interval(0, 1), sympy.FiniteSet(0, 1)),
+        (sympy.FiniteSet(0, 1), sympy.Interval.open(0, 1)),
+    ],
+    ids=("wrong-start", "wrong-end", "submitted-non-interval", "correct-non-interval"),
+)
+def test_award_interval_clusivity_credit_rejects_other_mistakes(
+    monkeypatch,
+    correct: sympy.Basic,
+    submitted: sympy.Basic,
+) -> None:
+    calls = []
+    monkeypatch.setattr(
+        lenses_mod.pl,
+        "set_weighted_score_data",
+        lambda data: calls.append(data),
+    )
+    data = _interval_question_data(correct, submitted)
+
+    awarded = award_interval_clusivity_credit(SympyQuestion(data, "answer"))
+
+    assert awarded is False
+    assert data["partial_scores"] == {}
+    assert calls == []
+
+
+def test_award_interval_clusivity_credit_skips_exact_match(monkeypatch) -> None:
+    calls = []
+    monkeypatch.setattr(
+        lenses_mod.pl,
+        "set_weighted_score_data",
+        lambda data: calls.append(data),
+    )
+    interval = sympy.Interval.open(0, 1)
+    data = _interval_question_data(interval, interval)
+
+    awarded = award_interval_clusivity_credit(SympyQuestion(data, "answer"))
+
+    assert awarded is False
+    assert data["partial_scores"] == {}
+    assert calls == []
+
+
+def test_award_interval_clusivity_credit_compares_symbolic_endpoints(
+    monkeypatch,
+) -> None:
+    calls = []
+    monkeypatch.setattr(
+        lenses_mod.pl,
+        "set_weighted_score_data",
+        lambda data: calls.append(data),
+    )
+    a = sympy.Integer(5)
+    correct = sympy.Interval(sympy.log(a), 1 + sympy.log(a))
+    submitted = sympy.Interval.open(sympy.log(a), sympy.log(a * sympy.E))
+    data = _interval_question_data(correct, submitted)
+
+    awarded = award_interval_clusivity_credit(SympyQuestion(data, "answer"))
+
+    assert awarded is True
+    assert data["partial_scores"]["answer"]["score"] == 0.5
+    assert calls == [data]
+
+
+def test_award_interval_clusivity_credit_accepts_custom_score_and_feedback(
+    monkeypatch,
+) -> None:
+    calls = []
+    monkeypatch.setattr(
+        lenses_mod.pl,
+        "set_weighted_score_data",
+        lambda data: calls.append(data),
+    )
+    data = _interval_question_data(
+        sympy.Interval(0, 1),
+        sympy.Interval.open(0, 1),
+    )
+
+    awarded = award_interval_clusivity_credit(
+        SympyQuestion(data, "answer"),
+        partial_score=0.7,
+        feedback="Check the brackets.",
+    )
+
+    assert awarded is True
+    assert data["partial_scores"]["answer"] == {
+        "score": 0.7,
+        "feedback": "Check the brackets.",
+    }
+    assert calls == [data]
+
+
+@pytest.mark.parametrize(
+    ("feedback", "expected"),
+    [(None, None), ("", "")],
+    ids=("none", "empty-string"),
+)
+def test_award_interval_clusivity_credit_accepts_no_feedback(
+    monkeypatch,
+    feedback: str | None,
+    expected: str | None,
+) -> None:
+    calls = []
+    monkeypatch.setattr(
+        lenses_mod.pl,
+        "set_weighted_score_data",
+        lambda data: calls.append(data),
+    )
+    data = _interval_question_data(
+        sympy.Interval(0, 1),
+        sympy.Interval.open(0, 1),
+    )
+
+    awarded = award_interval_clusivity_credit(
+        SympyQuestion(data, "answer"),
+        feedback=feedback,
+    )
+
+    assert awarded is True
+    assert data["partial_scores"]["answer"].get("feedback") == expected
+    assert calls == [data]
+
+
+@pytest.mark.parametrize("assign_with_lens", [False, True], ids=("native", "lens"))
+def test_award_interval_clusivity_credit_preserves_higher_score(
+    monkeypatch,
+    assign_with_lens: bool,
+) -> None:
+    calls = []
+    monkeypatch.setattr(
+        lenses_mod.pl,
+        "set_weighted_score_data",
+        lambda data: calls.append(data),
+    )
+    original: pl.PartialScore = {
+        "score": 0.8,
+        "weight": 3,
+        "feedback": "Keep this feedback.",
+    }
+    data = _interval_question_data(
+        sympy.Interval(0, 1),
+        sympy.Interval.open(0, 1),
+        partial_score=None if assign_with_lens else original.copy(),
+    )
+    lens = SympyQuestion(data, "answer")
+    if assign_with_lens:
+        lens.set_rich_score(0.8, weight=3, feedback="Keep this feedback.")
+        calls.clear()
+
+    awarded = award_interval_clusivity_credit(lens)
+
+    assert awarded is False
+    assert data["partial_scores"]["answer"] == original
+    assert calls == []
+
+
+def test_award_interval_clusivity_credit_can_replace_higher_score(
+    monkeypatch,
+) -> None:
+    calls = []
+    monkeypatch.setattr(
+        lenses_mod.pl,
+        "set_weighted_score_data",
+        lambda data: calls.append(data),
+    )
+    data = _interval_question_data(
+        sympy.Interval(0, 1),
+        sympy.Interval.open(0, 1),
+        partial_score={"score": 0.8, "feedback": "Old feedback."},
+    )
+
+    awarded = award_interval_clusivity_credit(
+        SympyQuestion(data, "answer"),
+        partial_score=0.4,
+        feedback="New feedback.",
+        preserve_higher=False,
+    )
+
+    assert awarded is True
+    assert data["partial_scores"]["answer"] == {
+        "score": 0.4,
+        "feedback": "New feedback.",
+    }
+    assert calls == [data]
 
 
 def test_rule_matches_submitted_value() -> None:
