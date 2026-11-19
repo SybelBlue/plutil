@@ -1,6 +1,6 @@
 from typing import Final
 
-from . import choices, fabc, feedback, fmt, obfuscations, rand
+from . import choices, fabc, feedback, fmt, obfuscations, rand, sketch
 from .assumptions import (
     AssumptionsTypedDict,
     check,
@@ -66,6 +66,7 @@ from .lenses import (
     MultipleChoiceQuestion,
     NoPreferences,
     Question,
+    SketchQuestion,
     SympyQuestion,
     set_group_rich_score,
 )
@@ -98,6 +99,7 @@ __all__: Final[tuple[str, ...]] = (
     "NumberLike",
     "PlValue",
     "Question",
+    "SketchQuestion",
     "SetInput",
     "SetLike",
     "SympyInput",
@@ -146,6 +148,7 @@ __all__: Final[tuple[str, ...]] = (
     "setrec",
     "set_group_rich_score",
     "sign",
+    "sketch",
     "spint",
     "to_expr",
     "truncate_to_significant_digits",

@@ -32,6 +32,7 @@ Each lens wraps `data` for one `answers-name` from `question.html`. See [Getting
 | [Symbolic types & data](https://plutil.readthedocs.io/en/latest/guide/common.html) | `plutil.common` | Expression types, `eq`, `is_trivial`, `getrec`/`setrec` |
 | [Scoring & partial credit](https://plutil.readthedocs.io/en/latest/guide/grading.html) | `plutil.common`, `plutil.partial_credit` | Rich scores, choice credit, rule-based partial credit |
 | [Choices](https://plutil.readthedocs.io/en/latest/guide/choices.html) | `plutil.choices` | `pl-multiple-choice` / `pl-checkbox` option builders |
+| [Sketch authoring](https://plutil.readthedocs.io/en/latest/guide/sketch.html) | `plutil.sketch`, `plutil.lenses` | `pl-sketch` tools, drawings, solutions, and frame bounds |
 | [Formatting](https://plutil.readthedocs.io/en/latest/guide/formatting.html) | `plutil.fmt`, `plutil.defmt`, `plutil.symbolic_decimals` | Deterministic number formatting and parsing, exact decimal input |
 | [Functions](https://plutil.readthedocs.io/en/latest/guide/functions.html) | `plutil.functions` | Domains, evaluation, translate/scale, rearranging equations |
 | [Calculus & feedback](https://plutil.readthedocs.io/en/latest/guide/calculus.html) | `plutil.calculus`, `plutil.feedback` | Derivatives, tangent lines, integrals, stock feedback |

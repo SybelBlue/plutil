@@ -21,5 +21,6 @@
    plutil.partial_credit
    plutil.rand
    plutil.sets
+   plutil.sketch
    plutil.symbolic_decimals
 ```

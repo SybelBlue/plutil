@@ -23,6 +23,7 @@ from plutil import (
     PlValue,
     SetInput,
     SetLike,
+    SketchQuestion,
     SympyInput,
     SympyValue,
     check_implicit_equivalence,
@@ -48,6 +49,8 @@ from plutil.calculus import (
 from plutil.choices import checkbox, multiple_choice
 from plutil.common import _input_to_expr, _input_to_set, eq, str_to_sympy
 from plutil.functions import eval_at, evalf_at
+from plutil.sketch import SketchLayer, SketchParams, SketchToolType
+from plutil.tests.helpers import question_data
 
 
 def test_rand_factory_preserves_generator_return_types() -> None:
@@ -248,6 +251,27 @@ def test_multiple_choice_lens_has_a_typed_boolean_award() -> None:
     assert_type(question.submitted_choice, MultipleChoiceOption | None)
     assert_type(question.award_credit_for(), bool)
     assert_type(question.award_credit_for(("a", {"key": "b"})), bool)
+
+
+def test_sketch_lens_has_typed_layers_and_helpers() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    tool_type: SketchToolType = "point"
+
+    assert_type(sketch.params, SketchParams)
+    assert_type(sketch.initial, SketchLayer)
+    assert_type(sketch.solution, SketchLayer)
+    assert_type(sketch.x_bounds, tuple[float, float])
+    assert_type(sketch.y_bounds, tuple[float, float])
+    assert_type(sketch.configure(read_only=True), None)
+    assert_type(sketch.set_frame(x=(-5, 5)), None)
+    assert_type(sketch.add_tool("points", tool_type), str)
+    assert_type(sketch.initial.add_point((1, 2), tool_id="points"), str)
+    assert_type(sketch.initial.add_line((0, 0), (1, 1)), str)
+    assert_type(sketch.initial.add_polyline(((0, 0), (1, 1))), str)
+    assert_type(sketch.initial.add_polygon(((0, 0), (1, 0), (0, 1))), str)
+    assert_type(sketch.initial.add_curve(((0, 0), (1, 1))), str)
+    assert_type(sketch.solution.add_function(x**2, x=(-1, 1)), str)
+    assert_type(sketch.fit_frame(y_bounds=(-1, 2)), None)
 
 
 def test_text_parsers_preserve_the_expression_or_set_possibility() -> None:
