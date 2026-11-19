@@ -1,6 +1,29 @@
 # Scoring and partial credit
 
-Full API reference: {py:mod}`plutil.common`, {py:mod}`plutil.partial_credit`.
+Full API reference: {py:mod}`plutil.common`, {py:mod}`plutil.partial_credit`,
+{py:mod}`plutil.sets`.
+
+## Finite-set domain validation
+
+`reject_finite_set_outside_domain(lens, domain, *, message=...)` adds a format
+error when any member of a submitted finite set is not provably inside the
+authored {py:class}`plutil.rand.sp.Domain`. Indeterminate symbolic membership
+is rejected conservatively. Blank answers, non-set answers, and non-finite sets
+are left unchanged so this validator can be composed with other format checks.
+
+```python
+import sympy as sp
+
+from plutil import SympyQuestion, reject_finite_set_outside_domain
+
+
+def parse(data):
+    reject_finite_set_outside_domain(
+        SympyQuestion(data, "critical-points", variables="x"),
+        sp.Interval(-2, 2),
+        message="Every critical point must be between -2 and 2.",
+    )
+```
 
 ## `Question.set_rich_score(score, *, weight=None, feedback=None, preserve_higher=False) -> bool`
 

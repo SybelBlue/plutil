@@ -1,11 +1,16 @@
+from typing import Any, cast
+
 import prairielearn as pl
 import pytest
 import sympy as sp
 from sympy.abc import x
 
+import plutil
 from plutil.lenses import SympyQuestion
+from plutil.rand.sp import Domain
 from plutil.sets import (
     grade_sympy_set,
+    reject_finite_set_outside_domain,
     reject_non_sympy_set_input,
 )
 from plutil.tests.helpers import question_data
@@ -46,6 +51,113 @@ def test_reject_non_set_input_preserves_existing_format_error() -> None:
 
     assert rejected is False
     assert data["format_errors"]["answer"] == "Original error."
+
+
+def test_reject_finite_set_outside_domain_accepts_members_in_domain() -> None:
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(sp.FiniteSet(-1, 0, 1))},
+        format_errors={},
+    )
+
+    rejected = reject_finite_set_outside_domain(
+        SympyQuestion(data, "answer"), cast(Domain, sp.Interval(-1, 1))
+    )
+
+    assert rejected is False
+    assert data["format_errors"] == {}
+
+
+def test_reject_finite_set_outside_domain_rejects_member_outside_domain() -> None:
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(sp.FiniteSet(0, 2))},
+        format_errors={},
+    )
+
+    rejected = reject_finite_set_outside_domain(
+        SympyQuestion(data, "answer"), cast(Domain, sp.Interval(-1, 1))
+    )
+
+    assert rejected is True
+    assert data["format_errors"]["answer"] == (
+        "Every value in the set must be in the domain stated in the question."
+    )
+
+
+def test_reject_finite_set_outside_domain_rejects_indeterminate_membership() -> None:
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(sp.FiniteSet(x))}, format_errors={}
+    )
+
+    rejected = reject_finite_set_outside_domain(
+        SympyQuestion(data, "answer", variables=x),
+        cast(Domain, sp.Interval(-1, 1)),
+    )
+
+    assert rejected is True
+    assert "answer" in data["format_errors"]
+
+
+def test_reject_finite_set_outside_domain_preserves_existing_format_error() -> None:
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(sp.FiniteSet(2))},
+        format_errors={"answer": "Original error."},
+    )
+
+    rejected = reject_finite_set_outside_domain(
+        SympyQuestion(data, "answer"), cast(Domain, sp.Interval(-1, 1))
+    )
+
+    assert rejected is False
+    assert data["format_errors"]["answer"] == "Original error."
+
+
+@pytest.mark.parametrize(
+    "submitted",
+    [None, x + 1, sp.Interval(0, 1)],
+)
+def test_reject_finite_set_outside_domain_skips_non_finite_set_submissions(
+    submitted: sp.Basic | None,
+) -> None:
+    submitted_answers = {} if submitted is None else {"answer": pl.to_json(submitted)}
+    data = question_data(submitted_answers=submitted_answers, format_errors={})
+
+    rejected = reject_finite_set_outside_domain(
+        SympyQuestion(data, "answer", variables=x), sp.S.Reals
+    )
+
+    assert rejected is False
+    assert data["format_errors"] == {}
+
+
+def test_reject_finite_set_outside_domain_uses_custom_message() -> None:
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(sp.FiniteSet(2))}, format_errors={}
+    )
+
+    rejected = reject_finite_set_outside_domain(
+        SympyQuestion(data, "answer"),
+        cast(Domain, sp.Interval(-1, 1)),
+        message="Keep every value between -1 and 1.",
+    )
+
+    assert rejected is True
+    assert data["format_errors"]["answer"] == "Keep every value between -1 and 1."
+
+
+@pytest.mark.parametrize("domain", [(-1, 1), sp.FiniteSet(-1, 0, 1)])
+def test_reject_finite_set_outside_domain_requires_plutil_domain(
+    domain: object,
+) -> None:
+    data = question_data(format_errors={"answer": "Original error."})
+
+    with pytest.raises(TypeError, match=r"domain must be a plutil\.rand\.sp\.Domain"):
+        reject_finite_set_outside_domain(
+            SympyQuestion(data, "answer"), cast(Any, domain)
+        )
+
+
+def test_reject_finite_set_outside_domain_is_exported() -> None:
+    assert plutil.reject_finite_set_outside_domain is reject_finite_set_outside_domain
 
 
 def test_score_set_answer_awards_credit_per_correct_element() -> None:

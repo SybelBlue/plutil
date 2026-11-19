@@ -4,6 +4,7 @@ from typing import Literal
 import sympy as sp
 
 from .lenses import SympyQuestion
+from .rand.sp import Domain
 
 
 def _finite_set_values(value: sp.Set) -> tuple[sp.Basic, ...] | None:
@@ -53,6 +54,49 @@ def reject_non_sympy_set_input(
 
     lens.format_error = f"The answer must be formatted as a set, e.g. {example}"
     return True
+
+
+def reject_finite_set_outside_domain(
+    lens: SympyQuestion,
+    domain: Domain,
+    *,
+    message: str = "Every value in the set must be in the domain stated in the question.",
+) -> bool:
+    """Add a format error when a finite-set member is not in ``domain``.
+
+    Membership must be provably true. This conservatively rejects symbolic
+    members when SymPy cannot determine whether they lie in the domain. Returns
+    ``True`` when the validator adds the error and ``False`` when another format
+    error exists, the submission cannot be enumerated as a finite set, or every
+    submitted member is provably in the domain.
+
+    Raises:
+        TypeError: If ``domain`` is not a supported :class:`~plutil.rand.sp.Domain`.
+    """
+    if not isinstance(domain, Domain.__value__):
+        raise TypeError("domain must be a plutil.rand.sp.Domain")
+
+    if lens.format_error is not None:
+        return False
+
+    submitted = lens.submitted_answer
+    if not isinstance(submitted, sp.Set):
+        return False
+
+    values = _finite_set_values(submitted)
+    if values is None:
+        return False
+
+    for value in values:
+        try:
+            membership = domain.contains(value)
+        except (TypeError, ValueError, NotImplementedError):
+            membership = None
+        if membership is not sp.true:
+            lens.format_error = message
+            return True
+
+    return False
 
 
 def grade_sympy_set(lens: SympyQuestion) -> bool:
