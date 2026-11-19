@@ -384,6 +384,14 @@ def _tool_attrs(
     return _attrs(attributes)
 
 
+def _validate_tool_id(tool_id: str) -> str:
+    if not isinstance(tool_id, str) or not tool_id.strip():
+        raise ValueError("tool_id must be a nonblank string")
+    if tool_id != tool_id.strip():
+        raise ValueError("tool_id must not have surrounding whitespace")
+    return tool_id
+
+
 class _SketchAuthoringMixin:
     """Implementation mixin for :class:`plutil.lenses.SketchQuestion`."""
 
@@ -629,8 +637,7 @@ class _SketchAuthoringMixin:
         auto: bool,
         options: Mapping[str, object],
     ) -> str:
-        if not isinstance(tool_id, str) or not tool_id.strip():
-            raise ValueError("tool_id must be a nonblank string")
+        tool_id = _validate_tool_id(tool_id)
         signature = _tool_signature(tool_type, options)
         existing = next(
             (tool for tool in self.params["tools"] if tool["id"] == tool_id), None
@@ -658,6 +665,7 @@ class _SketchAuthoringMixin:
         options: Mapping[str, object],
     ) -> str:
         if tool_id is not None:
+            tool_id = _validate_tool_id(tool_id)
             if options:
                 raise ValueError(
                     "style options cannot be combined with an explicit tool_id; "

@@ -161,6 +161,17 @@ def test_explicit_tools_validate_references_and_conflicts() -> None:
         sketch.initial.add_point((0, 0), tool_id="open-points", color="blue")
 
 
+def test_tool_ids_reject_surrounding_whitespace() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+
+    with pytest.raises(ValueError, match="surrounding whitespace"):
+        sketch.add_tool(" points", "point")
+
+    sketch.add_tool("points", "point")
+    with pytest.raises(ValueError, match="surrounding whitespace"):
+        sketch.initial.add_point((0, 0), tool_id="points ")
+
+
 def test_tool_validation_matches_pl_sketch_constraints() -> None:
     sketch = SketchQuestion(question_data(), "graph")
 
