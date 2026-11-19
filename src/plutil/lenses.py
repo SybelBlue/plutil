@@ -9,7 +9,7 @@ from collections.abc import (
     Sequence,
     ValuesView,
 )
-from dataclasses import KW_ONLY, dataclass
+from dataclasses import KW_ONLY, dataclass, field
 from difflib import get_close_matches
 from types import UnionType
 from typing import (
@@ -45,7 +45,7 @@ from .common import (
     to_expr,
 )
 from .partial_credit import PartialCreditRule, award_partial_credit
-from .sketch import _SketchAuthoringMixin
+from .sketch import SketchGraderRegistry, _SketchAuthoringMixin
 
 _question_data_types: dict[tuple[type, type], type] = {}
 
@@ -610,10 +610,14 @@ class SketchQuestion(_SketchAuthoringMixin, PartialScoreProxy):
 
     _: KW_ONLY
     must_exist: bool = False
+    _grader_registry: SketchGraderRegistry = field(
+        init=False, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         """Create or reconnect to this sketch's Mustache-ready parameters."""
         self._initialize_sketch(must_exist=self.must_exist)
+        self._grader_registry = SketchGraderRegistry(self)
 
 
 def _normalize_choice_html(value: str) -> str:

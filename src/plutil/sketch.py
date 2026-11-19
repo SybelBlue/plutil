@@ -1,8 +1,8 @@
 """Mustache-ready authoring helpers for PrairieLearn's ``pl-sketch``.
 
-The helpers in this module build the tool and drawing tags consumed by
-``pl-sketch`` during PrairieLearn's prepare phase.  They intentionally store
-their authoring data under ``params[f"{answers_name}_sketch"]`` because
+The helpers in this module build the tool, grading, and drawing tags consumed
+by ``pl-sketch`` during PrairieLearn's prepare phase.  They intentionally
+store their authoring data under ``params[f"{answers_name}_sketch"]`` because
 ``pl-sketch`` reserves ``params[answers_name]`` for its prepared client state.
 """
 
@@ -11,8 +11,10 @@ from __future__ import annotations
 import ast
 import html
 import math
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
+from fractions import Fraction
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -44,12 +46,29 @@ type SketchToolType = Literal[
     "horizontal-line",
     "vertical-line",
 ]
+type SketchGraderType = Literal[
+    "count",
+    "match",
+    "defined-in",
+    "undefined-in",
+    "less-than",
+    "greater-than",
+    "match-function",
+    "monot-increasing",
+    "monot-decreasing",
+    "concave-up",
+    "concave-down",
+]
+type SketchCountMode = Literal["exact", "at-least", "at-most"]
+type SketchMatchEndpoint = Literal["start", "end", "either"]
 type SketchBounds = tuple[float, float]
 type SketchBoundsInput = Sequence[ExprInput]
 type SketchPointInput = Sequence[ExprInput]
 type SketchFunctionInput = str | ExprInput
-type SketchFunctionRange = tuple[float | None, float | None]
-type SketchFunctionRangeInput = Sequence[ExprInput | None]
+type SketchRange = tuple[float | None, float | None]
+type SketchRangeInput = Sequence[ExprInput | None]
+type SketchFunctionRange = SketchRange
+type SketchFunctionRangeInput = SketchRangeInput
 
 
 class SketchToolParams(TypedDict):
@@ -75,6 +94,25 @@ class SketchDrawingParams(TypedDict):
     function_range: NotRequired[list[float | None]]
 
 
+class SketchGraderParams(TypedDict):
+    """One Mustache-ready ``pl-sketch-grade`` entry."""
+
+    type: SketchGraderType
+    tool_ids: list[str]
+    stage: int
+    share: int
+    attrs: str
+    _criterion_attrs: list[list[str]]
+    _common_attrs: list[list[str]]
+
+
+class SketchGraderStageParams(TypedDict):
+    """One weighted, ordered sketch grading stage."""
+
+    stage: int
+    weight: int
+
+
 class SketchParams(TypedDict):
     """Mustache-ready specification stored for one sketch answer."""
 
@@ -90,6 +128,8 @@ class SketchParams(TypedDict):
     x_bounds: list[float]
     y_bounds: list[float]
     tools: list[SketchToolParams]
+    grader_stages: list[SketchGraderStageParams]
+    graders: list[SketchGraderParams]
     initial: list[SketchDrawingParams]
     solution: list[SketchDrawingParams]
 
@@ -121,7 +161,6 @@ _FUNCTION_NAMES = frozenset(
         "sqrt",
         "tan",
         "tanh",
-        "x",
     )
 )
 _FUNCTION_CALL_NAMES = _FUNCTION_NAMES - {"e", "pi", "x"}
@@ -234,6 +273,45 @@ _TOOL_ATTR_NAMES = {
     "length_constraint": "length-constraint",
     "fill_color": "fill-color",
 }
+_ALL_TOOL_TYPES: frozenset[SketchToolType] = frozenset(_TOOL_OPTION_NAMES)
+_GRADER_TOOL_TYPES: dict[SketchGraderType, frozenset[SketchToolType]] = {
+    "count": _ALL_TOOL_TYPES,
+    "match": _ALL_TOOL_TYPES,
+    "defined-in": frozenset(("free-draw", "spline", "polyline", "polygon", "line")),
+    "undefined-in": frozenset(
+        (
+            "free-draw",
+            "point",
+            "spline",
+            "polyline",
+            "polygon",
+            "line",
+            "vertical-line",
+        )
+    ),
+    "less-than": frozenset(_ALL_TOOL_TYPES - {"vertical-line"}),
+    "greater-than": frozenset(_ALL_TOOL_TYPES - {"vertical-line"}),
+    "match-function": frozenset(("free-draw", "point", "spline", "polyline")),
+    "monot-increasing": frozenset(("free-draw", "spline", "polyline", "line")),
+    "monot-decreasing": frozenset(("free-draw", "spline", "polyline", "line")),
+    "concave-up": frozenset(("free-draw", "spline", "polyline", "line")),
+    "concave-down": frozenset(("free-draw", "spline", "polyline", "line")),
+}
+_GRADER_OPTION_NAMES: dict[SketchGraderType, frozenset[str]] = {
+    "count": frozenset(("count", "mode", "x_range")),
+    "match": frozenset(("x", "y", "endpoint")),
+    "defined-in": frozenset(("x_range",)),
+    "undefined-in": frozenset(("x_range",)),
+    "less-than": frozenset(("y", "function", "x_range", "y_range", "xy_flip")),
+    "greater-than": frozenset(("y", "function", "x_range", "y_range", "xy_flip")),
+    "match-function": frozenset(
+        ("function", "x_range", "y_range", "xy_flip", "allow_undefined")
+    ),
+    "monot-increasing": frozenset(("x_range",)),
+    "monot-decreasing": frozenset(("x_range",)),
+    "concave-up": frozenset(("x_range",)),
+    "concave-down": frozenset(("x_range",)),
+}
 
 
 def sketch_param_name(answers_name: str) -> str:
@@ -286,28 +364,38 @@ def _bounds(value: SketchBoundsInput, *, axis: str) -> SketchBounds:
     return lower, upper
 
 
-def _function_range(
-    value: SketchFunctionRangeInput | None,
-) -> SketchFunctionRange | None:
+def _range(value: SketchRangeInput | None, *, label: str) -> SketchRange | None:
     if value is None:
         return None
     if isinstance(value, (str, bytes)) or len(value) != 2:
-        raise ValueError("function x-range must contain exactly two endpoints")
+        raise ValueError(f"{label} must contain exactly two endpoints")
     lower = (
         None
         if value[0] is None
-        else _finite_real(value[0], label="function x-range lower bound")
+        else _finite_real(value[0], label=f"{label} lower bound")
     )
     upper = (
         None
         if value[1] is None
-        else _finite_real(value[1], label="function x-range upper bound")
+        else _finite_real(value[1], label=f"{label} upper bound")
     )
     if lower is not None and upper is not None and lower >= upper:
-        raise ValueError("function x-range must be ordered from low to high")
+        raise ValueError(f"{label} must be ordered from low to high")
     if lower is None and upper is None:
         return None
     return lower, upper
+
+
+def _function_range(
+    value: SketchFunctionRangeInput | None,
+) -> SketchFunctionRange | None:
+    return _range(value, label="function x-range")
+
+
+def _range_text(value: SketchRange) -> str:
+    return ",".join(
+        "" if endpoint is None else _format_number(endpoint) for endpoint in value
+    )
 
 
 def _point(value: SketchPointInput, *, label: str = "point") -> tuple[float, float]:
@@ -349,6 +437,76 @@ def _attrs(attributes: Iterable[tuple[str, object]]) -> str:
     )
 
 
+def _stored_attributes(
+    attributes: Iterable[tuple[str, object]],
+) -> list[list[str]]:
+    return [[name, _attr_value(value)] for name, value in attributes]
+
+
+def _attribute_pairs(attributes: Sequence[Sequence[str]]) -> list[tuple[str, str]]:
+    return [(attribute[0], attribute[1]) for attribute in attributes]
+
+
+def _compiled_grader_weights(
+    graders: Sequence[SketchGraderParams],
+    stages: Sequence[SketchGraderStageParams],
+) -> list[int]:
+    if not graders:
+        return []
+    stage_weights = {stage["stage"]: stage["weight"] for stage in stages}
+    stage_shares: dict[int, int] = {}
+    for grader in graders:
+        if grader["stage"] > 0:
+            stage_shares[grader["stage"]] = (
+                stage_shares.get(grader["stage"], 0) + grader["share"]
+            )
+
+    semantic_weights = [
+        Fraction(grader["share"])
+        if grader["stage"] == 0
+        else Fraction(
+            stage_weights[grader["stage"]] * grader["share"],
+            stage_shares[grader["stage"]],
+        )
+        for grader in graders
+    ]
+    scale = math.lcm(*(weight.denominator for weight in semantic_weights))
+    integer_weights = [
+        weight.numerator * (scale // weight.denominator) for weight in semantic_weights
+    ]
+    divisor = math.gcd(*integer_weights)
+    return [weight // divisor for weight in integer_weights]
+
+
+def _compile_graders(
+    graders: Sequence[SketchGraderParams],
+    stages: Sequence[SketchGraderStageParams],
+) -> list[SketchGraderParams]:
+    weights = _compiled_grader_weights(graders, stages)
+    compiled: list[SketchGraderParams] = []
+    for grader, weight in zip(graders, weights, strict=True):
+        attributes: list[tuple[str, object]] = [
+            ("type", grader["type"]),
+            ("tool-id", ",".join(grader["tool_ids"])),
+            *_attribute_pairs(grader["_criterion_attrs"]),
+        ]
+        if weight != 1:
+            attributes.append(("weight", weight))
+        if grader["stage"] != 0:
+            attributes.append(("stage", grader["stage"]))
+        attributes.extend(_attribute_pairs(grader["_common_attrs"]))
+        compiled.append(
+            cast(
+                SketchGraderParams,
+                {
+                    **grader,
+                    "attrs": _attrs(attributes),
+                },
+            )
+        )
+    return compiled
+
+
 class _SketchFunctionPrinter(StrPrinter):
     """Print SymPy functions using sketchresponse's accepted spellings."""
 
@@ -359,7 +517,7 @@ class _SketchFunctionPrinter(StrPrinter):
         return f"e**({self._print(expression.args[0])})"
 
 
-def _validate_function_text(value: str) -> str:
+def _validate_function_text(value: str, *, variable: Literal["x", "y"] = "x") -> str:
     try:
         tree = ast.parse(value, mode="eval")
     except SyntaxError as exc:
@@ -382,20 +540,25 @@ def _validate_function_text(value: str) -> str:
             raise ValueError(
                 "pl-sketch function calls must target a supported function name"
             )
-        if isinstance(node, ast.Name) and node.id not in _FUNCTION_NAMES:
+        if (
+            isinstance(node, ast.Name)
+            and node.id != variable
+            and node.id not in _FUNCTION_NAMES
+        ):
             raise ValueError(
-                "pl-sketch functions may only use x and supported function names; "
+                f"pl-sketch functions may only use {variable} and supported "
+                "function names; "
                 f"got {node.id!r}"
             )
     return value
 
 
-def _function(value: SketchFunctionInput) -> str:
+def _function(value: SketchFunctionInput, *, variable: Literal["x", "y"] = "x") -> str:
     if isinstance(value, str):
         result = value.strip()
         if not result:
             raise ValueError("function must not be blank")
-        return _validate_function_text(result)
+        return _validate_function_text(result, variable=variable)
     try:
         expression = _input_to_expr(value)
     except (sp.SympifyError, TypeError, ValueError) as exc:
@@ -403,12 +566,49 @@ def _function(value: SketchFunctionInput) -> str:
     if not isinstance(expression, sp.Expr):
         raise TypeError("function must be a symbolic expression")
     if any(
-        not isinstance(symbol, sp.Symbol) or symbol.name != "x"
+        not isinstance(symbol, sp.Symbol) or symbol.name != variable
         for symbol in expression.free_symbols
     ):
-        raise ValueError("pl-sketch functions may only use the variable x")
+        raise ValueError(f"pl-sketch functions may only use the variable {variable}")
     printable = expression.xreplace({sp.E: sp.Symbol("e")})
-    return _validate_function_text(_SketchFunctionPrinter().doprint(printable))
+    return _validate_function_text(
+        _SketchFunctionPrinter().doprint(printable), variable=variable
+    )
+
+
+def _nonnegative_integer(value: int, *, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{label} must be a nonnegative integer")
+    return value
+
+
+def _positive_integer(value: int, *, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{label} must be a positive integer")
+    return value
+
+
+def _grader_common_options(
+    *,
+    tolerance: int | None = None,
+    feedback: str | None = None,
+    debug: bool = False,
+) -> list[tuple[str, object]]:
+    if tolerance is not None:
+        _nonnegative_integer(tolerance, label="grader tolerance")
+    if feedback is not None and not isinstance(feedback, str):
+        raise TypeError("grader feedback must be a string")
+    if not isinstance(debug, bool):
+        raise TypeError("grader debug must be a boolean")
+
+    attributes: list[tuple[str, object]] = []
+    if tolerance is not None:
+        attributes.append(("tolerance", tolerance))
+    if feedback is not None:
+        attributes.append(("feedback", feedback))
+    if debug:
+        attributes.append(("debug", True))
+    return attributes
 
 
 def _tool_options(
@@ -609,6 +809,20 @@ def _validate_stored_extent(value: object, *, label: str) -> None:
         raise TypeError(f"{label} must be ordered from low to high")
 
 
+def _validate_stored_attributes(value: object, *, label: str) -> set[str]:
+    if not isinstance(value, list) or any(
+        not isinstance(attribute, list)
+        or len(attribute) != 2
+        or not all(isinstance(part, str) for part in attribute)
+        for attribute in value
+    ):
+        raise TypeError(f"{label} must contain string attribute pairs")
+    names = [attribute[0] for attribute in value]
+    if len(names) != len(set(names)):
+        raise TypeError(f"{label} contains duplicate attributes")
+    return set(names)
+
+
 def _validate_stored_sketch(value: dict[object, object], *, answers_name: str) -> None:
     _validate_mapping_keys(
         value,
@@ -647,6 +861,7 @@ def _validate_stored_sketch(value: dict[object, object], *, answers_name: str) -
     if not isinstance(tools, list):
         raise TypeError("stored sketch tools must be a list")
     tool_ids: set[str] = set()
+    tool_types: dict[str, SketchToolType] = {}
     for index, raw_tool in enumerate(tools):
         label = f"stored sketch tool {index}"
         if not isinstance(raw_tool, dict):
@@ -665,6 +880,7 @@ def _validate_stored_sketch(value: dict[object, object], *, answers_name: str) -
         tool_ids.add(tool_id)
         if raw_tool["type"] not in _TOOL_OPTION_NAMES:
             raise TypeError(f"{label} has an unsupported type")
+        tool_types[tool_id] = cast(SketchToolType, raw_tool["type"])
         if not isinstance(raw_tool["attrs"], str):
             raise TypeError(f"{label} attrs must be a string")
         if not isinstance(raw_tool["read_only"], bool) or not isinstance(
@@ -682,6 +898,103 @@ def _validate_stored_sketch(value: dict[object, object], *, answers_name: str) -
             for item in signature
         ):
             raise TypeError(f"{label} signature is malformed")
+
+    raw_stages = value["grader_stages"]
+    if not isinstance(raw_stages, list):
+        raise TypeError("stored sketch grader stages must be a list")
+    stages: list[SketchGraderStageParams] = []
+    for index, raw_stage in enumerate(raw_stages, start=1):
+        label = f"stored sketch grader stage {index}"
+        if not isinstance(raw_stage, dict):
+            raise TypeError(f"{label} must be a mapping")
+        _validate_mapping_keys(
+            raw_stage,
+            required=SketchGraderStageParams.__required_keys__,
+            label=label,
+        )
+        stage_number = raw_stage["stage"]
+        if (
+            isinstance(stage_number, bool)
+            or not isinstance(stage_number, int)
+            or stage_number != index
+        ):
+            raise TypeError("stored sketch grader stages must be contiguous")
+        try:
+            _positive_integer(cast(int, raw_stage["weight"]), label=f"{label} weight")
+        except ValueError as exc:
+            raise TypeError(str(exc)) from exc
+        stages.append(cast(SketchGraderStageParams, raw_stage))
+
+    raw_graders = value["graders"]
+    if not isinstance(raw_graders, list):
+        raise TypeError("stored sketch graders must be a list")
+    graders: list[SketchGraderParams] = []
+    populated_stages: set[int] = set()
+    for index, raw_grader in enumerate(raw_graders):
+        label = f"stored sketch grader {index}"
+        if not isinstance(raw_grader, dict):
+            raise TypeError(f"{label} must be a mapping")
+        _validate_mapping_keys(
+            raw_grader,
+            required=SketchGraderParams.__required_keys__,
+            label=label,
+        )
+        grader_type = raw_grader["type"]
+        if grader_type not in _GRADER_TOOL_TYPES:
+            raise TypeError(f"{label} has an unsupported type")
+        grader_tool_ids = raw_grader["tool_ids"]
+        if (
+            not isinstance(grader_tool_ids, list)
+            or not grader_tool_ids
+            or not all(isinstance(tool_id, str) for tool_id in grader_tool_ids)
+        ):
+            raise TypeError(f"{label} tool_ids must be a nonempty string list")
+        if len(grader_tool_ids) != len(set(grader_tool_ids)):
+            raise TypeError(f"{label} tool_ids must be distinct")
+        for tool_id in grader_tool_ids:
+            if tool_id not in tool_ids:
+                raise TypeError(f"{label} refers to an unknown tool")
+            if tool_types[tool_id] not in _GRADER_TOOL_TYPES[grader_type]:
+                raise TypeError(f"{label} uses an unsupported tool type")
+        stage = raw_grader["stage"]
+        if (
+            isinstance(stage, bool)
+            or not isinstance(stage, int)
+            or stage < 0
+            or stage > len(stages)
+        ):
+            raise TypeError(f"{label} stage is invalid")
+        if stage > 0:
+            populated_stages.add(stage)
+        try:
+            _positive_integer(cast(int, raw_grader["share"]), label=f"{label} share")
+        except ValueError as exc:
+            raise TypeError(str(exc)) from exc
+        if not isinstance(raw_grader["attrs"], str):
+            raise TypeError(f"{label} attrs must be a string")
+        criterion_names = _validate_stored_attributes(
+            raw_grader["_criterion_attrs"], label=f"{label} criterion attributes"
+        )
+        common_names = _validate_stored_attributes(
+            raw_grader["_common_attrs"], label=f"{label} common attributes"
+        )
+        allowed_criterion_names = {
+            name.replace("_", "-") for name in _GRADER_OPTION_NAMES[grader_type]
+        }
+        if not criterion_names <= allowed_criterion_names:
+            raise TypeError(f"{label} has unsupported criterion attributes")
+        if not common_names <= {"tolerance", "feedback", "debug"}:
+            raise TypeError(f"{label} has unsupported common attributes")
+        graders.append(cast(SketchGraderParams, raw_grader))
+
+    if populated_stages != set(range(1, len(stages) + 1)):
+        raise TypeError("stored sketch grader stages must not be empty")
+    compiled_graders = _compile_graders(graders, stages)
+    if any(
+        stored["attrs"] != compiled["attrs"]
+        for stored, compiled in zip(graders, compiled_graders, strict=True)
+    ):
+        raise TypeError("stored sketch grader attrs are inconsistent")
 
     drawings: list[SketchDrawingParams] = []
     for state in ("initial", "solution"):
@@ -789,20 +1102,20 @@ class Tool[ToolTypeT: SketchToolType]:
         )
 
     @classmethod
-    def _from_options(
+    def _from_options[CreatedToolTypeT: SketchToolType](
         cls,
         sketch: SketchQuestion,
         tool_id: str,
-        tool_type: ToolTypeT,
+        tool_type: CreatedToolTypeT,
         options: Mapping[str, object],
-    ) -> Tool[ToolTypeT]:
+    ) -> Tool[CreatedToolTypeT]:
         tool = object.__new__(cls)
         object.__setattr__(tool, "_sketch", sketch)
         object.__setattr__(tool, "id", tool_id)
         object.__setattr__(tool, "type", tool_type)
         for name in _TOOL_OPTION_FIELDS:
             object.__setattr__(tool, name, options.get(name))
-        return tool
+        return cast(Tool[CreatedToolTypeT], tool)
 
     def _options(self) -> dict[str, object]:
         return {
@@ -1360,6 +1673,492 @@ class SketchTools:
         return self.sketch._register_tool(tool)
 
 
+type SketchGraderTools[ToolTypeT: SketchToolType] = (
+    Tool[ToolTypeT] | Sequence[Tool[ToolTypeT]]
+)
+type _DefinedToolType = Literal["free-draw", "spline", "polyline", "polygon", "line"]
+type _UndefinedToolType = Literal[
+    "free-draw", "point", "spline", "polyline", "polygon", "line", "vertical-line"
+]
+type _OrderingToolType = Literal[
+    "free-draw", "point", "spline", "polyline", "polygon", "line", "horizontal-line"
+]
+type _FunctionToolType = Literal["free-draw", "point", "spline", "polyline"]
+type _ShapeToolType = Literal["free-draw", "spline", "polyline", "line"]
+
+
+@dataclass(slots=True)
+class _SketchGraderStageBuffer:
+    weight: int
+    graders: list[SketchGraderParams] = field(default_factory=list)
+
+
+class SketchGraderRegistry:
+    """Native grading-criterion registry belonging to one sketch."""
+
+    __slots__ = ("_active_stage", "sketch")
+
+    def __init__(self, sketch: SketchQuestion) -> None:
+        self.sketch = sketch
+        self._active_stage: _SketchGraderStageBuffer | None = None
+
+    @contextmanager
+    def stage(self, *, weight: int = 1) -> Iterator[Self]:
+        """Collect one atomic, weighted stage and yield this registry."""
+        _positive_integer(weight, label="grader stage weight")
+        if self._active_stage is not None:
+            raise RuntimeError("sketch grader stages cannot be nested")
+        buffer = _SketchGraderStageBuffer(weight)
+        self._active_stage = buffer
+        try:
+            yield self
+            if not buffer.graders:
+                raise ValueError(
+                    "a sketch grader stage requires at least one criterion"
+                )
+            self._commit_stage(buffer)
+        finally:
+            self._active_stage = None
+
+    @overload
+    def create(
+        self,
+        *,
+        type: Literal["count"],
+        tools: SketchGraderTools[SketchToolType],
+        count: int,
+        mode: SketchCountMode = "exact",
+        x_range: SketchRangeInput | None = None,
+        share: int = 1,
+        tolerance: int | None = None,
+        feedback: str | None = None,
+        debug: bool = False,
+    ) -> None: ...
+
+    @overload
+    def create(
+        self,
+        *,
+        type: Literal["match"],
+        tools: SketchGraderTools[SketchToolType],
+        x: ExprInput | None = None,
+        y: ExprInput | None = None,
+        endpoint: SketchMatchEndpoint | None = None,
+        share: int = 1,
+        tolerance: int | None = None,
+        feedback: str | None = None,
+        debug: bool = False,
+    ) -> None: ...
+
+    @overload
+    def create(
+        self,
+        *,
+        type: Literal["defined-in"],
+        tools: SketchGraderTools[_DefinedToolType],
+        x_range: SketchRangeInput | None = None,
+        share: int = 1,
+        tolerance: int | None = None,
+        feedback: str | None = None,
+        debug: bool = False,
+    ) -> None: ...
+
+    @overload
+    def create(
+        self,
+        *,
+        type: Literal["undefined-in"],
+        tools: SketchGraderTools[_UndefinedToolType],
+        x_range: SketchRangeInput | None = None,
+        share: int = 1,
+        tolerance: int | None = None,
+        feedback: str | None = None,
+        debug: bool = False,
+    ) -> None: ...
+
+    @overload
+    def create(
+        self,
+        *,
+        type: Literal["less-than"],
+        tools: SketchGraderTools[_OrderingToolType],
+        y: ExprInput | None = None,
+        function: SketchFunctionInput | None = None,
+        x_range: SketchRangeInput | None = None,
+        y_range: SketchRangeInput | None = None,
+        xy_flip: bool = False,
+        share: int = 1,
+        tolerance: int | None = None,
+        feedback: str | None = None,
+        debug: bool = False,
+    ) -> None: ...
+
+    @overload
+    def create(
+        self,
+        *,
+        type: Literal["greater-than"],
+        tools: SketchGraderTools[_OrderingToolType],
+        y: ExprInput | None = None,
+        function: SketchFunctionInput | None = None,
+        x_range: SketchRangeInput | None = None,
+        y_range: SketchRangeInput | None = None,
+        xy_flip: bool = False,
+        share: int = 1,
+        tolerance: int | None = None,
+        feedback: str | None = None,
+        debug: bool = False,
+    ) -> None: ...
+
+    @overload
+    def create(
+        self,
+        *,
+        type: Literal["match-function"],
+        tools: SketchGraderTools[_FunctionToolType],
+        function: SketchFunctionInput,
+        x_range: SketchRangeInput | None = None,
+        y_range: SketchRangeInput | None = None,
+        xy_flip: bool = False,
+        allow_undefined: bool = False,
+        share: int = 1,
+        tolerance: int | None = None,
+        feedback: str | None = None,
+        debug: bool = False,
+    ) -> None: ...
+
+    @overload
+    def create(
+        self,
+        *,
+        type: Literal["monot-increasing"],
+        tools: SketchGraderTools[_ShapeToolType],
+        x_range: SketchRangeInput | None = None,
+        share: int = 1,
+        tolerance: int | None = None,
+        feedback: str | None = None,
+        debug: bool = False,
+    ) -> None: ...
+
+    @overload
+    def create(
+        self,
+        *,
+        type: Literal["monot-decreasing"],
+        tools: SketchGraderTools[_ShapeToolType],
+        x_range: SketchRangeInput | None = None,
+        share: int = 1,
+        tolerance: int | None = None,
+        feedback: str | None = None,
+        debug: bool = False,
+    ) -> None: ...
+
+    @overload
+    def create(
+        self,
+        *,
+        type: Literal["concave-up"],
+        tools: SketchGraderTools[_ShapeToolType],
+        x_range: SketchRangeInput | None = None,
+        share: int = 1,
+        tolerance: int | None = None,
+        feedback: str | None = None,
+        debug: bool = False,
+    ) -> None: ...
+
+    @overload
+    def create(
+        self,
+        *,
+        type: Literal["concave-down"],
+        tools: SketchGraderTools[_ShapeToolType],
+        x_range: SketchRangeInput | None = None,
+        share: int = 1,
+        tolerance: int | None = None,
+        feedback: str | None = None,
+        debug: bool = False,
+    ) -> None: ...
+
+    def create(
+        self,
+        *,
+        type: SketchGraderType,
+        tools: object,
+        count: int | None = None,
+        mode: SketchCountMode | None = None,
+        x: ExprInput | None = None,
+        y: ExprInput | None = None,
+        endpoint: SketchMatchEndpoint | None = None,
+        function: SketchFunctionInput | None = None,
+        x_range: SketchRangeInput | None = None,
+        y_range: SketchRangeInput | None = None,
+        xy_flip: bool | None = None,
+        allow_undefined: bool | None = None,
+        share: int = 1,
+        tolerance: int | None = None,
+        feedback: str | None = None,
+        debug: bool = False,
+    ) -> None:
+        """Create one independent or currently staged native criterion."""
+        if type not in _GRADER_TOOL_TYPES:
+            raise ValueError(f"unsupported sketch grader type: {type!r}")
+        _positive_integer(share, label="grader share")
+        normalized_tools = self._normalize_tools(tools, type)
+        provided = {
+            name
+            for name, value in {
+                "count": count,
+                "mode": mode,
+                "x": x,
+                "y": y,
+                "endpoint": endpoint,
+                "function": function,
+                "x_range": x_range,
+                "y_range": y_range,
+                "xy_flip": xy_flip,
+                "allow_undefined": allow_undefined,
+            }.items()
+            if value is not None
+        }
+        unsupported = provided - _GRADER_OPTION_NAMES[type]
+        if unsupported:
+            names = ", ".join(sorted(unsupported))
+            raise ValueError(f"{type} does not support grader options: {names}")
+
+        attributes = self._criterion_attributes(
+            type,
+            normalized_tools,
+            count=count,
+            mode=mode,
+            x=x,
+            y=y,
+            endpoint=endpoint,
+            function=function,
+            x_range=x_range,
+            y_range=y_range,
+            xy_flip=xy_flip,
+            allow_undefined=allow_undefined,
+        )
+        common = _grader_common_options(
+            tolerance=tolerance,
+            feedback=feedback,
+            debug=debug,
+        )
+        tool_ids = [tool.id for tool in normalized_tools]
+        grader: SketchGraderParams = {
+            "type": type,
+            "tool_ids": tool_ids,
+            "stage": 0,
+            "share": share,
+            "attrs": "",
+            "_criterion_attrs": _stored_attributes(attributes),
+            "_common_attrs": _stored_attributes(common),
+        }
+        if self._active_stage is not None:
+            self._active_stage.graders.append(grader)
+            return
+        self._commit_independent(grader)
+
+    def _commit_independent(self, grader: SketchGraderParams) -> None:
+        params = self.sketch.params
+        params["graders"] = _compile_graders(
+            (*params["graders"], grader), params["grader_stages"]
+        )
+        self.sketch._sync_sketch_markup()
+
+    def _commit_stage(self, buffer: _SketchGraderStageBuffer) -> None:
+        params = self.sketch.params
+        stage_number = len(params["grader_stages"]) + 1
+        stage: SketchGraderStageParams = {
+            "stage": stage_number,
+            "weight": buffer.weight,
+        }
+        staged_graders = [
+            cast(SketchGraderParams, {**grader, "stage": stage_number})
+            for grader in buffer.graders
+        ]
+        stages = [*params["grader_stages"], stage]
+        graders = _compile_graders(
+            (*params["graders"], *staged_graders),
+            stages,
+        )
+        params["grader_stages"] = stages
+        params["graders"] = graders
+        self.sketch._sync_sketch_markup()
+
+    def _normalize_tools(
+        self, tools: object, grader_type: SketchGraderType
+    ) -> tuple[Tool[SketchToolType], ...]:
+        if isinstance(tools, Tool):
+            items = (tools,)
+        elif isinstance(tools, Sequence) and not isinstance(tools, (str, bytes)):
+            items = tuple(tools)
+        else:
+            raise TypeError("grader tools must be a Tool or sequence of Tool handles")
+        if not items:
+            raise ValueError("a sketch grader requires at least one tool")
+        if not all(isinstance(tool, Tool) for tool in items):
+            raise TypeError("grader tools must contain only Tool handles")
+        normalized = cast(tuple[Tool[SketchToolType], ...], items)
+        if any(tool._sketch is not self.sketch for tool in normalized):
+            raise ValueError("grader tool belongs to a different sketch")
+        ids = [tool.id for tool in normalized]
+        if len(set(ids)) != len(ids):
+            raise ValueError("grader tools must be distinct")
+        supported = _GRADER_TOOL_TYPES[grader_type]
+        for tool in normalized:
+            if tool.type not in supported:
+                raise ValueError(
+                    f"{grader_type} grading does not support the "
+                    f"{tool.type!r} tool {tool.id!r}"
+                )
+        return normalized
+
+    def _criterion_attributes(
+        self,
+        grader_type: SketchGraderType,
+        tools: tuple[Tool[SketchToolType], ...],
+        *,
+        count: int | None,
+        mode: SketchCountMode | None,
+        x: ExprInput | None,
+        y: ExprInput | None,
+        endpoint: SketchMatchEndpoint | None,
+        function: SketchFunctionInput | None,
+        x_range: SketchRangeInput | None,
+        y_range: SketchRangeInput | None,
+        xy_flip: bool | None,
+        allow_undefined: bool | None,
+    ) -> list[tuple[str, object]]:
+        if grader_type == "count":
+            if count is None:
+                raise TypeError("count grading requires count")
+            _nonnegative_integer(count, label="grader count")
+            normalized_mode = "exact" if mode is None else mode
+            if normalized_mode not in ("exact", "at-least", "at-most"):
+                raise ValueError(f"invalid sketch count mode: {normalized_mode!r}")
+            attributes: list[tuple[str, object]] = [("count", count)]
+            if normalized_mode != "exact":
+                attributes.append(("mode", normalized_mode))
+            self._append_range(attributes, "x", x_range)
+            return attributes
+
+        if grader_type == "match":
+            if x is None and y is None:
+                raise ValueError("match grading requires x and/or y")
+            if any(tool.type == "horizontal-line" for tool in tools) and y is None:
+                raise ValueError("match grading for horizontal lines requires y")
+            if any(tool.type == "vertical-line" for tool in tools) and x is None:
+                raise ValueError("match grading for vertical lines requires x")
+            if endpoint is not None:
+                if endpoint not in ("start", "end", "either"):
+                    raise ValueError(f"invalid line endpoint: {endpoint!r}")
+                if any(tool.type != "line" for tool in tools):
+                    raise ValueError("match endpoint grading only supports line tools")
+                if x is None or y is None:
+                    raise ValueError("match endpoint grading requires both x and y")
+            attributes = []
+            if x is not None:
+                attributes.append(("x", _finite_real(x, label="match x-coordinate")))
+            if y is not None:
+                attributes.append(("y", _finite_real(y, label="match y-coordinate")))
+            if endpoint is not None:
+                attributes.append(("endpoint", endpoint))
+            return attributes
+
+        if grader_type in {"defined-in", "undefined-in"}:
+            attributes = []
+            self._append_range(attributes, "x", x_range)
+            return attributes
+
+        if grader_type in {"less-than", "greater-than"}:
+            flipped = self._xy_flip(xy_flip)
+            if (y is None) == (function is None):
+                raise ValueError(
+                    "ordering grading requires exactly one of y or function"
+                )
+            if flipped and y is not None:
+                raise ValueError("xy-flipped ordering grading requires a function")
+            if y is not None:
+                attributes = [("y", _finite_real(y, label="ordering y-coordinate"))]
+            else:
+                assert function is not None
+                attributes = [
+                    (
+                        "function",
+                        _function(function, variable="y" if flipped else "x"),
+                    )
+                ]
+            self._append_axis_options(
+                attributes,
+                x_range=x_range,
+                y_range=y_range,
+                xy_flip=flipped,
+            )
+            return attributes
+
+        if grader_type == "match-function":
+            if function is None:
+                raise TypeError("match-function grading requires function")
+            flipped = self._xy_flip(xy_flip)
+            if allow_undefined is not None and not isinstance(allow_undefined, bool):
+                raise TypeError("allow_undefined must be a boolean")
+            attributes = [
+                (
+                    "function",
+                    _function(function, variable="y" if flipped else "x"),
+                )
+            ]
+            self._append_axis_options(
+                attributes,
+                x_range=x_range,
+                y_range=y_range,
+                xy_flip=flipped,
+            )
+            if allow_undefined is True:
+                attributes.append(("allow-undefined", True))
+            return attributes
+
+        attributes = []
+        self._append_range(attributes, "x", x_range)
+        return attributes
+
+    @staticmethod
+    def _xy_flip(value: bool | None) -> bool:
+        if value is not None and not isinstance(value, bool):
+            raise TypeError("xy_flip must be a boolean")
+        return value is True
+
+    @staticmethod
+    def _append_range(
+        attributes: list[tuple[str, object]],
+        axis: Literal["x", "y"],
+        value: SketchRangeInput | None,
+    ) -> None:
+        normalized = _range(value, label=f"{axis} range")
+        if normalized is not None:
+            attributes.append((f"{axis}-range", _range_text(normalized)))
+
+    @classmethod
+    def _append_axis_options(
+        cls,
+        attributes: list[tuple[str, object]],
+        *,
+        x_range: SketchRangeInput | None,
+        y_range: SketchRangeInput | None,
+        xy_flip: bool,
+    ) -> None:
+        if xy_flip:
+            if x_range is not None:
+                raise ValueError("xy-flipped grading uses y_range, not x_range")
+            attributes.append(("xy-flip", True))
+            cls._append_range(attributes, "y", y_range)
+        else:
+            if y_range is not None:
+                raise ValueError("unflipped grading uses x_range, not y_range")
+            cls._append_range(attributes, "x", x_range)
+
+
 class _SketchAuthoringMixin:
     """Implementation mixin for :class:`plutil.lenses.SketchQuestion`."""
 
@@ -1390,6 +2189,8 @@ class _SketchAuthoringMixin:
                 "x_bounds": [-5.0, 5.0],
                 "y_bounds": [-5.0, 5.0],
                 "tools": [],
+                "grader_stages": [],
+                "graders": [],
                 "initial": [],
                 "solution": [],
             }
@@ -1433,6 +2234,11 @@ class _SketchAuthoringMixin:
     def tools(self) -> SketchTools:
         """Return this sketch's instance-bound tool registry."""
         return SketchTools(cast("SketchQuestion", self))
+
+    @property
+    def graders(self) -> SketchGraderRegistry:
+        """Return this sketch's instance-bound native grader registry."""
+        return cast("SketchQuestion", self)._grader_registry
 
     @property
     def x_bounds(self) -> SketchBounds:
@@ -1695,6 +2501,10 @@ class _SketchAuthoringMixin:
             for tool in params["tools"]
         )
         lines.extend(
+            f"  <pl-sketch-grade {grader['attrs']}></pl-sketch-grade>"
+            for grader in params["graders"]
+        )
+        lines.extend(
             f"  <pl-sketch-initial {drawing['attrs']}></pl-sketch-initial>"
             for drawing in params["initial"]
         )
@@ -1767,13 +2577,22 @@ __all__ = [
     "Polyline",
     "SketchBounds",
     "SketchBoundsInput",
+    "SketchCountMode",
     "SketchDrawingParams",
     "SketchFunctionInput",
     "SketchFunctionRange",
     "SketchFunctionRangeInput",
+    "SketchGraderParams",
+    "SketchGraderRegistry",
+    "SketchGraderStageParams",
+    "SketchGraderTools",
+    "SketchGraderType",
     "SketchLayer",
+    "SketchMatchEndpoint",
     "SketchParams",
     "SketchPointInput",
+    "SketchRange",
+    "SketchRangeInput",
     "SketchToolParams",
     "SketchToolType",
     "SketchTools",

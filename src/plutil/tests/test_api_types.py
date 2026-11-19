@@ -1,6 +1,6 @@
 from collections.abc import Callable, Iterator
 from decimal import Decimal
-from typing import Any, Literal, assert_type, cast
+from typing import TYPE_CHECKING, Any, Literal, assert_type, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -57,8 +57,14 @@ from plutil.sketch import (
     Point,
     Polygon,
     Polyline,
+    SketchCountMode,
+    SketchGraderParams,
+    SketchGraderRegistry,
+    SketchGraderStageParams,
     SketchLayer,
+    SketchMatchEndpoint,
     SketchParams,
+    SketchRangeInput,
     SketchTools,
     Tool,
     VerticalLine,
@@ -268,6 +274,9 @@ def test_multiple_choice_lens_has_a_typed_boolean_award() -> None:
 
 def test_sketch_lens_has_typed_layers_and_helpers() -> None:
     sketch = SketchQuestion(question_data(), "graph")
+    count_mode: SketchCountMode = "at-least"
+    endpoint: SketchMatchEndpoint = "either"
+    grader_range: SketchRangeInput = (None, 2)
     coordinate: ExprInput = pl.sympy_to_json(sympy.Rational(1, 2))
     function: ExprInput = pl.sympy_to_json(x**2)
 
@@ -283,6 +292,7 @@ def test_sketch_lens_has_typed_layers_and_helpers() -> None:
     assert_type(sketch.initial, SketchLayer)
     assert_type(sketch.solution, SketchLayer)
     assert_type(sketch.tools, SketchTools)
+    assert_type(sketch.graders, SketchGraderRegistry)
     assert_type(sketch.x_bounds, tuple[float, float])
     assert_type(sketch.y_bounds, tuple[float, float])
     assert_type(sketch.weight, int)
@@ -299,6 +309,70 @@ def test_sketch_lens_has_typed_layers_and_helpers() -> None:
     assert_type(splines.create(points=((0, 0), (1, 1))), Curve)
     assert_type(splines.create(function=x**2, x=(-1, 1)), Function)
     assert_type(splines.create(function=function), Function)
+    assert_type(
+        sketch.graders.create(
+            type="count",
+            tools=points,
+            count=1,
+            mode=count_mode,
+            x_range=grader_range,
+        ),
+        None,
+    )
+    assert_type(
+        sketch.graders.create(type="match", tools=lines, x=0, y=0, endpoint=endpoint),
+        None,
+    )
+    assert_type(sketch.graders.create(type="defined-in", tools=splines), None)
+    assert_type(sketch.graders.create(type="undefined-in", tools=points), None)
+    assert_type(sketch.graders.create(type="less-than", tools=splines, y=1), None)
+    assert_type(
+        sketch.graders.create(type="greater-than", tools=splines, function=x), None
+    )
+    assert_type(
+        sketch.graders.create(type="match-function", tools=points, function=function),
+        None,
+    )
+    assert_type(sketch.graders.create(type="monot-increasing", tools=lines), None)
+    assert_type(sketch.graders.create(type="monot-decreasing", tools=splines), None)
+    assert_type(sketch.graders.create(type="concave-up", tools=lines), None)
+    assert_type(sketch.graders.create(type="concave-down", tools=splines), None)
+    assert_type(sketch.params["graders"][0], SketchGraderParams)
+    with sketch.graders.stage(weight=2) as staged_graders:
+        assert_type(staged_graders, SketchGraderRegistry)
+        assert_type(
+            staged_graders.create(type="count", tools=points, count=1, share=2),
+            None,
+        )
+    assert_type(sketch.params["grader_stages"][0], SketchGraderStageParams)
+    if TYPE_CHECKING:
+        sketch.graders.create(  # pyright: ignore[reportCallIssue]
+            type="defined-in",
+            tools=points,  # pyright: ignore[reportArgumentType]
+        )
+        sketch.graders.create(
+            type="count",
+            tools=points,
+            count=1,
+            function=x,  # pyright: ignore[reportCallIssue]
+        )
+        sketch.graders.create(
+            type="count",
+            tools="points",  # pyright: ignore[reportArgumentType]
+            count=1,
+        )
+        sketch.graders.create(
+            type="count",
+            tools=points,
+            count=1,
+            weight=1,  # pyright: ignore[reportCallIssue]
+        )
+        sketch.graders.create(
+            type="count",
+            tools=points,
+            count=1,
+            stage=1,  # pyright: ignore[reportCallIssue]
+        )
     assert_type(sketch.initial.add(points.create(1, 2)), str)
     assert_type(sketch.initial.__iadd__(points.create(3, 4)), SketchLayer)
     assert_type(sketch.fit_frame(y_bounds=(-1, 2)), None)
