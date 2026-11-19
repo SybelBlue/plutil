@@ -1485,17 +1485,21 @@ def _check_powered_equivalence(
     reference_expr = _residual_expr(reference)
     candidate_expr = _residual_expr(candidate)
     structurally_equal = reference_expr == candidate_expr
+    reference_zero = cast(Boolean, sp.Eq(reference_expr, 0, evaluate=False))
     if structurally_equal:
-        formula = cast(Boolean, sp.Eq(reference_expr, 0, evaluate=False))
+        formula = reference_zero
     else:
         formula = cast(
             Boolean,
             sp.Equivalent(
-                sp.Eq(reference_expr, 0, evaluate=False),
+                reference_zero,
                 sp.Eq(candidate_expr, 0, evaluate=False),
                 evaluate=False,
             ),
         )
+        if formula is sp.true:
+            structurally_equal = True
+            formula = reference_zero
 
     try:
         problem = _abstract_powered_formula(

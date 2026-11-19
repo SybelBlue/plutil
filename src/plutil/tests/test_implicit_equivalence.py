@@ -1061,6 +1061,36 @@ def test_nested_rational_powers_are_supported_within_the_variable_limit() -> Non
     assert result.exact
 
 
+def test_sign_flipped_powered_residuals_are_exactly_equivalent() -> None:
+    x, y = sp.symbols("x y")
+
+    result = check_implicit_equivalence(
+        sp.sqrt(x) - y,
+        y - sp.sqrt(x),
+        variables=(x, y),
+        condition=x >= 0,
+    )
+
+    assert result.verdict == "equivalent"
+    assert result.accepted
+    assert result.exact
+    assert result.method == "cad"
+
+
+def test_sign_flipped_powered_residuals_still_require_a_valid_domain() -> None:
+    x, y = sp.symbols("x y")
+
+    result = check_implicit_equivalence(
+        sp.sqrt(x) - y,
+        y - sp.sqrt(x),
+        variables=(x, y),
+    )
+
+    assert result.verdict == "inconclusive"
+    assert not result.accepted
+    assert result.reason == "cad-domain-invalid"
+
+
 def test_powered_solver_abstracts_once_and_shares_one_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
