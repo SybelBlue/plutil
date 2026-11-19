@@ -248,11 +248,46 @@ def test_incorrectly_authored_witness_is_rejected() -> None:
         )
 
 
+def test_later_authored_counterexample_survives_an_inconclusive_witness() -> None:
+    x, y = sp.symbols("x y")
+
+    result = check_implicit_equivalence(
+        x,
+        y * x ** sp.Rational(-1, 2),
+        variables=(x, y),
+        condition=x >= 0,
+        witnesses=ImplicitWitnesses(
+            eq={x: 0, y: 0},
+            neq={x: 16, y: 0},
+        ),
+    )
+
+    assert result.verdict == "different"
+    assert result.exact
+    assert result.counterexample == {x: sp.Integer(16), y: sp.Integer(0)}
+    assert result.reason == "authored-witness-counterexample"
+
+
+def test_candidate_cannot_hide_a_later_incorrect_authored_witness() -> None:
+    x, y = sp.symbols("x y")
+
+    with pytest.raises(ValueError, match="reference residual"):
+        check_implicit_equivalence(
+            x,
+            y * x ** sp.Rational(-1, 2),
+            variables=(x, y),
+            condition=x >= 0,
+            witnesses=ImplicitWitnesses(
+                eq=({x: 0, y: 0}, {x: 1, y: 0}),
+            ),
+        )
+
+
 def test_aborted_authored_witness_pass_cannot_enable_heuristic_acceptance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     x, y = sp.symbols("x y")
-    point_results = iter([True, True] * 3 + [True, None])
+    point_results = iter([True] * 4 + [False, True, True, True, None, False])
     point_calls = 0
 
     def interrupted_point_check(*args: object, **kwargs: object) -> bool | None:
@@ -292,7 +327,7 @@ def test_aborted_authored_witness_pass_cannot_enable_heuristic_acceptance(
     assert result.verdict == "inconclusive"
     assert not result.accepted
     assert result.reason == "candidate-witness-inconclusive"
-    assert point_calls == 8
+    assert point_calls == 10
 
 
 def test_variable_assumptions_cannot_silently_narrow_the_real_domain() -> None:

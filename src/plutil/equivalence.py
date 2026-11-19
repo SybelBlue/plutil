@@ -1055,6 +1055,8 @@ def _check_authored_witnesses(
     timeout_seconds: float,
     deadline: float,
 ) -> _SliceEvidence:
+    validated_points: list[tuple[bool, Mapping[sp.Symbol, sp.Expr]]] = []
+    reference_inconclusive = False
     eq_points: list[Mapping[sp.Symbol, sp.Expr]] = []
     rng = (
         None
@@ -1072,46 +1074,53 @@ def _check_authored_witnesses(
                 raise _ImplicitInputError(
                     "every witness must lie in the comparison region"
                 )
-            reference_zero = _point_is_zero(
-                reference,
+            validated_points.append((expected_zero, point))
+
+    candidate_points: list[tuple[bool, Mapping[sp.Symbol, sp.Expr]]] = []
+    for expected_zero, point in validated_points:
+        reference_zero = _point_is_zero(
+            reference,
+            point,
+            timeout_seconds=timeout_seconds,
+            deadline=deadline,
+        )
+        if reference_zero is None:
+            reference_inconclusive = True
+            continue
+        if reference_zero is not expected_zero:
+            label = "eq" if expected_zero else "neq"
+            raise _ImplicitInputError(
+                f"the reference residual does not match an authored {label} witness"
+            )
+        candidate_points.append((expected_zero, point))
+
+    inconclusive_reason = (
+        "reference-witness-inconclusive" if reference_inconclusive else None
+    )
+    for expected_zero, point in candidate_points:
+        try:
+            candidate_zero = _point_is_zero(
+                candidate,
                 point,
                 timeout_seconds=timeout_seconds,
                 deadline=deadline,
             )
-            if reference_zero is None:
-                return _SliceEvidence(
-                    None,
-                    (),
-                    reason="reference-witness-inconclusive",
-                )
-            if reference_zero is not expected_zero:
-                label = "eq" if expected_zero else "neq"
-                raise _ImplicitInputError(
-                    f"the reference residual does not match an authored {label} witness"
-                )
-            try:
-                candidate_zero = _point_is_zero(
-                    candidate,
-                    point,
-                    timeout_seconds=timeout_seconds,
-                    deadline=deadline,
-                )
-            except _ImplicitInputError:
-                return _SliceEvidence(
-                    None,
-                    (),
-                    reason="candidate-undefined-at-witness",
-                )
-            if candidate_zero is None:
-                return _SliceEvidence(
-                    None,
-                    (),
-                    reason="candidate-witness-inconclusive",
-                )
-            if candidate_zero != expected_zero:
-                return _SliceEvidence(point, tuple(eq_points))
-            if expected_zero:
-                eq_points.append(point)
+        except _ImplicitInputError:
+            inconclusive_reason = (
+                inconclusive_reason or "candidate-undefined-at-witness"
+            )
+            continue
+        if candidate_zero is None:
+            inconclusive_reason = (
+                inconclusive_reason or "candidate-witness-inconclusive"
+            )
+            continue
+        if candidate_zero != expected_zero:
+            return _SliceEvidence(point, tuple(eq_points))
+        if expected_zero:
+            eq_points.append(point)
+    if inconclusive_reason is not None:
+        return _SliceEvidence(None, (), reason=inconclusive_reason)
     return _SliceEvidence(None, tuple(eq_points))
 
 
