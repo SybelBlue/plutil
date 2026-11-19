@@ -6,6 +6,7 @@ their authoring data under ``params[f"{answers_name}_sketch"]`` because
 ``pl-sketch`` reserves ``params[answers_name]`` for its prepared client state.
 """
 
+import ast
 import html
 import math
 from collections.abc import Iterable, Mapping, Sequence
@@ -13,8 +14,9 @@ from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict, cast
 
 import prairielearn as pl
 import sympy as sp
+from sympy.printing.str import StrPrinter
 
-from .common import ExprLike
+from .common import ExprInput, _input_to_expr
 
 if TYPE_CHECKING:
     from .lenses import SketchQuestion
@@ -31,9 +33,9 @@ type SketchToolType = Literal[
 ]
 type SketchCurveToolType = Literal["free-draw", "spline"]
 type SketchBounds = tuple[float, float]
-type SketchBoundsInput = Sequence[ExprLike]
-type SketchPointInput = Sequence[ExprLike]
-type SketchFunctionInput = str | ExprLike
+type SketchBoundsInput = Sequence[ExprInput]
+type SketchPointInput = Sequence[ExprInput]
+type SketchFunctionInput = str | ExprInput
 
 
 class SketchToolParams(TypedDict):
@@ -77,6 +79,50 @@ class SketchParams(TypedDict):
 
 _DASH_STYLES = frozenset(("solid", "dashed", "longdashed", "dotted", "dashdotted"))
 _DIRECTION_CONSTRAINTS = frozenset(("none", "horizontal", "vertical"))
+_FUNCTION_NAMES = frozenset(
+    (
+        "abs",
+        "acos",
+        "acosh",
+        "arccos",
+        "arcsin",
+        "arctan",
+        "arctan2",
+        "asin",
+        "asinh",
+        "atan",
+        "atan2",
+        "atanh",
+        "cos",
+        "cosh",
+        "e",
+        "log",
+        "pi",
+        "sign",
+        "sin",
+        "sinh",
+        "sqrt",
+        "tan",
+        "tanh",
+        "x",
+    )
+)
+_FUNCTION_NODE_TYPES = (
+    ast.Expression,
+    ast.Call,
+    ast.BinOp,
+    ast.UnaryOp,
+    ast.Add,
+    ast.Sub,
+    ast.Mult,
+    ast.Div,
+    ast.Pow,
+    ast.USub,
+    ast.UAdd,
+    ast.Name,
+    ast.Load,
+    ast.Constant,
+)
 _TOOL_OPTION_NAMES: dict[SketchToolType, frozenset[str]] = {
     "free-draw": frozenset(),
     "point": frozenset(("size", "hollow")),
@@ -117,11 +163,11 @@ def _format_number(value: float) -> str:
     return format(value, ".15g")
 
 
-def _finite_real(value: ExprLike, *, label: str) -> float:
+def _finite_real(value: ExprInput, *, label: str) -> float:
     if isinstance(value, bool):
         raise TypeError(f"{label} must be a real number, got bool")
     try:
-        expression = sp.sympify(value)
+        expression = _input_to_expr(value)
     except (sp.SympifyError, TypeError, ValueError) as exc:
         raise TypeError(f"{label} must be a real number") from exc
     if (
@@ -187,14 +233,42 @@ def _attrs(attributes: Iterable[tuple[str, object]]) -> str:
     )
 
 
+class _SketchFunctionPrinter(StrPrinter):
+    """Print SymPy functions using sketchresponse's accepted spellings."""
+
+    def _print_Abs(self, expression: sp.Expr) -> str:
+        return f"abs({self._print(expression.args[0])})"
+
+    def _print_exp(self, expression: sp.Expr) -> str:
+        return f"e**({self._print(expression.args[0])})"
+
+
+def _validate_function_text(value: str) -> str:
+    try:
+        tree = ast.parse(value, mode="eval")
+    except SyntaxError as exc:
+        raise ValueError("function is not valid pl-sketch syntax") from exc
+    for node in ast.walk(tree):
+        if not isinstance(node, _FUNCTION_NODE_TYPES):
+            raise TypeError(
+                f"pl-sketch functions do not support {type(node).__name__} syntax"
+            )
+        if isinstance(node, ast.Name) and node.id not in _FUNCTION_NAMES:
+            raise ValueError(
+                "pl-sketch functions may only use x and supported function names; "
+                f"got {node.id!r}"
+            )
+    return value
+
+
 def _function(value: SketchFunctionInput) -> str:
     if isinstance(value, str):
         result = value.strip()
         if not result:
             raise ValueError("function must not be blank")
-        return result
+        return _validate_function_text(result)
     try:
-        expression = sp.sympify(value)
+        expression = _input_to_expr(value)
     except (sp.SympifyError, TypeError, ValueError) as exc:
         raise TypeError("function must be a string or symbolic expression") from exc
     if not isinstance(expression, sp.Expr):
@@ -204,7 +278,8 @@ def _function(value: SketchFunctionInput) -> str:
         for symbol in expression.free_symbols
     ):
         raise ValueError("pl-sketch functions may only use the variable x")
-    return str(expression)
+    printable = expression.xreplace({sp.E: sp.Symbol("e")})
+    return _validate_function_text(_SketchFunctionPrinter().doprint(printable))
 
 
 def _tool_options(
@@ -218,12 +293,12 @@ def _tool_options(
     group: str | None = None,
     dash_style: str | None = None,
     direction_constraint: str | None = None,
-    length_constraint: ExprLike | None = None,
+    length_constraint: ExprInput | None = None,
     arrowhead: int | None = None,
     size: int | None = None,
     hollow: bool | None = None,
     fill_color: str | None = None,
-    opacity: ExprLike | None = None,
+    opacity: ExprInput | None = None,
 ) -> dict[str, object]:
     options: dict[str, object] = {
         key: value
@@ -515,12 +590,12 @@ class _SketchAuthoringMixin:
         group: str | None = None,
         dash_style: str | None = None,
         direction_constraint: str | None = None,
-        length_constraint: ExprLike | None = None,
+        length_constraint: ExprInput | None = None,
         arrowhead: int | None = None,
         size: int | None = None,
         hollow: bool | None = None,
         fill_color: str | None = None,
-        opacity: ExprLike | None = None,
+        opacity: ExprInput | None = None,
     ) -> str:
         """Add an explicit drawing tool and return its ID."""
         return self._store_tool(
@@ -748,7 +823,7 @@ class SketchLayer:
         color: str | None = None,
         dash_style: str | None = None,
         direction_constraint: str | None = None,
-        length_constraint: ExprLike | None = None,
+        length_constraint: ExprInput | None = None,
         arrowhead: int | None = None,
         read_only: bool | None = None,
     ) -> str:
@@ -769,7 +844,7 @@ class SketchLayer:
 
     def add_horizontal_line(
         self,
-        y: ExprLike,
+        y: ExprInput,
         *,
         tool_id: str | None = None,
         color: str | None = None,
@@ -796,7 +871,7 @@ class SketchLayer:
 
     def add_vertical_line(
         self,
-        x: ExprLike,
+        x: ExprInput,
         *,
         tool_id: str | None = None,
         color: str | None = None,
@@ -850,7 +925,7 @@ class SketchLayer:
         color: str | None = None,
         dash_style: str | None = None,
         fill_color: str | None = None,
-        opacity: ExprLike | None = None,
+        opacity: ExprInput | None = None,
         read_only: bool | None = None,
     ) -> str:
         """Add a closed polygon and return the tool ID used."""

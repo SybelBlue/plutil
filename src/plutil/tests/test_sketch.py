@@ -2,6 +2,7 @@ from typing import Any, cast
 
 import chevron
 import lxml.html
+import prairielearn as pl
 import pytest
 import sympy as sp
 
@@ -214,6 +215,23 @@ def test_points_accept_exact_sympy_values_and_reject_invalid_coordinates() -> No
         sketch.initial.add_polygon([(0, 0), (1, 1)])
 
 
+def test_sketch_inputs_accept_prairielearn_symbolic_json() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    x = sp.Symbol("x")
+
+    sketch.set_frame(
+        x=(pl.sympy_to_json(sp.Integer(-2)), pl.sympy_to_json(sp.Integer(3)))
+    )
+    sketch.initial.add_point(
+        (pl.sympy_to_json(sp.Rational(1, 2)), pl.sympy_to_json(sp.sqrt(2)))
+    )
+    sketch.solution.add_function(pl.sympy_to_json(sp.exp(x)))
+
+    assert sketch.x_bounds == (-2.0, 3.0)
+    assert 'coordinates="(0.5,1.4142135623731)"' in sketch.params["initial"][0]["attrs"]
+    assert 'function="e**(x)"' in sketch.params["solution"][0]["attrs"]
+
+
 def test_functions_validate_variables_and_require_y_bounds_when_fitting() -> None:
     sketch = SketchQuestion(question_data(), "graph")
     x, y = sp.symbols("x y")
@@ -233,6 +251,21 @@ def test_functions_validate_variables_and_require_y_bounds_when_fitting() -> Non
         sketch.initial.add_function(x + y)
     with pytest.raises(ValueError, match="blank"):
         sketch.initial.add_function(" ")
+
+
+def test_functions_use_and_validate_sketchresponse_syntax() -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    x = sp.Symbol("x")
+
+    sketch.solution.add_function(sp.exp(x) + sp.Abs(x) + sp.E * x)
+    assert 'function="e*x + e**(x) + abs(x)"' in sketch.params["solution"][0]["attrs"]
+
+    with pytest.raises(TypeError, match="BitXor"):
+        sketch.initial.add_function("x^2")
+    with pytest.raises(ValueError, match="function names"):
+        sketch.initial.add_function("y + t")
+    with pytest.raises(ValueError, match="function names"):
+        sketch.initial.add_function(sp.gamma(x))
 
 
 def test_fit_frame_uses_both_layers_padding_origin_and_minimum_span() -> None:

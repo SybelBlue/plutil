@@ -256,6 +256,8 @@ def test_multiple_choice_lens_has_a_typed_boolean_award() -> None:
 def test_sketch_lens_has_typed_layers_and_helpers() -> None:
     sketch = SketchQuestion(question_data(), "graph")
     tool_type: SketchToolType = "point"
+    coordinate: ExprInput = pl.sympy_to_json(sympy.Rational(1, 2))
+    function: ExprInput = pl.sympy_to_json(x**2)
 
     assert_type(sketch.params, SketchParams)
     assert_type(sketch.initial, SketchLayer)
@@ -265,12 +267,14 @@ def test_sketch_lens_has_typed_layers_and_helpers() -> None:
     assert_type(sketch.configure(read_only=True), None)
     assert_type(sketch.set_frame(x=(-5, 5)), None)
     assert_type(sketch.add_tool("points", tool_type), str)
+    assert_type(sketch.initial.add_point((coordinate, coordinate)), str)
     assert_type(sketch.initial.add_point((1, 2), tool_id="points"), str)
     assert_type(sketch.initial.add_line((0, 0), (1, 1)), str)
     assert_type(sketch.initial.add_polyline(((0, 0), (1, 1))), str)
     assert_type(sketch.initial.add_polygon(((0, 0), (1, 0), (0, 1))), str)
     assert_type(sketch.initial.add_curve(((0, 0), (1, 1))), str)
     assert_type(sketch.solution.add_function(x**2, x=(-1, 1)), str)
+    assert_type(sketch.solution.add_function(function), str)
     assert_type(sketch.fit_frame(y_bounds=(-1, 2)), None)
 
 
