@@ -155,6 +155,22 @@ _TOOL_OPTION_NAMES: dict[SketchToolType, frozenset[str]] = {
 _COMMON_TOOL_OPTIONS = frozenset(
     ("label", "limit", "color", "helper", "read_only", "group")
 )
+_TOOL_OPTION_FIELDS = (
+    "label",
+    "limit",
+    "color",
+    "helper",
+    "read_only",
+    "group",
+    "dash_style",
+    "direction_constraint",
+    "length_constraint",
+    "arrowhead",
+    "size",
+    "hollow",
+    "fill_color",
+    "opacity",
+)
 _COMMON_TOOL_DEFAULTS: dict[str, object] = {
     "helper": False,
     "read_only": False,
@@ -412,25 +428,11 @@ def _tool_options(
     fill_color: str | None = None,
     opacity: ExprInput | None = None,
 ) -> dict[str, object]:
+    option_values = locals()
     options: dict[str, object] = {
-        key: value
-        for key, value in {
-            "label": label,
-            "limit": limit,
-            "color": color,
-            "helper": helper,
-            "read_only": read_only,
-            "group": group,
-            "dash_style": dash_style,
-            "direction_constraint": direction_constraint,
-            "length_constraint": length_constraint,
-            "arrowhead": arrowhead,
-            "size": size,
-            "hollow": hollow,
-            "fill_color": fill_color,
-            "opacity": opacity,
-        }.items()
-        if value is not None
+        name: value
+        for name in _TOOL_OPTION_FIELDS
+        if (value := option_values[name]) is not None
     }
 
     allowed = _COMMON_TOOL_OPTIONS | _TOOL_OPTION_NAMES[tool_type]
@@ -797,44 +799,14 @@ class Tool[ToolTypeT: SketchToolType]:
         object.__setattr__(tool, "_sketch", sketch)
         object.__setattr__(tool, "id", tool_id)
         object.__setattr__(tool, "type", tool_type)
-        for name in (
-            "label",
-            "limit",
-            "color",
-            "helper",
-            "read_only",
-            "group",
-            "dash_style",
-            "direction_constraint",
-            "length_constraint",
-            "arrowhead",
-            "size",
-            "hollow",
-            "fill_color",
-            "opacity",
-        ):
+        for name in _TOOL_OPTION_FIELDS:
             object.__setattr__(tool, name, options.get(name))
         return tool
 
     def _options(self) -> dict[str, object]:
         return {
             name: value
-            for name in (
-                "label",
-                "limit",
-                "color",
-                "helper",
-                "read_only",
-                "group",
-                "dash_style",
-                "direction_constraint",
-                "length_constraint",
-                "arrowhead",
-                "size",
-                "hollow",
-                "fill_color",
-                "opacity",
-            )
+            for name in _TOOL_OPTION_FIELDS
             if (value := getattr(self, name)) is not None
         }
 
