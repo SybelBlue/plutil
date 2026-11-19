@@ -6,8 +6,6 @@ import sympy as sp
 from .lenses import SympyQuestion
 from .rand.sp import Domain
 
-type _NestedSetChecking = Literal["require-flat", "recurse", "ignore"]
-
 
 def _finite_set_values(value: sp.Set) -> tuple[sp.Basic, ...] | None:
     if value.is_finite_set is not True:
@@ -62,7 +60,7 @@ def reject_set_outside_domain(
     lens: SympyQuestion,
     domain: Domain,
     *,
-    nested_set_checking: _NestedSetChecking = "require-flat",
+    nested_set_checking:  Literal["require-flat", "recurse", "ignore"] = "require-flat",
     message: str = "Every value in the set must be in the domain stated in the question.",
 ) -> bool:
     """Add a format error when a submitted set extends outside ``domain``.
@@ -125,7 +123,7 @@ def _interval_is_outside_domain(value: sp.Interval, domain: Domain) -> bool:
 def _value_is_outside_domain(
     value: sp.Basic,
     domain: Domain,
-    nested_set_checking: _NestedSetChecking,
+    nested_set_checking: Literal["require-flat", "recurse", "ignore"],
 ) -> bool:
     if isinstance(value, sp.Set):
         if nested_set_checking == "ignore":
