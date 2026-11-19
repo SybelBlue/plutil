@@ -1,6 +1,41 @@
 # Scoring and partial credit
 
-Full API reference: {py:mod}`plutil.common`, {py:mod}`plutil.partial_credit`.
+Full API reference: {py:mod}`plutil.common`, {py:mod}`plutil.partial_credit`,
+{py:mod}`plutil.sets`.
+
+## Set domain validation
+
+`reject_set_outside_domain(lens, domain, *, nested_set_checking=..., message=...)`
+adds a format error when a submitted finite set or interval is not provably
+inside the authored {py:class}`plutil.rand.sp.Domain`. Finite-set membership,
+interval containment, and indeterminate symbolic checks are handled
+conservatively. Blank answers, non-set answers, and unsupported non-finite sets
+are left unchanged so this validator can be composed with other format checks.
+
+Nested sets are rejected by default with `nested_set_checking="require-flat"`.
+Use `"recurse"` to validate every leaf in nested finite sets and any nested
+interval as a subset of the domain, or `"ignore"` to skip nested sets while
+continuing to validate top-level non-set members. In recursive mode, another
+kind of nested set that cannot be enumerated as finite is rejected.
+
+The default message includes the authored domain: `"Every value in the set must
+be in {domain}."`. The `{domain}` token in any custom message is replaced with
+`str(domain)`. Pass `message=None` to record a blank format error, rejecting the
+answer without displaying feedback.
+
+```python
+import sympy as sp
+
+from plutil import SympyQuestion, reject_set_outside_domain
+
+
+def parse(data):
+    reject_set_outside_domain(
+        SympyQuestion(data, "critical-points", variables="x"),
+        sp.Interval(-2, 2),
+        message="Every critical point must be in {domain}.",
+    )
+```
 
 ## `Question.set_rich_score(score, *, weight=None, feedback=None, preserve_higher=False) -> bool`
 
