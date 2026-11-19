@@ -1720,6 +1720,52 @@ def test_expression_parse_helper_propagates_author_setup_errors(
     assert data["format_errors"] == {}
 
 
+@pytest.mark.parametrize(
+    ("condition", "domains", "reason"),
+    [
+        (
+            lambda x, y: sp.And(x > 0, x < 10, y > 0, y < 10, x + y < 15),
+            None,
+            "cad-condition-atom-limit",
+        ),
+        (
+            lambda x, y: sp.And(
+                *(
+                    sum(
+                        x**i * y**j for i in range(5) for j in range(5 - i) if i + j > 0
+                    )
+                    > offset
+                    for offset in range(4)
+                )
+            ),
+            lambda x: {x: sp.Interval(0, 1)},
+            "cad-aggregate-term-limit",
+        ),
+    ],
+)
+def test_expression_parse_helper_propagates_authored_region_envelope_errors(
+    condition: Callable[[sp.Symbol, sp.Symbol], sp.Basic],
+    domains: Callable[[sp.Symbol], dict[Any, sp.Set]] | None,
+    reason: str,
+) -> None:
+    x, y = sp.symbols("x y")
+    submitted = pl.to_json(sp.sqrt(x) - y)
+    data = question_data(
+        submitted_answers={"answer": submitted},
+        format_errors={},
+    )
+
+    with pytest.raises(ValueError, match=reason):
+        validate_implicit_expression_input(
+            SympyQuestion(data, "answer", variables=(x, y)),
+            condition=condition(x, y),
+            domains=domains(x) if domains is not None else None,
+        )
+
+    assert data["submitted_answers"]["answer"] == submitted
+    assert data["format_errors"] == {}
+
+
 def test_expression_parse_helper_rejects_an_unproved_rational_power_domain() -> None:
     x = sp.Symbol("x")
     data = question_data(
