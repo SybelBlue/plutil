@@ -794,15 +794,6 @@ def validate_implicit_expression_input(
     domain_condition = _domain_condition(normalized_domains)
     domain_polys = _condition_polynomials(domain_condition, variables)
     authored_condition_atoms = len(base_condition.atoms(Relational))
-    authored_region_eligible, authored_region_reason = _cad_polynomials_eligible(
-        (*condition_polys, *domain_polys),
-        authored_condition_atoms,
-        len(variables),
-    )
-    if not authored_region_eligible:
-        raise ValueError(
-            f"the comparison region exceeds the CAD envelope ({authored_region_reason})"
-        )
     if has_format_error or submitted is None:
         return False
 
@@ -819,6 +810,17 @@ def validate_implicit_expression_input(
         )
         if isinstance(residual, sp.Poly):
             return True
+
+        authored_region_eligible, authored_region_reason = _cad_polynomials_eligible(
+            (*condition_polys, *domain_polys),
+            authored_condition_atoms,
+            len(variables),
+        )
+        if not authored_region_eligible:
+            raise ValueError(
+                "the comparison region exceeds the CAD envelope "
+                f"({authored_region_reason})"
+            )
 
         region = sp.And(base_condition, domain_condition)
         zero_relation = cast(Boolean, sp.Eq(residual, 0, evaluate=False))

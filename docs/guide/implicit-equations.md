@@ -122,8 +122,9 @@ known-unsupported answer from reaching grading. If its powered-domain proof
 times out or the CAD backend fails, however, it leaves the parsed answer intact:
 the grading check then retries the proof and safely returns an inconclusive
 verdict if the failure recurs. An infrastructure failure is not reported as a
-student format error. If the authored condition or domains alone exceed the CAD
-envelope, the helper raises `ValueError` without modifying the submission.
+student format error. For a powered submission, if the authored condition or
+domains alone exceed the CAD envelope, the helper raises `ValueError` without
+modifying the submission.
 
 ## How decisions are made
 

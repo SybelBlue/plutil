@@ -1898,6 +1898,23 @@ def test_expression_parse_helper_propagates_authored_region_envelope_errors(
     assert data["format_errors"] == {}
 
 
+def test_expression_parse_helper_skips_cad_envelope_for_polynomial_input() -> None:
+    x, y = sp.symbols("x y")
+    submitted = pl.to_json(x - y)
+    data = question_data(
+        submitted_answers={"answer": submitted},
+        format_errors={},
+    )
+    condition = sp.And(x > 0, x < 10, y > 0, y < 10, x + y < 15)
+
+    assert validate_implicit_expression_input(
+        SympyQuestion(data, "answer", variables=(x, y)),
+        condition=condition,
+    )
+    assert data["submitted_answers"]["answer"] == submitted
+    assert data["format_errors"] == {}
+
+
 def test_expression_parse_helper_rejects_an_unproved_rational_power_domain() -> None:
     x = sp.Symbol("x")
     data = question_data(
