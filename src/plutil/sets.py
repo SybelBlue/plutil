@@ -6,6 +6,8 @@ import sympy as sp
 from .lenses import SympyQuestion
 from .rand.sp import Domain
 
+type _NestedSetChecking = Literal["require-flat", "recurse", "ignore"]
+
 
 def _finite_set_values(value: sp.Set) -> tuple[sp.Basic, ...] | None:
     if value.is_finite_set is not True:
@@ -56,25 +58,36 @@ def reject_non_sympy_set_input(
     return True
 
 
-def reject_finite_set_outside_domain(
+def reject_set_outside_domain(
     lens: SympyQuestion,
     domain: Domain,
     *,
+    nested_set_checking: _NestedSetChecking = "require-flat",
     message: str = "Every value in the set must be in the domain stated in the question.",
 ) -> bool:
-    """Add a format error when a finite-set member is not in ``domain``.
+    """Add a format error when a submitted set extends outside ``domain``.
 
-    Membership must be provably true. This conservatively rejects symbolic
-    members when SymPy cannot determine whether they lie in the domain. Returns
-    ``True`` when the validator adds the error and ``False`` when another format
-    error exists, the submission cannot be enumerated as a finite set, or every
-    submitted member is provably in the domain.
+    Finite-set membership and interval containment must be provably true. This
+    conservatively rejects checks that SymPy cannot determine.
+    ``nested_set_checking`` rejects nested sets by default, recursively checks
+    their leaves and interval containment with ``"recurse"``, or skips them with
+    ``"ignore"``. Recursive checking rejects another kind of nested set that
+    cannot be enumerated as finite.
+
+    Returns ``True`` when the validator adds the error and ``False`` when another
+    format error exists, the submission is neither an interval nor an enumerable
+    finite set, or the submitted set is provably within the domain.
 
     Raises:
         TypeError: If ``domain`` is not a supported :class:`~plutil.rand.sp.Domain`.
+        ValueError: If ``nested_set_checking`` is not a supported mode.
     """
     if not isinstance(domain, Domain.__value__):
         raise TypeError("domain must be a plutil.rand.sp.Domain")
+    if nested_set_checking not in ("require-flat", "recurse", "ignore"):
+        raise ValueError(
+            "nested_set_checking must be one of: ignore, recurse, require-flat"
+        )
 
     if lens.format_error is not None:
         return False
@@ -83,20 +96,55 @@ def reject_finite_set_outside_domain(
     if not isinstance(submitted, sp.Set):
         return False
 
-    values = _finite_set_values(submitted)
-    if values is None:
-        return False
+    if isinstance(submitted, sp.Interval):
+        rejected = _interval_is_outside_domain(submitted, domain)
+    else:
+        values = _finite_set_values(submitted)
+        if values is None:
+            return False
+        rejected = any(
+            _value_is_outside_domain(value, domain, nested_set_checking)
+            for value in values
+        )
 
-    for value in values:
-        try:
-            membership = domain.contains(value)
-        except (TypeError, ValueError, NotImplementedError):
-            membership = None
-        if membership is not sp.true:
-            lens.format_error = message
-            return True
+    if rejected:
+        lens.format_error = message
+        return True
 
     return False
+
+
+def _interval_is_outside_domain(value: sp.Interval, domain: Domain) -> bool:
+    try:
+        subset = value.is_subset(domain)
+    except (TypeError, ValueError, NotImplementedError):
+        subset = None
+    return subset is not True
+
+
+def _value_is_outside_domain(
+    value: sp.Basic,
+    domain: Domain,
+    nested_set_checking: _NestedSetChecking,
+) -> bool:
+    if isinstance(value, sp.Set):
+        if nested_set_checking == "ignore":
+            return False
+        if nested_set_checking == "require-flat":
+            return True
+        if isinstance(value, sp.Interval):
+            return _interval_is_outside_domain(value, domain)
+        nested_values = _finite_set_values(value)
+        return nested_values is None or any(
+            _value_is_outside_domain(item, domain, nested_set_checking)
+            for item in nested_values
+        )
+
+    try:
+        membership = domain.contains(value)
+    except (TypeError, ValueError, NotImplementedError):
+        membership = None
+    return membership is not sp.true
 
 
 def grade_sympy_set(lens: SympyQuestion) -> bool:

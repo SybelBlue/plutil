@@ -3,22 +3,29 @@
 Full API reference: {py:mod}`plutil.common`, {py:mod}`plutil.partial_credit`,
 {py:mod}`plutil.sets`.
 
-## Finite-set domain validation
+## Set domain validation
 
-`reject_finite_set_outside_domain(lens, domain, *, message=...)` adds a format
-error when any member of a submitted finite set is not provably inside the
-authored {py:class}`plutil.rand.sp.Domain`. Indeterminate symbolic membership
-is rejected conservatively. Blank answers, non-set answers, and non-finite sets
+`reject_set_outside_domain(lens, domain, *, nested_set_checking=..., message=...)`
+adds a format error when a submitted finite set or interval is not provably
+inside the authored {py:class}`plutil.rand.sp.Domain`. Finite-set membership,
+interval containment, and indeterminate symbolic checks are handled
+conservatively. Blank answers, non-set answers, and unsupported non-finite sets
 are left unchanged so this validator can be composed with other format checks.
+
+Nested sets are rejected by default with `nested_set_checking="require-flat"`.
+Use `"recurse"` to validate every leaf in nested finite sets and any nested
+interval as a subset of the domain, or `"ignore"` to skip nested sets while
+continuing to validate top-level non-set members. In recursive mode, another
+kind of nested set that cannot be enumerated as finite is rejected.
 
 ```python
 import sympy as sp
 
-from plutil import SympyQuestion, reject_finite_set_outside_domain
+from plutil import SympyQuestion, reject_set_outside_domain
 
 
 def parse(data):
-    reject_finite_set_outside_domain(
+    reject_set_outside_domain(
         SympyQuestion(data, "critical-points", variables="x"),
         sp.Interval(-2, 2),
         message="Every critical point must be between -2 and 2.",
