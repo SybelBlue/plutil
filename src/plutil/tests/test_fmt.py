@@ -18,6 +18,11 @@ from plutil.diffeq import OdeCheckResult
 from plutil.lenses import MultiDict
 
 
+def test_lim_latex_exports() -> None:
+    assert plutil.lim_latex is fmt.lim_latex
+    assert not hasattr(common_mod, "lim_latex")
+
+
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
@@ -220,8 +225,9 @@ def test_json_rejects_non_string_mapping_keys_and_dataclass_types() -> None:
         fmt.json(_JsonPayload)
 
 
-def test_fmt_reexports_existing_latex_function() -> None:
+def test_latex_exports() -> None:
     assert fmt.latex is plutil.latex
+    assert not hasattr(common_mod, "latex")
     assert fmt.RatioPowerStyle is common_mod.RatioPowerStyle
     assert not hasattr(plutil, "number")
     assert not hasattr(plutil, "currency")

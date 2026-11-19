@@ -7,7 +7,7 @@ Full API reference: {py:mod}`plutil.fmt`, {py:mod}`plutil.defmt`, {py:mod}`pluti
 `plutil.fmt` formats finite real values as deterministic English strings. It
 accepts Python and NumPy real scalars, `Decimal` values, and numeric SymPy
 expressions. Arbitrary symbolic expressions remain the domain of `fmt.latex`,
-which is the same function as the existing top-level `plutil.latex` export.
+which is also available as the top-level `plutil.latex` export.
 
 ```python
 from decimal import Decimal
@@ -65,19 +65,20 @@ replace `True` with `ratio_power_style="radical"` and `False` with
 
 ### Multivariable limits
 
-The top-level `plutil.lim_latex` formatter accepts matching coordinate
+The `fmt.lim_latex` formatter accepts matching coordinate
 sequences for multivariable limits. Python sequences and `sympy.Tuple` values
 are supported; both `var` and `val` must be nonempty and have the same length.
+It is also available as the top-level `plutil.lim_latex` export.
 
 ```python
 from sympy.abc import x, y
 
-from plutil import lim_latex
+from plutil import fmt
 
-lim_latex(var=(x, y), val=(0, 0), body=x**2 + y**2)
+fmt.lim_latex(var=(x, y), val=(0, 0), body=x**2 + y**2)
 # r"\displaystyle \lim_{\left(x, y\right) \to \left(0, 0\right)} {\left(x^{2} + y^{2}\right)}"
 
-lim_latex(
+fmt.lim_latex(
     var=(x, y),
     val=(0, 0),
     body=x / y,

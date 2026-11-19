@@ -41,9 +41,9 @@ from .common import (
     Variable,
     _normalize_one_or_more,
     getrec,
-    latex,
     to_expr,
 )
+from .fmt import latex
 from .partial_credit import PartialCreditRule, award_partial_credit
 
 _question_data_types: dict[tuple[type, type], type] = {}
