@@ -155,6 +155,61 @@ _TOOL_OPTION_NAMES: dict[SketchToolType, frozenset[str]] = {
 _COMMON_TOOL_OPTIONS = frozenset(
     ("label", "limit", "color", "helper", "read_only", "group")
 )
+_COMMON_TOOL_DEFAULTS: dict[str, object] = {
+    "helper": False,
+    "read_only": False,
+}
+_TOOL_DEFAULT_OPTIONS: dict[SketchToolType, dict[str, object]] = {
+    "free-draw": {
+        **_COMMON_TOOL_DEFAULTS,
+        "label": "Function f(x)",
+        "color": "blue",
+    },
+    "point": {
+        **_COMMON_TOOL_DEFAULTS,
+        "label": "Point",
+        "color": "black",
+        "size": 15,
+        "hollow": False,
+    },
+    "spline": {
+        **_COMMON_TOOL_DEFAULTS,
+        "label": "Function f(x)",
+        "color": "purple",
+    },
+    "polyline": {
+        **_COMMON_TOOL_DEFAULTS,
+        "label": "Function f(x)",
+        "color": "orange",
+    },
+    "polygon": {
+        **_COMMON_TOOL_DEFAULTS,
+        "label": "Polygon",
+        "color": "mediumseagreen",
+        "fill_color": "mediumseagreen",
+        "opacity": 0.5,
+    },
+    "line": {
+        **_COMMON_TOOL_DEFAULTS,
+        "label": "Line",
+        "color": "red",
+        "dash_style": "solid",
+        "length_constraint": 0.0,
+        "arrowhead": 0,
+    },
+    "horizontal-line": {
+        **_COMMON_TOOL_DEFAULTS,
+        "label": "Horizontal Line",
+        "color": "dimgray",
+        "dash_style": "dashdotted",
+    },
+    "vertical-line": {
+        **_COMMON_TOOL_DEFAULTS,
+        "label": "Vertical Line",
+        "color": "dimgray",
+        "dash_style": "dashdotted",
+    },
+}
 _TOOL_ATTR_NAMES = {
     "read_only": "read-only",
     "dash_style": "dash-style",
@@ -419,7 +474,12 @@ def _tool_options(
         if not 0 <= normalized_opacity <= 1:
             raise ValueError("opacity must be between zero and one")
         options["opacity"] = normalized_opacity
-    return options
+    defaults = _TOOL_DEFAULT_OPTIONS[tool_type]
+    return {
+        name: value
+        for name, value in options.items()
+        if name not in defaults or value != defaults[name]
+    }
 
 
 def _tool_signature(

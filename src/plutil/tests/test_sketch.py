@@ -198,6 +198,75 @@ def test_equal_duplicate_tool_is_idempotent_and_conflict_is_atomic() -> None:
     assert sketch.params["tools"] == before
 
 
+@pytest.mark.parametrize(
+    ("tool_type", "defaults"),
+    [
+        (
+            "free-draw",
+            {"label": "Function f(x)", "color": "blue", "helper": False},
+        ),
+        (
+            "point",
+            {
+                "label": "Point",
+                "color": "black",
+                "read_only": False,
+                "size": 15,
+                "hollow": False,
+            },
+        ),
+        ("spline", {"label": "Function f(x)", "color": "purple"}),
+        ("polyline", {"label": "Function f(x)", "color": "orange"}),
+        (
+            "polygon",
+            {
+                "label": "Polygon",
+                "color": "mediumseagreen",
+                "fill_color": "mediumseagreen",
+                "opacity": 0.5,
+            },
+        ),
+        (
+            "line",
+            {
+                "label": "Line",
+                "color": "red",
+                "dash_style": "solid",
+                "length_constraint": 0,
+                "arrowhead": 0,
+            },
+        ),
+        (
+            "horizontal-line",
+            {
+                "label": "Horizontal Line",
+                "color": "dimgray",
+                "dash_style": "dashdotted",
+            },
+        ),
+        (
+            "vertical-line",
+            {
+                "label": "Vertical Line",
+                "color": "dimgray",
+                "dash_style": "dashdotted",
+            },
+        ),
+    ],
+)
+def test_explicit_prairielearn_defaults_keep_tool_creation_idempotent(
+    tool_type: str, defaults: dict[str, object]
+) -> None:
+    sketch = SketchQuestion(question_data(), "graph")
+    create = cast(Any, sketch.tools.create)
+    original = create(type=tool_type, id="tool")
+
+    repeated = create(type=tool_type, id="tool", **defaults)
+
+    assert repeated == original
+    assert len(sketch.params["tools"]) == 1
+
+
 def test_tools_cannot_be_constructed_standalone() -> None:
     with pytest.raises(TypeError, match="sketch.tools.create"):
         Tool()
@@ -265,7 +334,7 @@ def test_tool_type_specific_options_serialize() -> None:
         type="polygon",
         id="polygon",
         fill_color="blue",
-        opacity=sp.Rational(1, 2),
+        opacity=sp.Rational(1, 4),
     )
 
     attrs = [tool["attrs"] for tool in sketch.params["tools"]]
@@ -274,7 +343,7 @@ def test_tool_type_specific_options_serialize() -> None:
     assert 'length-constraint="2"' in attrs[1]
     assert 'arrowhead="8"' in attrs[1]
     assert 'fill-color="blue"' in attrs[2]
-    assert 'opacity="0.5"' in attrs[2]
+    assert 'opacity="0.25"' in attrs[2]
 
 
 def test_drawing_dataclasses_validate_eagerly_and_are_immutable() -> None:
