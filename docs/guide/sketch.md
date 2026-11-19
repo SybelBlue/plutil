@@ -53,17 +53,20 @@ from sympy.abc import x
 
 
 def generate(data):
-    sketch = SketchQuestion(data, "given-graph")
-    sketch.configure(
-        read_only=True,
-        weight=0,
-        enforce_bounds=True,
-        allow_blank=True,
-        width=640,
-        height=420,
-    ).set_frame(
-        x=(-5, 5),
-        y=(-3, 6),
+    sketch = (
+        SketchQuestion(data, "given-graph")
+        .configure(
+            read_only=True,
+            weight=0,
+            enforce_bounds=True,
+            allow_blank=True,
+            width=640,
+            height=420,
+        )
+        .set_frame(
+            x=(-5, 5),
+            y=(-3, 6),
+        )
     )
 
     points = sketch.tools.create(type="point", id="given-points", color="blue")
