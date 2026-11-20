@@ -9,6 +9,7 @@ from plutil.vectors import (
     are_parallel,
     cross,
     dot,
+    hat,
     is_zero,
     normal,
 )
@@ -77,6 +78,35 @@ def test_vector_inputs_accept_sympy_and_serialized_tuples() -> None:
 
     assert dot(vector, (2, 3)) == 2 * x + 6
     assert dot(vector_json, (2, 3)) == 2 * x + 6
+
+
+def test_hat_returns_a_unit_vector_in_the_same_direction() -> None:
+    unit = hat((3, 4))
+
+    assert unit == (sp.Rational(3, 5), sp.Rational(4, 5))
+    assert dot(unit, unit) == 1
+
+
+def test_hat_accepts_sympy_and_serialized_vectors() -> None:
+    vector = sp.Tuple(3, 4)
+    vector_json: tuple[psu.SympyJson, ...] = tuple(
+        pl.sympy_to_json(sp.Integer(value)) for value in vector
+    )
+
+    assert hat(vector) == (sp.Rational(3, 5), sp.Rational(4, 5))
+    assert hat(vector_json) == (sp.Rational(3, 5), sp.Rational(4, 5))
+
+
+def test_hat_preserves_a_zero_vector() -> None:
+    assert hat((0, 0, 0)) == (0, 0, 0)
+
+
+def test_hat_rejects_an_empty_vector() -> None:
+    with pytest.raises(
+        ValueError,
+        match="dot product requires nonempty vectors of equal dimension",
+    ):
+        hat(())
 
 
 def test_normal_returns_the_gradient_in_canonical_variable_order() -> None:

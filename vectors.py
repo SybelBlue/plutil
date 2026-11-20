@@ -338,3 +338,19 @@ def are_equivalent_parametric_lines(
         right_direction,
         compare=_broadly_equivalent,
     )
+
+
+def hat(v: VectorInput) -> Vector:
+    """Return the unit vector in the direction of ``v``.
+
+    Components are sympified. A zero vector is returned as a zero vector rather
+    than producing undefined components.
+
+    Raises:
+        ValueError: If ``v`` is empty.
+    """
+    vector = _sympify_vector(v)
+    if _is_zero_vector(vector):
+        return vector
+    magnitude = sp.sqrt(dot(vector, vector))
+    return tuple(component / magnitude for component in vector)
