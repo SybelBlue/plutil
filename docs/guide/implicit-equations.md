@@ -71,6 +71,12 @@ require only a nonzero base, so `x**-1` is supported where `sp.Ne(x, 0)`,
 including negative values of `x`. These powers are only supported in residuals;
 region conditions remain polynomial and interval endpoints remain rational.
 
+Definedness is proved for the expression structure that reaches the checker.
+SymPy can cancel factors while constructing an expression, so a pole removed
+before validation cannot be recovered. When preserving such a pole matters,
+construct the relevant `Mul`, `Add`, and `Pow` nodes with `evaluate=False`
+before passing the expression to the checker.
+
 Decimals are not silently rationalized. If a question permits decimal input,
 run `parse_symbolic_decimals` first and then validate the resulting exact
 expression. Call `validate_implicit_expression_input` from `parse(data)` when
