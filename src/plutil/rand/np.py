@@ -9,6 +9,7 @@ from typing import cast
 
 import numpy as _np
 import numpy.typing as npt
+import sympy
 
 from ..common import OneOrMore
 from . import _core
@@ -98,7 +99,7 @@ def int(
     high: py.int,
     *,
     size: Shape,
-    exclude: OneOrMore[py.int] = (),
+    exclude: OneOrMore[py.int | sympy.Integer] = (),
     exclude_if: Callable[[py.int], py.bool] | None = None,
     step: py.int = 1,
     randsign: py.bool = False,
@@ -122,7 +123,7 @@ def float(
     high: py.float,
     *,
     size: Shape,
-    exclude: Sequence[py.float] = (),
+    exclude: Sequence[py.float | sympy.Rational] = (),
     exclude_if: Callable[[py.float], py.bool] | None = None,
     step: py.float = 1.0,
     randsign: py.bool = False,
@@ -146,7 +147,7 @@ def complex(
     high: py.complex,
     *,
     size: Shape,
-    exclude: Sequence[py.complex] = (),
+    exclude: Sequence[py.complex | sympy.Rational] = (),
     exclude_if: Callable[[py.complex], py.bool] | None = None,
     step: py.complex = 1,
     randsign: py.bool = False,

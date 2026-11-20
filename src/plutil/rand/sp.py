@@ -33,7 +33,7 @@ def int(
     low: py.int,
     high: py.int,
     *,
-    exclude: OneOrMore[py.int] = (),
+    exclude: OneOrMore[py.int | sympy.Integer] = (),
     exclude_if: Callable[[py.int], py.bool] | None = None,
     step: py.int = 1,
     randsign: py.bool = False,

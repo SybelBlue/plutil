@@ -8,6 +8,8 @@ from functools import wraps
 from math import prod
 from typing import Literal
 
+import sympy
+
 from ..common import ExprLike, OneOrMore, _normalize_one_or_more, clamp
 from ..fmt import mbool as _mbool
 from ._progression import number as _number
@@ -82,7 +84,7 @@ def int(
     low: py.int,
     high: py.int,
     *,
-    exclude: OneOrMore[py.int] = (),
+    exclude: OneOrMore[py.int | sympy.Integer] = (),
     exclude_if: Callable[[py.int], py.bool] | None = None,
     step: py.int = 1,
     randsign: py.bool = False,
@@ -116,7 +118,7 @@ def int(
     assert step != 0
     assert low <= high
 
-    exclude = tuple(_normalize_one_or_more(exclude))
+    exclude = tuple(py.int(value) for value in _normalize_one_or_more(exclude))
     selected_sign = choice((-1, 1)) if randsign else 1
     if exclude_if or exclude:
         opts = tuple(
@@ -134,7 +136,7 @@ def float(
     low: py.float,
     high: py.float,
     *,
-    exclude: Sequence[py.float] = (),
+    exclude: Sequence[py.float | sympy.Rational] = (),
     exclude_if: Callable[[py.float], py.bool] | None = None,
     step: py.float = 1.0,
     randsign: py.bool = False,
@@ -155,7 +157,7 @@ def float(
     return _number(
         low_value,
         high_value,
-        exclude=exclude,
+        exclude=tuple(py.float(value) for value in exclude),
         exclude_if=exclude_if,
         step=step_value,
         randsign=randsign,
@@ -166,7 +168,7 @@ def complex(
     low: py.complex,
     high: py.complex,
     *,
-    exclude: Sequence[py.complex] = (),
+    exclude: Sequence[py.complex | sympy.Rational] = (),
     exclude_if: Callable[[py.complex], py.bool] | None = None,
     step: py.complex = 1,
     randsign: py.bool = False,
@@ -179,18 +181,24 @@ def complex(
     return _number(
         py.complex(low),
         py.complex(high),
-        exclude=exclude,
+        exclude=tuple(py.complex(value) for value in exclude),
         exclude_if=exclude_if,
         step=py.complex(step),
         randsign=randsign,
     )
 
 
+def _fraction(value: Fraction | py.int | sympy.Rational) -> Fraction:
+    if isinstance(value, sympy.Rational):
+        return Fraction(py.int(value.p), py.int(value.q))
+    return Fraction(value)
+
+
 def rational(
     low: Fraction | py.int,
     high: Fraction | py.int,
     *,
-    exclude: Sequence[Fraction | py.int] = (),
+    exclude: Sequence[Fraction | py.int | sympy.Rational] = (),
     exclude_if: Callable[[Fraction], py.bool] | None = None,
     step: Fraction | py.int = 1,
     randsign: py.bool = False,
@@ -211,7 +219,7 @@ def rational(
     return _number(
         low_value,
         high_value,
-        exclude=tuple(Fraction(value) for value in exclude),
+        exclude=tuple(_fraction(value) for value in exclude),
         exclude_if=exclude_if,
         step=step_value,
         randsign=randsign,

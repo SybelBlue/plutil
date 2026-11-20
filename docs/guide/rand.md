@@ -92,7 +92,9 @@ shuffled_pair = rand.combination(("red", "green", "blue"), 2, output_order="rand
 Choose an integer from an inclusive arithmetic progression. Use `exclude` or
 `exclude_if` to remove candidates, `step` to change the spacing, and
 `randsign=True` to choose the result's sign independently. `exclude` accepts a
-single value or a sequence of values.
+single value or a sequence of values, including SymPy `Integer` values. The
+other numeric generators below likewise accept compatible exact SymPy `Integer`
+and `Rational` exclusions.
 
 ```python
 a = rand.int(2, 12, exclude=(4, 8), step=2)

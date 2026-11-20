@@ -269,8 +269,8 @@ def test_randint_accepts_single_excluded_value(
 
     monkeypatch.setattr(rand.base, "choice", choose_last)
 
-    assert rand.int(1, 3, exclude=3) == 2
-    assert rand.sp.int(-1, 1, exclude=1) == sympy.Integer(0)
+    assert rand.int(1, 3, exclude=sympy.Integer(3)) == 2
+    assert rand.sp.int(-1, 1, exclude=sympy.Integer(1)) == sympy.Integer(0)
     assert choices == [(1, 2), (-1, 0)]
 
 
@@ -391,14 +391,14 @@ def test_rand_numeric_progressions_include_bounds_and_return_named_type(
 @pytest.mark.parametrize(
     ("generator", "low", "high", "step", "exclude", "excluded_by_predicate"),
     [
-        (rand.float, 0.0, 1.0, 0.25, 0.25, 1.0),
-        (rand.complex, 0j, 4 + 4j, 1 + 1j, 1 + 1j, 4 + 4j),
+        (rand.float, 0.0, 1.0, 0.25, sympy.Rational(1, 4), 1.0),
+        (rand.complex, 0j, 4 + 4j, 1 + 1j, sympy.Integer(0), 4 + 4j),
         (
             rand.rational,
             Fraction(0),
             Fraction(1),
             Fraction(1, 4),
-            Fraction(1, 4),
+            sympy.Rational(1, 4),
             Fraction(1),
         ),
         (
