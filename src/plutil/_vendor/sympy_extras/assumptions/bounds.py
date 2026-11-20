@@ -29,7 +29,7 @@ from sympy.core.basic import Basic
 from sympy.core.expr import Expr
 from sympy.core.numbers import Rational
 from sympy.core.power import Pow
-from sympy.core.relational import Relational, Eq
+from sympy.core.relational import Relational, Eq, Ne
 from sympy.core.symbol import Dummy, Symbol
 from sympy.functions.elementary.complexes import Abs
 from sympy.functions.elementary.exponential import exp, log
@@ -165,16 +165,21 @@ class _Abstractor:
                 self.constraints.extend(_RULES[type(e)](t, inner))
             self.known[e] = t
             return t
-        if isinstance(e, Pow) and isinstance(e.exp, Rational) and not e.exp.is_integer:
+        if isinstance(e, Pow) and isinstance(e.exp, Rational) and \
+                (not e.exp.is_integer or e.exp < 0):
             inner = self.expression(as_expr(e.base))
             if inner is None or not self._polynomial(inner):
                 return None
             p, q = int(e.exp.p), int(e.exp.q)
             t = self._fresh('t')
-            # a real root of a nonnegative base (the reality of the power)
-            self.requirements.append(as_boolean(inner >= 0 if p > 0 else inner > 0))
-            self.constraints.extend([inner >= 0, t >= 0, Eq(t**q, inner**p)] if p > 0
-                                    else [inner > 0, t > 0, Eq(t**q*inner**(-p), 1)])
+            if q == 1:
+                self.requirements.append(as_boolean(Ne(inner, 0)))
+                self.constraints.append(Eq(t*inner**(-p), 1))
+            else:
+                # a real root of a nonnegative base (the reality of the power)
+                self.requirements.append(as_boolean(inner >= 0 if p > 0 else inner > 0))
+                self.constraints.extend([inner >= 0, t >= 0, Eq(t**q, inner**p)] if p > 0
+                                        else [inner > 0, t > 0, Eq(t**q*inner**(-p), 1)])
             self.known[e] = t
             return t
         if e.args and not isinstance(e, Symbol):

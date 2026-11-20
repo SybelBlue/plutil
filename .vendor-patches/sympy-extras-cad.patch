@@ -22,14 +22,50 @@ index 9b22d17..2a47c1c 100644
 -    'cylindrical_formula', 'cylindrical_set', 'cylindrical_cases', 'augmented_projection_sets']
 +    'sample_points', 'solution_set', 'truth_tables', 'augmented_projection_sets']
 diff --git a/sympy_extras/assumptions/bounds.py b/sympy_extras/assumptions/bounds.py
-index 5ecc363..d618bc6 100644
+index 5ecc363..2d6f646 100644
 --- a/sympy_extras/assumptions/bounds.py
 +++ b/sympy_extras/assumptions/bounds.py
+@@ -29,7 +29,7 @@
+ from sympy.core.expr import Expr
+ from sympy.core.numbers import Rational
+ from sympy.core.power import Pow
+-from sympy.core.relational import Relational, Eq
++from sympy.core.relational import Relational, Eq, Ne
+ from sympy.core.symbol import Dummy, Symbol
+ from sympy.functions.elementary.complexes import Abs
+ from sympy.functions.elementary.exponential import exp, log
 @@ -41,3 +41,2 @@
 -from sympy_extras._typing import as_boolean, as_expr, free_symbols
 +from plutil._vendor.sympy_extras._typing import as_boolean, as_expr, free_symbols
 -
  __all__ = ['polynomial_abstraction', 'Abstraction']
+@@ -166,16 +165,21 @@ class _Abstractor:
+                 self.constraints.extend(_RULES[type(e)](t, inner))
+             self.known[e] = t
+             return t
+-        if isinstance(e, Pow) and isinstance(e.exp, Rational) and not e.exp.is_integer:
++        if isinstance(e, Pow) and isinstance(e.exp, Rational) and \
++                (not e.exp.is_integer or e.exp < 0):
+             inner = self.expression(as_expr(e.base))
+             if inner is None or not self._polynomial(inner):
+                 return None
+             p, q = int(e.exp.p), int(e.exp.q)
+             t = self._fresh('t')
+-            # a real root of a nonnegative base (the reality of the power)
+-            self.requirements.append(as_boolean(inner >= 0 if p > 0 else inner > 0))
+-            self.constraints.extend([inner >= 0, t >= 0, Eq(t**q, inner**p)] if p > 0
+-                                    else [inner > 0, t > 0, Eq(t**q*inner**(-p), 1)])
++            if q == 1:
++                self.requirements.append(as_boolean(Ne(inner, 0)))
++                self.constraints.append(Eq(t*inner**(-p), 1))
++            else:
++                # a real root of a nonnegative base (the reality of the power)
++                self.requirements.append(as_boolean(inner >= 0 if p > 0 else inner > 0))
++                self.constraints.extend([inner >= 0, t >= 0, Eq(t**q, inner**p)] if p > 0
++                                        else [inner > 0, t > 0, Eq(t**q*inner**(-p), 1)])
+             self.known[e] = t
+             return t
+         if e.args and not isinstance(e, Symbol):
 diff --git a/sympy_extras/polys/cad/lifting.py b/sympy_extras/polys/cad/lifting.py
 index b321b7d..16ac58c 100644
 --- a/sympy_extras/polys/cad/lifting.py
