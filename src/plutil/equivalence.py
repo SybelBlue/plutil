@@ -278,7 +278,7 @@ def _coefficient_bits(poly: sp.Poly) -> int:
 
 def _requires_power_abstraction(power: sp.Pow) -> bool:
     exponent = power.exp
-    return isinstance(exponent, sp.Rational) and (exponent.q != 1 or exponent < 0)
+    return isinstance(exponent, sp.Rational) and (exponent.q != 1 or exponent.p < 0)
 
 
 def _validate_polynomial_structure(

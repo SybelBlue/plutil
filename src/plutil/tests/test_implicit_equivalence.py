@@ -1505,6 +1505,14 @@ def test_negative_integer_power_degree_is_rejected_before_abstraction() -> None:
         )
 
 
+def test_power_abstraction_predicate_returns_a_python_bool() -> None:
+    x = sp.Symbol("x")
+
+    assert equivalence._requires_power_abstraction(cast(sp.Pow, x**-1)) is True
+    assert equivalence._requires_power_abstraction(cast(sp.Pow, sp.sqrt(x))) is True
+    assert equivalence._requires_power_abstraction(cast(sp.Pow, x**2)) is False
+
+
 @pytest.mark.parametrize("strategy", ["auto", "canonical"])
 def test_powered_residual_term_limit_is_strategy_independent(
     strategy: equivalence.ImplicitStrategy,
