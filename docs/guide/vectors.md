@@ -46,6 +46,21 @@ are_parallel((0, 0), (1, 2))  # -> False
 Parallel vectors may point in the same or opposite direction and may differ by
 any nonzero scaling. Mismatched dimensions return `False`.
 
+## Unit vectors
+
+`hat(vector)` divides a nonzero vector by its symbolic magnitude to produce a
+unit vector in the same direction. Its components accept the same parsed and
+serialized symbolic input forms as the other vector helpers. For convenience,
+a zero vector is returned as a zero vector instead of producing undefined
+components. An empty vector raises `ValueError`.
+
+```python
+from plutil.vectors import hat
+
+hat((3, 4))  # -> (3/5, 4/5)
+hat((0, 0))  # -> (0, 0)
+```
+
 ## Surface normals
 
 `normal(surface, *, at=None)` returns the gradient normal to an implicit level
