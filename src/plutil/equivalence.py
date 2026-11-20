@@ -299,7 +299,7 @@ def _validate_polynomial_structure(
     has_rational_power = False
     supported_description = "a polynomial with rational coefficients"
     if allow_rational_powers:
-        supported_description += " or supported rational powers"
+        supported_description += " or a supported powered expression"
 
     def degree(value: sp.Basic) -> int:
         nonlocal has_rational_power
@@ -334,7 +334,7 @@ def _validate_polynomial_structure(
                 denominator = int(exponent.q)
                 if abs(numerator) > max_total_degree:
                     raise _ImplicitInputError(
-                        "a rational-power defining polynomial would exceed "
+                        "a defining polynomial for a powered expression would exceed "
                         f"total degree {max_total_degree}"
                     )
                 defining_degree = (
@@ -344,7 +344,7 @@ def _validate_polynomial_structure(
                 )
                 if defining_degree > max_total_degree:
                     raise _ImplicitInputError(
-                        "a rational-power defining polynomial would exceed "
+                        "a defining polynomial for a powered expression would exceed "
                         f"total degree {max_total_degree}"
                     )
                 result = 1
@@ -781,12 +781,13 @@ def validate_implicit_expression_input(
 ) -> bool:
     """Validate a bounded polynomial or exact powered-expression submission.
 
-    Rational powers are normally accepted only when CAD proves that they are
-    real and defined everywhere in the supplied region. This helper is intended
-    for a PrairieLearn ``parse(data)`` function; deterministically invalid input
-    receives a format error and its submitted answer is cleared. A CAD timeout
-    or backend failure leaves the answer intact so grading can fail closed as
-    inconclusive instead of blaming an infrastructure failure on the student.
+    Powered expressions are normally accepted only when CAD proves that they
+    are real and defined everywhere in the supplied region. This helper is
+    intended for a PrairieLearn ``parse(data)`` function; deterministically
+    invalid input receives a format error and its submitted answer is cleared.
+    A CAD timeout or backend failure leaves the answer intact so grading can
+    fail closed as inconclusive instead of blaming an infrastructure failure on
+    the student.
     """
     has_format_error = lens.format_error is not None
     submitted = None if has_format_error else lens.submitted_answer
@@ -871,7 +872,7 @@ def validate_implicit_expression_input(
                     return True
                 detail = decision.reason or "cad-domain-unproved"
                 raise _ImplicitInputError(
-                    "could not prove that rational powers are real and defined "
+                    "could not prove that powered expressions are real and defined "
                     f"throughout the comparison region ({detail})"
                 )
     except _CadBackendError:
@@ -1474,7 +1475,7 @@ def _check_powered_equivalence(
             exact=False,
             method="canonical",
             accepted=False,
-            reason="rational-power-requires-cad",
+            reason="powered-expression-requires-cad",
         )
 
     reference_expr = _residual_expr(reference)

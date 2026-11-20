@@ -1484,7 +1484,7 @@ def test_blank_candidate_lens_does_not_hide_authored_witness_errors() -> None:
 def test_rational_power_degree_is_rejected_before_abstraction() -> None:
     x = sp.Symbol("x")
 
-    with pytest.raises(ValueError, match="defining polynomial"):
+    with pytest.raises(ValueError, match="powered expression"):
         check_implicit_equivalence(
             x ** sp.Rational(5, 2),
             x,
@@ -1496,7 +1496,7 @@ def test_rational_power_degree_is_rejected_before_abstraction() -> None:
 def test_negative_integer_power_degree_is_rejected_before_abstraction() -> None:
     x = sp.Symbol("x")
 
-    with pytest.raises(ValueError, match="defining polynomial"):
+    with pytest.raises(ValueError, match="powered expression"):
         check_implicit_equivalence(
             x**-4,
             x,
@@ -2103,7 +2103,7 @@ def test_expression_parse_helper_rejects_an_unproved_rational_power_domain() -> 
         SympyQuestion(data, "answer", variables=x)
     )
     assert data["submitted_answers"]["answer"] is None
-    assert "real and defined throughout" in data["format_errors"]["answer"]
+    assert "powered expressions are real and defined" in data["format_errors"]["answer"]
     expected["submitted_answers"]["answer"] = None
     expected["format_errors"] = data["format_errors"]
     assert data == expected
@@ -2120,7 +2120,7 @@ def test_expression_parse_helper_rejects_an_unguarded_negative_integer_power() -
         SympyQuestion(data, "answer", variables=x)
     )
     assert data["submitted_answers"]["answer"] is None
-    assert "real and defined throughout" in data["format_errors"]["answer"]
+    assert "powered expressions are real and defined" in data["format_errors"]["answer"]
 
 
 def test_strict_polynomial_parse_helper_still_rejects_rational_powers() -> None:
