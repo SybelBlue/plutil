@@ -32,7 +32,7 @@ cannot start an unbounded symbolic calculation. Every residual and individual
 region polynomial must satisfy these limits:
 
 - residuals are polynomials over exact rational coefficients or use supported
-  noninteger rational powers;
+  negative integer and noninteger rational powers;
 - variables are real;
 - residual, region, and generated defining polynomials have total degree at
   most four;
@@ -41,7 +41,7 @@ region polynomial must satisfy these limits:
 
 The exact CAD tier additionally accepts at most three original plus generated
 variables, four authored region relations, and 60 terms across the complete
-request. Each distinct rational-power expression introduces one generated
+request. Each distinct abstracted power expression introduces one generated
 variable; an identical expression shared by the residuals is reused.
 Requests that are individually valid but exceed this combined CAD envelope
 return an inconclusive verdict instead of raising an input error.
@@ -66,15 +66,16 @@ assert result.exact
 
 Positive and negative fractional powers use the same exact lowering. For
 example, `x**sp.Rational(3, 2)` is supported where `x >= 0`, and
-`x**sp.Rational(-1, 2)` is supported where `x > 0`. Rational powers are only
-supported in residuals; region conditions remain polynomial, interval
-endpoints remain rational, and negative integer powers remain unsupported.
+`x**sp.Rational(-1, 2)` is supported where `x > 0`. Negative integer powers
+require only a nonzero base, so `x**-1` is supported where `sp.Ne(x, 0)`,
+including negative values of `x`. These powers are only supported in residuals;
+region conditions remain polynomial and interval endpoints remain rational.
 
 Decimals are not silently rationalized. If a question permits decimal input,
 run `parse_symbolic_decimals` first and then validate the resulting exact
 expression. Call `validate_implicit_expression_input` from `parse(data)` when
-the question admits rational powers. Pass the same region used for grading so
-the helper can prove that every submitted power is defined:
+the question admits powered expressions. Pass the same region used for grading
+so the helper can prove that every submitted power is defined:
 
 ```python
 import sympy as sp

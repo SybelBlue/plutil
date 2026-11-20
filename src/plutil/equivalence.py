@@ -276,6 +276,11 @@ def _coefficient_bits(poly: sp.Poly) -> int:
     return largest
 
 
+def _requires_power_abstraction(power: sp.Pow) -> bool:
+    exponent = power.exp
+    return isinstance(exponent, sp.Rational) and (exponent.q != 1 or exponent < 0)
+
+
 def _validate_polynomial_structure(
     expr: sp.Expr,
     variables: set[sp.Symbol],
@@ -287,8 +292,8 @@ def _validate_polynomial_structure(
 
     This deliberately runs before ``sp.Poly`` so unsupported nodes and nested,
     unexpanded powers cannot make polynomial construction perform an unbounded
-    expansion. The result says whether a supported noninteger rational power
-    was present.
+    expansion. The result says whether a supported power requiring polynomial
+    abstraction was present.
     """
 
     has_rational_power = False
@@ -321,15 +326,7 @@ def _validate_polynomial_structure(
                     f"the expression must be {supported_description}"
                 )
             base_degree = degree(value.base)
-            if exponent.q == 1:
-                if exponent < 0:
-                    if allow_rational_powers:
-                        raise _ImplicitInputError(
-                            "negative integer powers are not supported"
-                        )
-                    raise _ImplicitInputError(
-                        f"the expression must be {supported_description}"
-                    )
+            if exponent.q == 1 and exponent >= 0:
                 result = base_degree * int(exponent)
             elif allow_rational_powers:
                 has_rational_power = True
@@ -380,7 +377,7 @@ def _validate_powered_residual_limits(
             (
                 power
                 for power in expr.atoms(sp.Pow)
-                if isinstance(power.exp, sp.Rational) and power.exp.q != 1
+                if _requires_power_abstraction(power)
             ),
             key=sp.default_sort_key,
         )
@@ -653,9 +650,7 @@ def _abstract_powered_formula(
     """Apply the vendored helper through the exact first-party proxy."""
     remaining_variables = max_variables - len(variables)
     rational_powers = {
-        power
-        for power in formula.atoms(sp.Pow)
-        if isinstance(power.exp, sp.Rational) and power.exp.q != 1
+        power for power in formula.atoms(sp.Pow) if _requires_power_abstraction(power)
     }
     if len(rational_powers) > remaining_variables:
         raise _CadEnvelopeError(
@@ -784,7 +779,7 @@ def validate_implicit_expression_input(
     max_terms: int = _CAD_MAX_TERMS_PER_POLYNOMIAL,
     max_coefficient_bits: int = _CAD_MAX_COEFFICIENT_BITS,
 ) -> bool:
-    """Validate a bounded polynomial or exact rational-power submission.
+    """Validate a bounded polynomial or exact powered-expression submission.
 
     Rational powers are normally accepted only when CAD proves that they are
     real and defined everywhere in the supplied region. This helper is intended
@@ -1625,9 +1620,10 @@ def check_implicit_equivalence(
     ``auto`` strategy first proves easy equivalences canonically, then
     searches exact univariate slices for a counterexample, and finally runs a
     guarded cylindrical algebraic decomposition (CAD). Residuals may be
-    rational polynomials or use supported noninteger rational powers. Powered
-    residuals use SymPy's principal-real semantics and must be real and defined
-    throughout the comparison region. Region relations remain polynomial.
+    rational polynomials or use supported negative integer and noninteger
+    rational powers. Powered residuals use SymPy's principal-real semantics and
+    must be real and defined throughout the comparison region. Region relations
+    remain polynomial.
     Every generated polynomial has degree at most four, at most 30 terms, and
     64-bit coefficients. CAD is additionally limited to three original plus
     generated variables, four authored region relations, and 60 terms overall.
