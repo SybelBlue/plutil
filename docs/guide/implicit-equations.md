@@ -43,6 +43,8 @@ The exact CAD tier additionally accepts at most three original plus generated
 variables, four authored region relations, and 60 terms across the complete
 request. Each distinct abstracted power expression introduces one generated
 variable; an identical expression shared by the residuals is reused.
+Different negative exponents of the same base are distinct expressions, so
+`x**-1` and `x**-2`, for example, introduce two generated variables.
 Requests that are individually valid but exceed this combined CAD envelope
 return an inconclusive verdict instead of raising an input error.
 
