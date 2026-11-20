@@ -164,6 +164,12 @@ The default `strategy="auto"` is tiered:
    two polynomial-only tiers, are converted to exact polynomial constraints,
    and use CAD for both definedness and equivalence.
 
+Accordingly, `strategy="canonical"` never settles a powered residual, even when
+the two residual expressions are structurally identical: structural equality
+does not prove that the expression is defined throughout the region. Such a
+request returns `verdict="inconclusive"` with
+`reason="powered-expression-requires-cad"`.
+
 A CAD timeout, unsupported CAD region, or backend failure returns
 `verdict="inconclusive"` and `accepted=False`. This is the safe default for
 grading.

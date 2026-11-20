@@ -1513,6 +1513,27 @@ def test_power_abstraction_predicate_returns_a_python_bool() -> None:
     assert equivalence._requires_power_abstraction(cast(sp.Pow, x**2)) is False
 
 
+def test_canonical_strategy_does_not_skip_powered_domain_proof() -> None:
+    x, y = sp.symbols("x y")
+    residual = x**-1 - y
+
+    result = check_implicit_equivalence(
+        residual,
+        residual,
+        variables=(x, y),
+        condition=sp.Ne(x, 0),
+        strategy="canonical",
+    )
+
+    assert result == ImplicitEquivalenceResult(
+        verdict="inconclusive",
+        accepted=False,
+        exact=False,
+        method="canonical",
+        reason="powered-expression-requires-cad",
+    )
+
+
 @pytest.mark.parametrize("strategy", ["auto", "canonical"])
 def test_powered_residual_term_limit_is_strategy_independent(
     strategy: equivalence.ImplicitStrategy,
