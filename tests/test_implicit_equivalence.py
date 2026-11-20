@@ -843,6 +843,36 @@ def test_cad_proves_supported_rational_power_equivalences(
     assert result.method == "cad"
 
 
+@pytest.mark.parametrize("exponent", [-1, -2, -3])
+def test_cad_proves_negative_integer_power_equivalences(exponent: int) -> None:
+    x, y = sp.symbols("x y")
+
+    result = check_implicit_equivalence(
+        x**exponent - y,
+        x ** (-exponent) * y - 1,
+        variables=(x, y),
+        condition=sp.Ne(x, 0),
+    )
+
+    assert result.verdict == "equivalent"
+    assert result.exact
+    assert result.method == "cad"
+
+
+def test_negative_integer_powers_allow_negative_bases() -> None:
+    x, y = sp.symbols("x y")
+
+    result = check_implicit_equivalence(
+        x**-1 - y,
+        x * y - 1,
+        variables=(x, y),
+        condition=x < 0,
+    )
+
+    assert result.verdict == "equivalent"
+    assert result.exact
+
+
 def test_cad_detects_the_wrong_square_root_branch() -> None:
     x, y = sp.symbols("x y")
 
@@ -863,6 +893,7 @@ def test_cad_detects_the_wrong_square_root_branch() -> None:
         (lambda x: sp.sqrt(x), lambda x: sp.true),
         (lambda x: x ** sp.Rational(-1, 2), lambda x: x >= 0),
         (lambda x: x ** sp.Rational(1, 3), lambda x: x < 0),
+        (lambda x: x**-1, lambda x: sp.true),
     ],
 )
 def test_powered_residual_must_be_defined_throughout_the_region(
@@ -995,6 +1026,32 @@ def test_powered_formula_limit_polynomials_preserve_generated_symbol_identity() 
     assert set(relation.as_expr().free_symbols) == set(problem.variables)
 
 
+def test_negative_integer_power_is_shared_by_powered_abstraction() -> None:
+    x, y = sp.symbols("x y")
+    reciprocal = sp.Pow(x, -1, evaluate=False)
+    formula = cast(
+        Any,
+        sp.Equivalent(
+            sp.Eq(reciprocal - y, 0, evaluate=False),
+            sp.Eq(reciprocal - y**2, 0, evaluate=False),
+            evaluate=False,
+        ),
+    )
+
+    problem = equivalence._abstract_powered_formula(
+        formula,
+        (x, y),
+        max_variables=3,
+        max_total_degree=4,
+        max_terms=30,
+        max_coefficient_bits=64,
+    )
+
+    assert len(problem.variables) == 1
+    (generated,) = problem.variables
+    assert problem.constraints == (sp.Eq(generated * x, 1),)
+
+
 def test_powered_formula_does_not_merge_generated_symbol_with_user_t() -> None:
     x, t = sp.symbols("x t")
     formula = cast(Any, sp.Eq(sp.sqrt(x) - t, 0, evaluate=False))
@@ -1049,6 +1106,21 @@ def test_powered_abstraction_failures_are_inconclusive(
 def test_nested_rational_powers_are_supported_within_the_variable_limit() -> None:
     x = sp.Symbol("x")
     residual = sp.Pow(sp.sqrt(x), sp.Rational(1, 2), evaluate=False)
+
+    result = check_implicit_equivalence(
+        residual,
+        residual,
+        variables=x,
+        condition=x >= 0,
+    )
+
+    assert result.verdict == "equivalent"
+    assert result.exact
+
+
+def test_nested_negative_integer_power_is_supported_within_the_variable_limit() -> None:
+    x = sp.Symbol("x")
+    residual = (sp.sqrt(x) + 1) ** -1
 
     result = check_implicit_equivalence(
         residual,
@@ -1412,13 +1484,54 @@ def test_blank_candidate_lens_does_not_hide_authored_witness_errors() -> None:
 def test_rational_power_degree_is_rejected_before_abstraction() -> None:
     x = sp.Symbol("x")
 
-    with pytest.raises(ValueError, match="defining polynomial"):
+    with pytest.raises(ValueError, match="powered expression"):
         check_implicit_equivalence(
             x ** sp.Rational(5, 2),
             x,
             variables=x,
             condition=x >= 0,
         )
+
+
+def test_negative_integer_power_degree_is_rejected_before_abstraction() -> None:
+    x = sp.Symbol("x")
+
+    with pytest.raises(ValueError, match="powered expression"):
+        check_implicit_equivalence(
+            x**-4,
+            x,
+            variables=x,
+            condition=sp.Ne(x, 0),
+        )
+
+
+def test_power_abstraction_predicate_returns_a_python_bool() -> None:
+    x = sp.Symbol("x")
+
+    assert equivalence._requires_power_abstraction(cast(sp.Pow, x**-1)) is True
+    assert equivalence._requires_power_abstraction(cast(sp.Pow, sp.sqrt(x))) is True
+    assert equivalence._requires_power_abstraction(cast(sp.Pow, x**2)) is False
+
+
+def test_canonical_strategy_does_not_skip_powered_domain_proof() -> None:
+    x, y = sp.symbols("x y")
+    residual = x**-1 - y
+
+    result = check_implicit_equivalence(
+        residual,
+        residual,
+        variables=(x, y),
+        condition=sp.Ne(x, 0),
+        strategy="canonical",
+    )
+
+    assert result == ImplicitEquivalenceResult(
+        verdict="inconclusive",
+        accepted=False,
+        exact=False,
+        method="canonical",
+        reason="powered-expression-requires-cad",
+    )
 
 
 @pytest.mark.parametrize("strategy", ["auto", "canonical"])
@@ -1713,6 +1826,24 @@ def test_expression_parse_helper_accepts_a_defined_rational_power() -> None:
     assert data == original
 
 
+def test_expression_parse_helper_accepts_a_defined_negative_integer_power() -> None:
+    x = sp.Symbol("x")
+    data = cast(
+        pl.QuestionData,
+        {
+            "submitted_answers": {"answer": pl.to_json(x**-1)},
+            "format_errors": {},
+        },
+    )
+    original = copy.deepcopy(data)
+
+    assert validate_implicit_expression_input(
+        SympyQuestion(data, "answer", variables=x),
+        condition=sp.Ne(x, 0),
+    )
+    assert data == original
+
+
 def test_expression_parse_helper_preserves_element_extensions() -> None:
     x = sp.Symbol("x")
     data = cast(
@@ -2001,10 +2132,24 @@ def test_expression_parse_helper_rejects_an_unproved_rational_power_domain() -> 
         SympyQuestion(data, "answer", variables=x)
     )
     assert data["submitted_answers"]["answer"] is None
-    assert "real and defined throughout" in data["format_errors"]["answer"]
+    assert "powered expressions are real and defined" in data["format_errors"]["answer"]
     expected["submitted_answers"]["answer"] = None
     expected["format_errors"] = data["format_errors"]
     assert data == expected
+
+
+def test_expression_parse_helper_rejects_an_unguarded_negative_integer_power() -> None:
+    x = sp.Symbol("x")
+    data = question_data(
+        submitted_answers={"answer": pl.to_json(x**-1)},
+        format_errors={},
+    )
+
+    assert not validate_implicit_expression_input(
+        SympyQuestion(data, "answer", variables=x)
+    )
+    assert data["submitted_answers"]["answer"] is None
+    assert "powered expressions are real and defined" in data["format_errors"]["answer"]
 
 
 def test_strict_polynomial_parse_helper_still_rejects_rational_powers() -> None:
