@@ -1,9 +1,13 @@
+from dataclasses import FrozenInstanceError
+
 import prairielearn as pl
 import prairielearn.sympy_utils as psu
 import pytest
 import sympy as sp
 
 from plutil.vectors import (
+    Vector,
+    VectorColumn,
     are_equivalent_parametric_lines,
     are_orthogonal,
     are_parallel,
@@ -13,6 +17,94 @@ from plutil.vectors import (
     is_zero,
     normal,
 )
+
+
+def test_vector_is_an_immutable_symbolic_sequence() -> None:
+    x = sp.Symbol("x")
+    vector = Vector((1, x, 3.0))
+
+    assert vector.components == (sp.Integer(1), x, sp.Float(3.0))
+    assert list(vector) == [1, x, sp.Float(3.0)]
+    assert vector[1] == x
+    assert vector[1:] == Vector((x, 3.0))
+    assert vector != (1, x, sp.Float(3.0))
+    assert hash(vector) == hash(Vector((1, x, 3.0)))
+    assert not hasattr(vector, "__dict__")
+    with pytest.raises(FrozenInstanceError):
+        setattr(vector, "_components", ())  # noqa: B010
+
+
+def test_vector_arithmetic_coerces_sequence_operands() -> None:
+    x = sp.Symbol("x")
+    vector = Vector((1, x, 3))
+
+    assert vector + (2, 3, 4) == Vector((3, x + 3, 7))
+    assert (2, 3, 4) + vector == Vector((3, x + 3, 7))
+    assert vector - [2, 3, 4] == Vector((-1, x - 3, -1))
+    assert [2, 3, 4] - vector == Vector((1, 3 - x, 1))
+    assert -vector == Vector((-1, -x, -3))
+    assert vector * 2 == Vector((2, 2 * x, 6))
+    assert x * vector == Vector((x, x**2, 3 * x))
+
+
+def test_vector_products_have_operator_and_method_forms() -> None:
+    left = Vector((1, 2, 3))
+    right = Vector((4, 5, 6))
+
+    assert left.dot(right) == left @ right == (1, 2, 3) @ right == 32
+    assert left.cross(right) == left ^ right == Vector((-3, 6, -3))
+    assert (1, 2, 3) ^ right == Vector((-3, 6, -3))
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        lambda vector: vector + (1,),
+        lambda vector: vector - (1,),
+    ],
+)
+def test_vector_addition_and_subtraction_require_equal_dimensions(operation) -> None:
+    with pytest.raises(ValueError, match="requires vectors of equal dimension"):
+        operation(Vector((1, 2)))
+
+
+def test_vector_multiplication_rejects_another_vector() -> None:
+    with pytest.raises(TypeError, match="unsupported operand"):
+        _ = Vector((1, 2)) * Vector((3, 4))  # pyright: ignore[reportOperatorIssue]
+
+
+def test_vector_column_is_a_vector_with_equivalent_components() -> None:
+    vector = Vector((1, 2, 3))
+    column = vector.column
+
+    assert isinstance(column, Vector)
+    assert isinstance(column, VectorColumn)
+    assert column == vector
+    assert vector == column
+    assert hash(column) == hash(vector)
+    assert column.column is column
+    assert column.row == vector
+    assert type(column.row) is Vector
+
+
+def test_column_vector_operations_preserve_the_receiver_orientation() -> None:
+    row = Vector((1, 2, 3))
+    column = VectorColumn((4, 5, 6))
+
+    assert isinstance(column + row, VectorColumn)
+    assert column + row == VectorColumn((5, 7, 9))
+    assert isinstance(row + column, Vector)
+    assert not isinstance(row + column, VectorColumn)
+    assert row + column == Vector((5, 7, 9))
+    assert isinstance((7, 8, 9) - column, VectorColumn)
+    assert (7, 8, 9) - column == VectorColumn((3, 3, 3))
+    assert isinstance(-column, VectorColumn)
+    assert isinstance(2 * column, VectorColumn)
+    assert column @ row == row @ column == 32
+    assert column ^ row == VectorColumn((3, -6, 3))
+    assert (4, 5, 6) ^ row.column == VectorColumn((3, -6, 3))
+    assert isinstance(hat(column), VectorColumn)
+    assert isinstance(cross(column, row), VectorColumn)
 
 
 def test_is_zero_vector_sympifies_components_and_handles_symbolic_zero() -> None:
@@ -48,8 +140,8 @@ def test_dot_product_rejects_invalid_dimensions(left, right) -> None:
 def test_cross_product_returns_a_symbolic_three_dimensional_vector() -> None:
     x = sp.Symbol("x")
 
-    assert cross((1, x, 0), (0, 1, x)) == (x**2, -x, 1)
-    assert cross((0, 1, x), (1, x, 0)) == (-(x**2), x, -1)
+    assert cross((1, x, 0), (0, 1, x)) == Vector((x**2, -x, 1))
+    assert cross((0, 1, x), (1, x, 0)) == Vector((-(x**2), x, -1))
 
 
 @pytest.mark.parametrize(
@@ -83,7 +175,7 @@ def test_vector_inputs_accept_sympy_and_serialized_tuples() -> None:
 def test_hat_returns_a_unit_vector_in_the_same_direction() -> None:
     unit = hat((3, 4))
 
-    assert unit == (sp.Rational(3, 5), sp.Rational(4, 5))
+    assert unit == Vector((sp.Rational(3, 5), sp.Rational(4, 5)))
     assert dot(unit, unit) == 1
 
 
@@ -93,12 +185,12 @@ def test_hat_accepts_sympy_and_serialized_vectors() -> None:
         pl.sympy_to_json(sp.Integer(value)) for value in vector
     )
 
-    assert hat(vector) == (sp.Rational(3, 5), sp.Rational(4, 5))
-    assert hat(vector_json) == (sp.Rational(3, 5), sp.Rational(4, 5))
+    assert hat(vector) == Vector((sp.Rational(3, 5), sp.Rational(4, 5)))
+    assert hat(vector_json) == Vector((sp.Rational(3, 5), sp.Rational(4, 5)))
 
 
 def test_hat_preserves_a_zero_vector() -> None:
-    assert hat((0, 0, 0)) == (0, 0, 0)
+    assert hat((0, 0, 0)) == Vector((0, 0, 0))
 
 
 def test_hat_rejects_an_empty_vector() -> None:
@@ -112,7 +204,7 @@ def test_hat_rejects_an_empty_vector() -> None:
 def test_normal_returns_the_gradient_in_canonical_variable_order() -> None:
     x, y, z = sp.symbols("x y z")
 
-    assert normal(x**2 + 2 * y**2 + 3 * z**2 - 1) == (2 * x, 4 * y, 6 * z)
+    assert normal(x**2 + 2 * y**2 + 3 * z**2 - 1) == Vector((2 * x, 4 * y, 6 * z))
 
 
 def test_normal_evaluates_at_vector_inputs() -> None:
@@ -122,9 +214,10 @@ def test_normal_evaluates_at_vector_inputs() -> None:
         pl.sympy_to_json(sp.Integer(value)) for value in (1, 2, 3)
     )
 
-    assert normal(x**2 + y**2 + z**2, at=(1, 2, 3)) == (2, 4, 6)
-    assert normal(x**2 + y**2 + z**2, at=point) == (2, 4, 6)
-    assert normal(x**2 + y**2 + z**2, at=point_json) == (2, 4, 6)
+    expected = Vector((2, 4, 6))
+    assert normal(x**2 + y**2 + z**2, at=(1, 2, 3)) == expected
+    assert normal(x**2 + y**2 + z**2, at=point) == expected
+    assert normal(x**2 + y**2 + z**2, at=point_json) == expected
 
 
 def test_normal_rejects_a_constant_surface_or_wrong_point_dimension() -> None:

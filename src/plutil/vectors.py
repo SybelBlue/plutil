@@ -1,13 +1,16 @@
-"""Symbolic operations and predicates for vectors and affine parametric lines.
+"""Symbolic vectors, operations, predicates, and affine parametric lines.
 
 The relationship predicates in this module use direction-oriented semantics:
-the zero vector is neither parallel nor orthogonal to another vector. Empty
-component sequences are not treated as vectors.
+the zero vector is neither parallel nor orthogonal to another vector. Product
+and direction helpers do not treat empty component sequences as vectors.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
+from dataclasses import dataclass, field
+from types import NotImplementedType
+from typing import Self, cast, overload
 
 import prairielearn as pl
 import sympy as sp
@@ -15,6 +18,7 @@ import sympy as sp
 from .common import (
     ExprInput,
     ExprLike,
+    LatexOptions,
     Variable,
     _input_to_expr,
     eq,
@@ -23,7 +27,6 @@ from .common import (
 )
 from .equivalence import equivalent
 
-type Vector = tuple[sp.Expr, ...]
 type VectorLike = Sequence[ExprLike] | sp.Tuple
 """A native or SymPy tuple/sequence of expression values."""
 type VectorInput = Sequence[ExprInput] | sp.Tuple
@@ -31,8 +34,194 @@ type VectorInput = Sequence[ExprInput] | sp.Tuple
 type _ExpressionComparison = Callable[[sp.Expr, sp.Expr], bool]
 
 
+@dataclass(frozen=True, slots=True, init=False, eq=False)
+class Vector(Sequence[sp.Expr]):
+    """An immutable sequence of symbolic vector components."""
+
+    _components: tuple[sp.Expr, ...] = field(repr=False)
+
+    def __init__(self, components: Iterable[ExprInput] | sp.Tuple) -> None:
+        object.__setattr__(
+            self,
+            "_components",
+            tuple(
+                _input_to_expr(pl.from_json(cast(ExprInput, component)))
+                for component in components
+            ),
+        )
+
+    @property
+    def components(self) -> tuple[sp.Expr, ...]:
+        """The normalized symbolic components."""
+        return self._components
+
+    @property
+    def column(self) -> VectorColumn:
+        """This vector with column orientation."""
+        return VectorColumn(self)
+
+    @property
+    def row(self) -> Vector:
+        """This vector with row orientation."""
+        return self
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({self._components!r})"
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Vector) and self._components == other._components
+
+    def __hash__(self) -> int:
+        return hash(self._components)
+
+    def __len__(self) -> int:
+        return len(self._components)
+
+    def __iter__(self) -> Iterator[sp.Expr]:
+        return iter(self._components)
+
+    @overload
+    def __getitem__(self, index: int) -> sp.Expr: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> Self: ...
+
+    def __getitem__(self, index: int | slice) -> sp.Expr | Self:
+        if isinstance(index, slice):
+            return self._new(self._components[index])
+        return self._components[index]
+
+    def __latex__(self, options: LatexOptions) -> str:
+        entries = " & ".join(options.render(component) for component in self)
+        return rf"\begin{{pmatrix}}{entries}\end{{pmatrix}}"
+
+    def _coerce_vector(self, other: object) -> Vector | NotImplementedType:
+        if isinstance(other, Vector):
+            return other
+        if isinstance(other, sp.Tuple) or (
+            isinstance(other, Sequence)
+            and not isinstance(other, (str, bytes, bytearray))
+        ):
+            return Vector(cast(VectorInput, other))
+        return NotImplemented
+
+    def _new(self, components: Iterable[ExprInput] | sp.Tuple) -> Self:
+        return type(self)(components)
+
+    def __add__(self, other: VectorInput) -> Self:
+        vector = self._coerce_vector(other)
+        if vector is NotImplemented:
+            return cast(Self, NotImplemented)
+        if len(self) != len(vector):
+            raise ValueError("vector addition requires vectors of equal dimension")
+        return self._new(
+            left_component + right_component
+            for left_component, right_component in zip(self, vector, strict=True)
+        )
+
+    def __radd__(self, other: VectorInput) -> Self:
+        return self.__add__(other)
+
+    def __sub__(self, other: VectorInput) -> Self:
+        vector = self._coerce_vector(other)
+        if vector is NotImplemented:
+            return cast(Self, NotImplemented)
+        if len(self) != len(vector):
+            raise ValueError("vector subtraction requires vectors of equal dimension")
+        return self._new(
+            left_component - right_component
+            for left_component, right_component in zip(self, vector, strict=True)
+        )
+
+    def __rsub__(self, other: VectorInput) -> Self:
+        vector = self._coerce_vector(other)
+        if vector is NotImplemented:
+            return cast(Self, NotImplemented)
+        if len(self) != len(vector):
+            raise ValueError("vector subtraction requires vectors of equal dimension")
+        return self._new(
+            left_component - right_component
+            for left_component, right_component in zip(vector, self, strict=True)
+        )
+
+    def __neg__(self) -> Self:
+        return self._new(-component for component in self)
+
+    def _coerce_scalar(self, scalar: object) -> sp.Expr | NotImplementedType:
+        try:
+            return _input_to_expr(pl.from_json(scalar))
+        except (TypeError, ValueError):
+            return NotImplemented
+
+    def __mul__(self, scalar: ExprInput) -> Self:
+        expression = self._coerce_scalar(scalar)
+        if expression is NotImplemented:
+            return cast(Self, NotImplemented)
+        return self._new(component * expression for component in self)
+
+    def __rmul__(self, scalar: ExprInput) -> Self:
+        return self.__mul__(scalar)
+
+    def dot(self, other: VectorInput) -> sp.Expr:
+        """Return the symbolic dot product with ``other``."""
+        vector = Vector(other)
+        if not _same_nonzero_dimension(self, vector):
+            raise ValueError("dot product requires nonempty vectors of equal dimension")
+        return _dot_product(self, vector)
+
+    def __matmul__(self, other: VectorInput) -> sp.Expr:
+        vector = self._coerce_vector(other)
+        if vector is NotImplemented:
+            return cast(sp.Expr, NotImplemented)
+        return self.dot(vector)
+
+    def __rmatmul__(self, other: VectorInput) -> sp.Expr:
+        vector = self._coerce_vector(other)
+        if vector is NotImplemented:
+            return cast(sp.Expr, NotImplemented)
+        return vector.dot(self)
+
+    def cross(self, other: VectorInput) -> Self:
+        """Return the three-dimensional cross product with ``other``."""
+        vector = Vector(other)
+        if len(self) != 3 or len(vector) != 3:
+            raise ValueError("cross product requires two three-dimensional vectors")
+        return cast(Self, _cross_product(self, vector))
+
+    def __xor__(self, other: VectorInput) -> Self:
+        vector = self._coerce_vector(other)
+        if vector is NotImplemented:
+            return cast(Self, NotImplemented)
+        return self.cross(vector)
+
+    def __rxor__(self, other: VectorInput) -> Self:
+        vector = self._coerce_vector(other)
+        if vector is NotImplemented:
+            return cast(Self, NotImplemented)
+        crossed = _cross_product(vector, self)
+        return self._new(crossed)
+
+
+class VectorColumn(Vector):
+    """A :class:`Vector` rendered with column orientation."""
+
+    __slots__ = ()
+
+    @property
+    def column(self) -> VectorColumn:
+        return self
+
+    @property
+    def row(self) -> Vector:
+        return Vector(self)
+
+    def __latex__(self, options: LatexOptions) -> str:
+        entries = r" \\ ".join(options.render(component) for component in self)
+        return rf"\begin{{pmatrix}}{entries}\end{{pmatrix}}"
+
+
 def _sympify_vector(vector: VectorInput) -> Vector:
-    return tuple(_input_to_expr(pl.from_json(component)) for component in vector)
+    return vector if isinstance(vector, Vector) else Vector(vector)
 
 
 def _is_zero_vector(
@@ -75,28 +264,26 @@ def dot(
     Raises:
         ValueError: If the vectors are empty or have different dimensions.
     """
-    left_vector = _sympify_vector(left)
-    right_vector = _sympify_vector(right)
-    if not _same_nonzero_dimension(left_vector, right_vector):
-        raise ValueError("dot product requires nonempty vectors of equal dimension")
-    return _dot_product(left_vector, right_vector)
+    return _sympify_vector(left).dot(right)
 
 
 def _cross_product(
     left: Vector,
     right: Vector,
-) -> tuple[sp.Expr, sp.Expr, sp.Expr]:
-    return (
-        left[1] * right[2] - left[2] * right[1],
-        left[2] * right[0] - left[0] * right[2],
-        left[0] * right[1] - left[1] * right[0],
+) -> Vector:
+    return left._new(
+        (
+            left[1] * right[2] - left[2] * right[1],
+            left[2] * right[0] - left[0] * right[2],
+            left[0] * right[1] - left[1] * right[0],
+        )
     )
 
 
 def cross(
     left: VectorInput,
     right: VectorInput,
-) -> tuple[sp.Expr, sp.Expr, sp.Expr]:
+) -> Vector:
     """Return the symbolic cross product of two three-dimensional vectors.
 
     Components are sympified. As with SymPy's matrix cross product, this helper
@@ -105,11 +292,7 @@ def cross(
     Raises:
         ValueError: If either vector is not three-dimensional.
     """
-    left_vector = _sympify_vector(left)
-    right_vector = _sympify_vector(right)
-    if len(left_vector) != 3 or len(right_vector) != 3:
-        raise ValueError("cross product requires two three-dimensional vectors")
-    return _cross_product(left_vector, right_vector)
+    return _sympify_vector(left).cross(right)
 
 
 def normal(surface: ExprInput, *, at: VectorInput | None = None) -> Vector:
@@ -128,7 +311,7 @@ def normal(surface: ExprInput, *, at: VectorInput | None = None) -> Vector:
     if not variables:
         raise ValueError("surface must contain at least one variable")
 
-    result = tuple(
+    result = Vector(
         require_expr(sp.diff(expression, variable)) for variable in variables
     )
     if at is None:
@@ -138,7 +321,7 @@ def normal(surface: ExprInput, *, at: VectorInput | None = None) -> Vector:
     if len(point) != len(variables):
         raise ValueError("point dimension must match the surface variables")
     substitutions = tuple(zip(variables, point))
-    return tuple(
+    return Vector(
         require_expr(component.subs(substitutions, simultaneous=True))
         for component in result
     )
@@ -263,8 +446,12 @@ def _affine_line_parts(
     ):
         return None
 
-    point = tuple(component.subs(parameter, 0) for component in parametrization)
-    direction = tuple(sp.diff(component, parameter) for component in parametrization)
+    point = parametrization._new(
+        component.subs(parameter, 0) for component in parametrization
+    )
+    direction = parametrization._new(
+        sp.diff(component, parameter) for component in parametrization
+    )
     return point, direction
 
 
@@ -326,10 +513,7 @@ def are_equivalent_parametric_lines(
     ):
         return False
 
-    offset = tuple(
-        left_component - right_component
-        for left_component, right_component in zip(left_point, right_point)
-    )
+    offset = left_point - right_point
     return _is_zero_vector(
         offset,
         compare=_broadly_equivalent,
@@ -352,5 +536,5 @@ def hat(v: VectorInput) -> Vector:
     vector = _sympify_vector(v)
     if _is_zero_vector(vector):
         return vector
-    magnitude = sp.sqrt(dot(vector, vector))
-    return tuple(component / magnitude for component in vector)
+    magnitude = sp.sqrt(vector.dot(vector))
+    return vector * (sp.S.One / magnitude)

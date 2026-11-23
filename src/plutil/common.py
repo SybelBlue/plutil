@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
@@ -14,6 +15,7 @@ from typing import (
     Self,
     cast,
     overload,
+    runtime_checkable,
 )
 from warnings import deprecated
 
@@ -404,9 +406,44 @@ def eq[T, R](
     return difference.is_zero is True
 
 
-type LatexableValue = SympyInput | sympy.Rel | sympy.Tuple | tuple[LatexableValue, ...]
 type RatioPowerStyle = Literal["radical", "stacked", "linear"]
 """Layout used to render non-unit rational powers as LaTeX."""
+
+
+@dataclass(frozen=True, slots=True)
+class LatexOptions:
+    """Resolved options supplied to a :class:`Latexable` value."""
+
+    log_base: sympy.Expr | None
+    reparse: bool
+    displaystyle: bool
+    ratio_power_style: RatioPowerStyle
+
+    def render(self, value: LatexableValue) -> str:
+        """Render a nested value with these same options."""
+        from .fmt import latex
+
+        return latex(
+            value,
+            log_base=self.log_base,
+            reparse=self.reparse,
+            displaystyle=self.displaystyle,
+            ratio_power_style=self.ratio_power_style,
+        )
+
+
+@runtime_checkable
+class Latexable(Protocol):
+    """A value that can render itself through :func:`plutil.fmt.latex`."""
+
+    def __latex__(self, options: LatexOptions) -> str:
+        """Return a LaTeX fragment using the resolved rendering options."""
+        ...
+
+
+type LatexableValue = (
+    SympyInput | sympy.Rel | sympy.Tuple | tuple[LatexableValue, ...] | Latexable
+)
 
 
 def count_in_latex(

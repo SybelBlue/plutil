@@ -25,6 +25,8 @@ from plutil import (
     SetLike,
     SympyInput,
     SympyValue,
+    Vector,
+    VectorColumn,
     VectorInput,
     VectorLike,
     are_orthogonal,
@@ -158,6 +160,13 @@ def test_formatting_apis_return_strings() -> None:
     prefix: fmt.SIPrefix = "k"
     ratio_power_style: fmt.RatioPowerStyle = "linear"
     matrix_format: fmt.MatrixFormat = "pmatrix"
+    latexable: fmt.Latexable = Vector((x, 1))
+    latex_options = fmt.LatexOptions(
+        log_base=None,
+        reparse=False,
+        displaystyle=True,
+        ratio_power_style=ratio_power_style,
+    )
 
     assert_type(fmt.number(Decimal("1.25"), notation=notation), str)
     assert_type(fmt.scientific(sympy.pi), str)
@@ -165,6 +174,8 @@ def test_formatting_apis_return_strings() -> None:
     assert_type(fmt.currency(1, currency=currency_code, latex=True), str)
     assert_type(fmt.quantity(1, "V", prefix=prefix), str)
     assert_type(fmt.latex(x + 1), str)
+    assert_type(fmt.latex(latexable), str)
+    assert_type(latex_options.render(x + 1), str)
     assert_type(fmt.lim_latex(var=x, val=0, body=x + 1), str)
     assert_type(lim_latex(var=x, val=0, body=x + 1), str)
     assert_type(lim_latex(var=(x, "y"), val=(0, 0), body=x + 1), str)
@@ -259,12 +270,23 @@ def test_vector_predicates_return_booleans() -> None:
 
 
 def test_vector_products_return_symbolic_values() -> None:
+    vector = Vector((1, 2, 3))
+
     assert_type(dot((1, 2), (3, 4)), sympy.Expr)
+    assert_type(vector + (3, 4, 5), Vector)
+    assert_type(2 * vector, Vector)
+    assert_type(vector @ (3, 4, 5), sympy.Expr)
+    assert_type(vector ^ (3, 4, 5), Vector)
+    assert_type(vector.column, VectorColumn)
+    assert_type(vector.column + vector, VectorColumn)
+    assert_type(vector + vector.column, Vector)
+    assert_type(vector.column.cross(vector), VectorColumn)
+    assert_type(vector.column.row, Vector)
     assert_type(
         cross((1, 0, 0), (0, 1, 0)),
-        tuple[sympy.Expr, sympy.Expr, sympy.Expr],
+        Vector,
     )
-    assert_type(normal(x**2, at=(2,)), tuple[sympy.Expr, ...])
+    assert_type(normal(x**2, at=(2,)), Vector)
 
 
 def test_multiple_choice_lens_has_a_typed_boolean_award() -> None:

@@ -81,6 +81,7 @@ from .sets import (
 from .symbolic_decimals import parse_symbolic_decimals
 from .vectors import (
     Vector,
+    VectorColumn,
     VectorInput,
     VectorLike,
     are_orthogonal,
@@ -113,6 +114,7 @@ __all__: Final[tuple[str, ...]] = (
     "SympyQuestion",
     "SympyValue",
     "Vector",
+    "VectorColumn",
     "VectorInput",
     "VectorLike",
     "are_orthogonal",

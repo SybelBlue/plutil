@@ -5,25 +5,92 @@ Full API reference: {py:mod}`plutil.vectors`.
 The vector helpers do not read or mutate PrairieLearn question data or
 scores. Components accept expression values or serialized PrairieLearn
 symbolic inputs, which are converted to SymPy expressions. Vector relationship
-predicates use {py:func}`plutil.eq`. {py:data}`plutil.vectors.Vector` is the
-normalized tuple of SymPy expressions returned by vector-producing helpers.
+predicates use {py:func}`plutil.eq`. {py:class}`plutil.vectors.Vector` is an
+immutable sequence of normalized SymPy expressions returned by
+vector-producing helpers. Construct it from any component iterable:
+
+```python
+from plutil import Vector
+from sympy.abc import x
+
+v = Vector((1, x, 3))
+v.components  # -> (1, x, 3)
+```
+
+Vectors compare and hash structurally with other vectors, but deliberately do
+not compare equal to plain tuples or lists. Convert explicitly with
+`tuple(vector)` when tuple interoperability is needed.
+
 {py:data}`plutil.vectors.VectorLike` also accepts native sequences and SymPy
 tuples, while {py:data}`plutil.vectors.VectorInput` additionally accepts
 PrairieLearn symbolic JSON as individual components. This includes the JSON
 list produced when a native vector is passed through {py:func}`plutil.fmt.json`.
 
+## Vector arithmetic
+
+Addition and subtraction are componentwise and require equal dimensions.
+Multiplication by a scalar works on either side. Ordinary vector input
+sequences are coerced, and every vector-valued operation returns `Vector`.
+Row and column vectors participate in the same operations; a vector-valued
+result preserves the orientation of the vector receiving the operation.
+
+```python
+from plutil import Vector
+from sympy.abc import x
+
+v = Vector((1, x, 3))
+v + (2, 3, 4)  # -> Vector((3, x + 3, 7))
+(2, 3, 4) - v  # -> Vector((1, 3 - x, 1))
+2 * v           # -> Vector((2, 2*x, 6))
+```
+
+Use `@` or `.dot()` for the dot product and `^` or `.cross()` for the cross
+product. Cross products remain restricted to three dimensions. Because `^` is
+Python's bitwise-XOR operator, use parentheses when combining a cross product
+with other operations.
+
+```python
+u = Vector((1, 2, 3))
+v = Vector((4, 5, 6))
+
+u @ v       # -> 32
+u.dot(v)    # -> 32
+u ^ v       # -> Vector((-3, 6, -3))
+u.cross(v)  # -> Vector((-3, 6, -3))
+```
+
+`fmt.latex(vector)` renders a row vector with parentheses. `vector.column`
+returns a `VectorColumn`, which is itself a full `Vector` and renders the same
+components vertically. Use `.row` to return to row orientation. Row and column
+forms compare and hash equally because orientation does not change the
+mathematical vector.
+
+```python
+from plutil import fmt
+
+fmt.latex(Vector((1, x, 3)))
+# r"\begin{pmatrix}1 & x & 3\end{pmatrix}"
+
+fmt.latex(Vector((1, x, 3)).column)
+# r"\begin{pmatrix}1 \\ x \\ 3\end{pmatrix}"
+
+Vector((1, x, 3)).column + Vector((2, 3, 4))
+# -> VectorColumn((3, x + 3, 7))
+```
+
 ## Vector relationships
 
-`dot(left, right)` returns a SymPy expression for nonempty vectors of the same
-dimension. `cross(left, right)` returns a three-component tuple and requires
-two three-dimensional vectors. Invalid dimensions raise `ValueError`.
+The free functions remain convenient compatibility interfaces. `dot(left,
+right)` returns a SymPy expression for nonempty vectors of the same dimension.
+`cross(left, right)` returns a three-component `Vector` and requires two
+three-dimensional inputs. Invalid dimensions raise `ValueError`.
 
 ```python
 from plutil import cross, dot
 from sympy.abc import x
 
 dot((1, x), (x, 2))  # -> 3*x
-cross((1, x, 0), (0, 1, x))  # -> (x**2, -x, 1)
+cross((1, x, 0), (0, 1, x))  # -> Vector((x**2, -x, 1))
 ```
 
 `is_zero(vector)` checks that a nonempty vector has all-zero components.
@@ -57,8 +124,8 @@ components. An empty vector raises `ValueError`.
 ```python
 from plutil.vectors import hat
 
-hat((3, 4))  # -> (3/5, 4/5)
-hat((0, 0))  # -> (0, 0)
+hat((3, 4))  # -> Vector((3/5, 4/5))
+hat((0, 0))  # -> Vector((0, 0))
 ```
 
 ## Surface normals
@@ -73,8 +140,8 @@ from plutil import normal
 from sympy.abc import x, y, z
 
 sphere = x**2 + y**2 + z**2 - 9
-normal(sphere)  # -> (2*x, 2*y, 2*z)
-normal(sphere, at=(1, 2, 2))  # -> (2, 4, 4)
+normal(sphere)  # -> Vector((2*x, 2*y, 2*z))
+normal(sphere, at=(1, 2, 2))  # -> Vector((2, 4, 4))
 ```
 
 The surface and point may use the same parsed or serialized symbolic input

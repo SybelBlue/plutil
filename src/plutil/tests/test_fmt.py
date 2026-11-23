@@ -16,6 +16,7 @@ import plutil.common as common_mod
 from plutil import Choice, ChoiceSet, defmt, fmt
 from plutil.diffeq import OdeCheckResult
 from plutil.lenses import MultiDict
+from plutil.vectors import Vector
 
 
 def test_lim_latex_exports() -> None:
@@ -231,6 +232,74 @@ def test_latex_exports() -> None:
     assert fmt.RatioPowerStyle is common_mod.RatioPowerStyle
     assert not hasattr(plutil, "number")
     assert not hasattr(plutil, "currency")
+
+
+@dataclass
+class _LatexBox:
+    value: fmt.LatexableValue
+    options: fmt.LatexOptions | None = None
+
+    def __latex__(self, options: fmt.LatexOptions) -> str:
+        self.options = options
+        return rf"\boxed{{{options.render(self.value)}}}"
+
+
+def test_latex_dispatches_through_the_latexable_protocol() -> None:
+    value = _LatexBox(sympy.log(x) + x ** sympy.Rational(3, 2))
+
+    rendered = fmt.latex(
+        value,
+        log_base=2,
+        displaystyle=False,
+        ratio_power_style="stacked",
+    )
+
+    assert rendered == r"\boxed{x^{\frac{3}{2}} + \log_{2}{\left(x \right)}}"
+    assert value.options == fmt.LatexOptions(
+        log_base=sympy.Integer(2),
+        reparse=False,
+        displaystyle=False,
+        ratio_power_style="stacked",
+    )
+
+
+class _InvalidLatex:
+    def __latex__(self, options: fmt.LatexOptions) -> str:
+        del options
+        return cast(str, 42)
+
+
+def test_latex_rejects_a_non_string_protocol_result() -> None:
+    with pytest.raises(TypeError, match=r"_InvalidLatex.__latex__\(\) must return str"):
+        fmt.latex(_InvalidLatex())
+
+
+def test_vector_latex_renders_row_and_column_pmatrices() -> None:
+    vector = Vector((x / 2, sympy.log(x), x ** sympy.Rational(3, 2)))
+
+    assert fmt.latex(vector, log_base=2) == (
+        r"\begin{pmatrix}\dfrac{x}{2} & \log_{2}{\left(x \right)}"
+        r" & \sqrt{x^{3}}\end{pmatrix}"
+    )
+    assert fmt.latex(vector.column, log_base=2) == (
+        r"\begin{pmatrix}\dfrac{x}{2} \\ \log_{2}{\left(x \right)}"
+        r" \\ \sqrt{x^{3}}\end{pmatrix}"
+    )
+
+
+def test_row_and_column_vector_json_remain_component_lists() -> None:
+    vector = Vector((x, 1))
+    payload = _JsonPayload(vector, (True,), np.int64(3))
+    encoded = [
+        pl.to_json(x, np_encoding_version=2),
+        pl.to_json(sympy.Integer(1), np_encoding_version=2),
+    ]
+
+    assert fmt.json(vector) == encoded
+    payload_json = fmt.json(payload)
+    assert isinstance(payload_json, dict)
+    assert payload_json["expression"] == encoded
+    assert fmt.json(vector.column) == encoded
 
 
 def test_matrix_latex_renders_nested_sequences() -> None:

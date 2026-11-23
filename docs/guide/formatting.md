@@ -109,6 +109,34 @@ fmt.matrix_latex(np.array([[1, 2], [3, 4]]), format="pmatrix", transpose=True)
 # r"\begin{pmatrix}1 & 3 \\ 2 & 4\end{pmatrix}"
 ```
 
+## Extensible LaTeX values
+
+Custom value types can participate in `fmt.latex` by implementing the
+{py:class}`plutil.fmt.Latexable` protocol. Its `__latex__` method receives a
+resolved {py:class}`plutil.fmt.LatexOptions` context. Composite values should
+call `options.render(child)` so nested expressions inherit the same log base,
+display style, and ratio-power style.
+
+```python
+from dataclasses import dataclass
+
+from plutil import fmt
+
+
+@dataclass(frozen=True)
+class Boxed:
+    value: fmt.LatexableValue
+
+    def __latex__(self, options: fmt.LatexOptions) -> str:
+        return rf"\boxed{{{options.render(self.value)}}}"
+```
+
+The protocol belongs to `plutil.fmt`; it does not change the behavior of
+direct `sympy.latex(value)` calls. `Vector` and `VectorColumn` use this protocol
+for their row and column `pmatrix` representations. Both
+`Vector` and `VectorColumn` are full vector values; the distinction controls
+their rendered orientation rather than their mathematical equality.
+
 ### Structured JSON and Mustache values
 
 `fmt.json` recursively converts a value to JSON-ready Python data; it does not

@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import dataclass, fields, is_dataclass
 from decimal import Decimal, localcontext
 from typing import Any, Final, Literal, cast, overload
 from warnings import deprecated
@@ -17,7 +17,9 @@ import sympy
 
 from .common import (
     ExprInput,
+    Latexable,
     LatexableValue,
+    LatexOptions,
     RatioPowerStyle,
     Variable,
     _input_to_expr,
@@ -88,6 +90,9 @@ __all__: Final[tuple[str, ...]] = (
     "ExponentStyle",
     "Grouping",
     "JsonValue",
+    "LatexOptions",
+    "Latexable",
+    "LatexableValue",
     "MatrixFormat",
     "MatrixInput",
     "Notation",
@@ -164,6 +169,14 @@ def _resolve_ratio_power_style(
     return cast(RatioPowerStyle, ratio_power_style)
 
 
+def _resolve_log_base(log_base: ExprInput | None) -> sympy.Expr | None:
+    if log_base is None:
+        return None
+    if log_base == math.e:
+        return sympy.E
+    return _input_to_expr(log_base)
+
+
 @overload
 def latex(
     expr: LatexableValue,
@@ -214,21 +227,27 @@ def latex(
     ``False`` maps to ``"stacked"``.
     """
     style = _resolve_ratio_power_style(ratio_power_style, simplifyRatioPowers)
+    options = LatexOptions(
+        log_base=_resolve_log_base(log_base),
+        reparse=reparse,
+        displaystyle=displaystyle,
+        ratio_power_style=style,
+    )
+    if isinstance(expr, Latexable):
+        rendered = expr.__latex__(options)
+        if not isinstance(rendered, str):
+            raise TypeError(
+                f"{type(expr).__name__}.__latex__() must return str, "
+                f"got {type(rendered).__name__}"
+            )
+        return rendered
+
     if isinstance(expr, (tuple, sympy.Tuple)):
         items = cast(
             tuple[LatexableValue, ...],
             expr.args if isinstance(expr, sympy.Tuple) else expr,
         )
-        entries = ", ".join(
-            latex(
-                entry,
-                log_base=log_base,
-                reparse=reparse,
-                displaystyle=displaystyle,
-                ratio_power_style=style,
-            )
-            for entry in items
-        )
+        entries = ", ".join(options.render(entry) for entry in items)
         return rf"\left({entries}\right)"
 
     if isinstance(expr, sympy.Limit):
@@ -244,10 +263,10 @@ def latex(
             var=z,
             val=require_expr(z0),
             dir=direction,
-            log_base=log_base,
-            reparse=reparse,
-            displaystyle=displaystyle,
-            ratio_power_style=style,
+            log_base=options.log_base,
+            reparse=options.reparse,
+            displaystyle=options.displaystyle,
+            ratio_power_style=options.ratio_power_style,
         )
 
     global _DISPLAY_OPERATOR_RE, _INV_TRIG_OPERATOR_RE
@@ -258,27 +277,31 @@ def latex(
         parsed = to_expr(expr)
     else:
         parsed = sympy.sympify(expr) if reparse else expr
-    if style == "radical" and isinstance(parsed, sympy.Basic):
+    if options.ratio_power_style == "radical" and isinstance(parsed, sympy.Basic):
         parsed = parsed.replace(_is_ratio_power, _display_ratio_power)
-    if style == "linear" and isinstance(parsed, sympy.Basic):
+    if options.ratio_power_style == "linear" and isinstance(parsed, sympy.Basic):
         parsed = parsed.replace(_is_large_operator, _inline_operator_limits)
-    unparsed = str(sympy.latex(parsed, fold_frac_powers=style == "linear"))
+    unparsed = str(
+        sympy.latex(
+            parsed,
+            fold_frac_powers=options.ratio_power_style == "linear",
+        )
+    )
     rendered = _INV_TRIG_OPERATOR_RE.sub(r"\\operatorname{\1}^{-1}", unparsed).replace(
         r"\int\limits", r"\int"
     )
-    if displaystyle:
+    if options.displaystyle:
         _DISPLAY_OPERATOR_RE = _DISPLAY_OPERATOR_RE or re.compile(r"\\(sum|int|prod)")
         rendered = _DISPLAY_OPERATOR_RE.sub(r"\\displaystyle \g<0>", rendered)
         rendered = rendered.replace(r"\frac", r"\dfrac")
-    if log_base is None:
+    if options.log_base is None:
         return rendered
-    if log_base == math.e:
+    if options.log_base == sympy.E:
         return rendered.replace(r"\log", r"\ln")
-    parsed_log_base = _input_to_expr(log_base)
-    if parsed_log_base == sympy.E:
-        return rendered.replace(r"\log", r"\ln")
-
-    return rendered.replace(r"\log", rf"\log_{{{sympy.latex(parsed_log_base)}}}")
+    return rendered.replace(
+        r"\log",
+        rf"\log_{{{sympy.latex(options.log_base)}}}",
+    )
 
 
 def _is_ratio_power(value: sympy.Basic) -> bool:
@@ -599,6 +622,20 @@ def _json_value(
     df_encoding_version: Literal[1, 2],
     np_encoding_version: Literal[1, 2],
 ) -> JsonValue:
+    if is_dataclass(value):
+        from .vectors import Vector
+
+        if isinstance(value, Vector):
+            return [
+                _json_value(
+                    item,
+                    path=f"{path}[{index}]",
+                    mustache_booleans=mustache_booleans,
+                    df_encoding_version=df_encoding_version,
+                    np_encoding_version=np_encoding_version,
+                )
+                for index, item in enumerate(value)
+            ]
     converted = pl.to_json(
         value,
         df_encoding_version=df_encoding_version,
@@ -658,7 +695,7 @@ def _json_value(
         raise TypeError(f"unsupported JSON value at {path}: dataclass type")
     if is_dataclass(value):
         return _json_value(
-            asdict(cast(Any, value)),
+            {item.name: getattr(value, item.name) for item in fields(cast(Any, value))},
             path=path,
             mustache_booleans=mustache_booleans,
             df_encoding_version=df_encoding_version,
