@@ -16,11 +16,12 @@
    plutil.feedback
    plutil.fmt
    plutil.functions
-   plutil.vectors
+   plutil.linalg
    plutil.lenses
    plutil.obfuscations
    plutil.partial_credit
    plutil.rand
    plutil.sets
    plutil.symbolic_decimals
+   plutil.vectors
 ```

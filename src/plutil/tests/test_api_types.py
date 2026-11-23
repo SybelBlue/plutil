@@ -18,6 +18,9 @@ from plutil import (
     ExprLike,
     ImplicitEquivalenceResult,
     ImplicitWitnesses,
+    Matrix,
+    MatrixInput,
+    MatrixLike,
     MultipleChoiceOption,
     MultipleChoiceQuestion,
     PlValue,
@@ -271,17 +274,23 @@ def test_vector_predicates_return_booleans() -> None:
 
 def test_vector_products_return_symbolic_values() -> None:
     vector = Vector((1, 2, 3))
+    matrix = Matrix(((1, 0, 0), (0, 1, 0), (0, 0, 1)))
+    column_matrix = Matrix(((1,), (2,), (3,)))
 
     assert_type(dot((1, 2), (3, 4)), sympy.Expr)
     assert_type(vector + (3, 4, 5), Vector)
     assert_type(2 * vector, Vector)
-    assert_type(vector @ (3, 4, 5), sympy.Expr)
+    assert_type(vector @ vector.column, sympy.Expr)
     assert_type(vector ^ (3, 4, 5), Vector)
     assert_type(vector.column, VectorColumn)
-    assert_type(vector.column + vector, VectorColumn)
-    assert_type(vector + vector.column, Vector)
+    assert_type(vector.column + (3, 4, 5), VectorColumn)
     assert_type(vector.column.cross(vector), VectorColumn)
     assert_type(vector.column.row, Vector)
+    assert_type(vector @ matrix, Vector)
+    assert_type(vector.column @ vector, Matrix)
+    assert_type(matrix @ vector.column, VectorColumn)
+    assert_type(column_matrix @ vector, Matrix)
+    assert_type(matrix @ matrix, Matrix)
     assert_type(
         cross((1, 0, 0), (0, 1, 0)),
         Vector,
@@ -337,6 +346,8 @@ def test_input_types_accept_and_validate_sympy_json() -> None:
         pl.sympy_to_json(sympy.Integer(1)),
     )
     vector_input: VectorInput = vector_json
+    matrix_input: MatrixInput = (vector_json, vector_json)
+    matrix_like: MatrixLike = sympy.ImmutableMatrix(((1, 0), (0, 1)))
     set_input: SetInput = set_json
     sympy_inputs: tuple[SympyInput, ...] = (expr_input, set_input)
 
@@ -348,6 +359,8 @@ def test_input_types_accept_and_validate_sympy_json() -> None:
     assert_type(integrate(expr_input, d=x), sympy.Expr)
     assert_type(dot((expr_input,), (1,)), sympy.Expr)
     assert_type(dot(vector_input, (1, 1)), sympy.Expr)
+    assert_type(Matrix(matrix_input), Matrix)
+    assert_type(Matrix(matrix_like), Matrix)
     assert_type(is_zero((expr_input,)), bool)
     assert_type(are_parallel((expr_input,), (1,)), bool)
     assert_type(are_orthogonal((expr_input,), (1,)), bool)

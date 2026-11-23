@@ -1,13 +1,15 @@
-# Vector and line geometry
+# Linear algebra and vector geometry
 
-Full API reference: {py:mod}`plutil.vectors`.
+Full API references: {py:mod}`plutil.linalg` and {py:mod}`plutil.vectors`.
 
-The vector helpers do not read or mutate PrairieLearn question data or
-scores. Components accept expression values or serialized PrairieLearn
-symbolic inputs, which are converted to SymPy expressions. Vector relationship
-predicates use {py:func}`plutil.eq`. {py:class}`plutil.vectors.Vector` is an
-immutable sequence of normalized SymPy expressions returned by
-vector-producing helpers. Construct it from any component iterable:
+{py:mod}`plutil.linalg` provides small immutable value wrappers around SymPy
+expressions and matrices. SymPy remains the algebra engine; the wrappers add
+stable Python types, row/column orientation, PrairieLearn symbolic input,
+formatting, and JSON support. NumPy arrays are accepted at the `Matrix`
+constructor boundary rather than used as the symbolic representation.
+
+{py:class}`plutil.linalg.Vector` is an immutable row-oriented sequence of
+normalized SymPy expressions. Construct it from any component iterable:
 
 ```python
 from plutil import Vector
@@ -17,22 +19,25 @@ v = Vector((1, x, 3))
 v.components  # -> (1, x, 3)
 ```
 
-Vectors compare and hash structurally with other vectors, but deliberately do
-not compare equal to plain tuples or lists. Convert explicitly with
-`tuple(vector)` when tuple interoperability is needed.
+Vectors compare and hash structurally with vectors of the same orientation,
+but deliberately do not compare equal to plain tuples or lists. A row vector
+and column vector with equal components are distinct values. Convert
+explicitly with `tuple(vector)` when tuple interoperability is needed.
 
-{py:data}`plutil.vectors.VectorLike` also accepts native sequences and SymPy
-tuples, while {py:data}`plutil.vectors.VectorInput` additionally accepts
+{py:data}`plutil.linalg.VectorLike` also accepts native sequences and SymPy
+tuples, while {py:data}`plutil.linalg.VectorInput` additionally accepts
 PrairieLearn symbolic JSON as individual components. This includes the JSON
 list produced when a native vector is passed through {py:func}`plutil.fmt.json`.
+The former {py:mod}`plutil.vectors` imports remain available for compatibility.
 
 ## Vector arithmetic
 
 Addition and subtraction are componentwise and require equal dimensions.
 Multiplication by a scalar works on either side. Ordinary vector input
-sequences are coerced, and every vector-valued operation returns `Vector`.
-Row and column vectors participate in the same operations; a vector-valued
-result preserves the orientation of the vector receiving the operation.
+sequences are interpreted in the receiver's orientation. Adding or subtracting
+an explicitly oriented row and column is rejected rather than silently losing
+shape information. Every vector-valued operation preserves the receiver's
+orientation.
 
 ```python
 from plutil import Vector
@@ -44,26 +49,26 @@ v + (2, 3, 4)  # -> Vector((3, x + 3, 7))
 2 * v           # -> Vector((2, 2*x, 6))
 ```
 
-Use `@` or `.dot()` for the dot product and `^` or `.cross()` for the cross
-product. Cross products remain restricted to three dimensions. Because `^` is
-Python's bitwise-XOR operator, use parentheses when combining a cross product
-with other operations.
+Use `.dot()` for the orientation-independent geometric dot product and `^` or
+`.cross()` for the cross product. Cross products remain restricted to three
+dimensions. Because `^` is Python's bitwise-XOR operator, use parentheses when
+combining a cross product with other operations. `.outer()` always returns a
+`Matrix`.
 
 ```python
 u = Vector((1, 2, 3))
 v = Vector((4, 5, 6))
 
-u @ v       # -> 32
 u.dot(v)    # -> 32
 u ^ v       # -> Vector((-3, 6, -3))
 u.cross(v)  # -> Vector((-3, 6, -3))
+u.outer(v)  # -> Matrix(((4, 5, 6), (8, 10, 12), (12, 15, 18)))
 ```
 
 `fmt.latex(vector)` renders a row vector with parentheses. `vector.column`
 returns a `VectorColumn`, which is itself a full `Vector` and renders the same
-components vertically. Use `.row` to return to row orientation. Row and column
-forms compare and hash equally because orientation does not change the
-mathematical vector.
+components vertically. Use `.row` to return to row orientation. Their `shape`
+properties are `(1, n)` and `(n, 1)`, respectively.
 
 ```python
 from plutil import fmt
@@ -74,9 +79,69 @@ fmt.latex(Vector((1, x, 3)))
 fmt.latex(Vector((1, x, 3)).column)
 # r"\begin{pmatrix}1 \\ x \\ 3\end{pmatrix}"
 
-Vector((1, x, 3)).column + Vector((2, 3, 4))
+Vector((1, x, 3)).column + (2, 3, 4)
 # -> VectorColumn((3, x + 3, 7))
 ```
+
+## Matrices and shape-aware multiplication
+
+{py:class}`plutil.linalg.Matrix` is an immutable, hashable wrapper around
+{external+sympy:class}`sympy.matrices.immutable.ImmutableDenseMatrix`. It
+accepts rectangular nested sequences, SymPy matrices, and two-dimensional
+NumPy arrays. Entries are normalized to SymPy expressions.
+
+```python
+import numpy as np
+import sympy as sp
+
+from plutil import Matrix
+
+A = Matrix(((1, 2), (3, 4)))
+Matrix(sp.Matrix(((1, 2), (3, 4)))) == A  # -> True
+Matrix(np.array(((1, 2), (3, 4)))) == A  # -> True
+
+A.shape       # -> (2, 2)
+A.row(0)      # -> Vector((1, 2))
+A.column(1)   # -> VectorColumn((2, 4))
+A.T           # -> Matrix(((1, 3), (2, 4)))
+A.det()       # -> -2
+A.inv()       # -> Matrix(((-2, 1), (3/2, -1/2)))
+A.sympy       # -> the backing SymPy ImmutableMatrix
+```
+
+Matrices support `+`, `-`, scalar `*`, and strict shape-aware `@`. Vector
+orientation determines the result:
+
+| Expression | Result |
+| --- | --- |
+| `row @ column` | scalar dot product |
+| `column @ row` | outer-product `Matrix` |
+| `row @ Matrix` | `Vector` row |
+| `Matrix @ column` | `VectorColumn` |
+| `column @ Matrix` | `Matrix`, when the matrix has one row |
+| `Matrix @ row` | `Matrix`, when the matrix has one column |
+| `Matrix @ Matrix` | `Matrix` |
+
+Same-orientation vector products (`row @ row` and `column @ column`) are
+invalid. Use `.dot()` when orientation should not matter. Raw nested and flat
+sequences are not implicitly oriented by `@`; construct a `Vector`,
+`VectorColumn`, or `Matrix` first.
+
+```python
+row = Vector((1, 2))
+column = Vector((3, 4)).column
+A = Matrix(((1, 2), (3, 4)))
+
+row @ column     # -> 11
+column @ row     # -> Matrix(((3, 6), (4, 8)))
+row @ A          # -> Vector((7, 10))
+A @ column       # -> VectorColumn((11, 25))
+```
+
+Indexing with one integer returns a row vector. Two-dimensional indexing
+returns a scalar, row vector, column vector, or matrix according to the slice.
+`fmt.latex(matrix)` uses a parenthesized matrix, and `fmt.json(matrix)` returns
+a nested JSON-ready list.
 
 ## Vector relationships
 

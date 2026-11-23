@@ -7,18 +7,13 @@ and direction helpers do not treat empty component sequences as vectors.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator, Sequence
-from dataclasses import dataclass, field
-from types import NotImplementedType
-from typing import Self, cast, overload
+from collections.abc import Callable
+from typing import Final
 
-import prairielearn as pl
 import sympy as sp
 
 from .common import (
     ExprInput,
-    ExprLike,
-    LatexOptions,
     Variable,
     _input_to_expr,
     eq,
@@ -26,198 +21,24 @@ from .common import (
     var_to_symbol,
 )
 from .equivalence import equivalent
+from .linalg import Vector, VectorColumn, VectorInput, VectorLike
 
-type VectorLike = Sequence[ExprLike] | sp.Tuple
-"""A native or SymPy tuple/sequence of expression values."""
-type VectorInput = Sequence[ExprInput] | sp.Tuple
-"""A native or SymPy vector whose components may be symbolic JSON."""
+__all__: Final[tuple[str, ...]] = (
+    "Vector",
+    "VectorColumn",
+    "VectorInput",
+    "VectorLike",
+    "are_equivalent_parametric_lines",
+    "are_orthogonal",
+    "are_parallel",
+    "cross",
+    "dot",
+    "hat",
+    "is_zero",
+    "normal",
+)
+
 type _ExpressionComparison = Callable[[sp.Expr, sp.Expr], bool]
-
-
-@dataclass(frozen=True, slots=True, init=False, eq=False)
-class Vector(Sequence[sp.Expr]):
-    """An immutable sequence of symbolic vector components."""
-
-    _components: tuple[sp.Expr, ...] = field(repr=False)
-
-    def __init__(self, components: Iterable[ExprInput] | sp.Tuple) -> None:
-        object.__setattr__(
-            self,
-            "_components",
-            tuple(
-                _input_to_expr(pl.from_json(cast(ExprInput, component)))
-                for component in components
-            ),
-        )
-
-    @property
-    def components(self) -> tuple[sp.Expr, ...]:
-        """The normalized symbolic components."""
-        return self._components
-
-    @property
-    def column(self) -> VectorColumn:
-        """This vector with column orientation."""
-        return VectorColumn(self)
-
-    @property
-    def row(self) -> Vector:
-        """This vector with row orientation."""
-        return self
-
-    def __repr__(self) -> str:
-        return f"{type(self).__name__}({self._components!r})"
-
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, Vector) and self._components == other._components
-
-    def __hash__(self) -> int:
-        return hash(self._components)
-
-    def __len__(self) -> int:
-        return len(self._components)
-
-    def __iter__(self) -> Iterator[sp.Expr]:
-        return iter(self._components)
-
-    @overload
-    def __getitem__(self, index: int) -> sp.Expr: ...
-
-    @overload
-    def __getitem__(self, index: slice) -> Self: ...
-
-    def __getitem__(self, index: int | slice) -> sp.Expr | Self:
-        if isinstance(index, slice):
-            return self._new(self._components[index])
-        return self._components[index]
-
-    def __latex__(self, options: LatexOptions) -> str:
-        entries = " & ".join(options.render(component) for component in self)
-        return rf"\begin{{pmatrix}}{entries}\end{{pmatrix}}"
-
-    def _coerce_vector(self, other: object) -> Vector | NotImplementedType:
-        if isinstance(other, Vector):
-            return other
-        if isinstance(other, sp.Tuple) or (
-            isinstance(other, Sequence)
-            and not isinstance(other, (str, bytes, bytearray))
-        ):
-            return Vector(cast(VectorInput, other))
-        return NotImplemented
-
-    def _new(self, components: Iterable[ExprInput] | sp.Tuple) -> Self:
-        return type(self)(components)
-
-    def __add__(self, other: VectorInput) -> Self:
-        vector = self._coerce_vector(other)
-        if vector is NotImplemented:
-            return cast(Self, NotImplemented)
-        if len(self) != len(vector):
-            raise ValueError("vector addition requires vectors of equal dimension")
-        return self._new(
-            left_component + right_component
-            for left_component, right_component in zip(self, vector, strict=True)
-        )
-
-    def __radd__(self, other: VectorInput) -> Self:
-        return self.__add__(other)
-
-    def __sub__(self, other: VectorInput) -> Self:
-        vector = self._coerce_vector(other)
-        if vector is NotImplemented:
-            return cast(Self, NotImplemented)
-        if len(self) != len(vector):
-            raise ValueError("vector subtraction requires vectors of equal dimension")
-        return self._new(
-            left_component - right_component
-            for left_component, right_component in zip(self, vector, strict=True)
-        )
-
-    def __rsub__(self, other: VectorInput) -> Self:
-        vector = self._coerce_vector(other)
-        if vector is NotImplemented:
-            return cast(Self, NotImplemented)
-        if len(self) != len(vector):
-            raise ValueError("vector subtraction requires vectors of equal dimension")
-        return self._new(
-            left_component - right_component
-            for left_component, right_component in zip(vector, self, strict=True)
-        )
-
-    def __neg__(self) -> Self:
-        return self._new(-component for component in self)
-
-    def _coerce_scalar(self, scalar: object) -> sp.Expr | NotImplementedType:
-        try:
-            return _input_to_expr(pl.from_json(scalar))
-        except (TypeError, ValueError):
-            return NotImplemented
-
-    def __mul__(self, scalar: ExprInput) -> Self:
-        expression = self._coerce_scalar(scalar)
-        if expression is NotImplemented:
-            return cast(Self, NotImplemented)
-        return self._new(component * expression for component in self)
-
-    def __rmul__(self, scalar: ExprInput) -> Self:
-        return self.__mul__(scalar)
-
-    def dot(self, other: VectorInput) -> sp.Expr:
-        """Return the symbolic dot product with ``other``."""
-        vector = Vector(other)
-        if not _same_nonzero_dimension(self, vector):
-            raise ValueError("dot product requires nonempty vectors of equal dimension")
-        return _dot_product(self, vector)
-
-    def __matmul__(self, other: VectorInput) -> sp.Expr:
-        vector = self._coerce_vector(other)
-        if vector is NotImplemented:
-            return cast(sp.Expr, NotImplemented)
-        return self.dot(vector)
-
-    def __rmatmul__(self, other: VectorInput) -> sp.Expr:
-        vector = self._coerce_vector(other)
-        if vector is NotImplemented:
-            return cast(sp.Expr, NotImplemented)
-        return vector.dot(self)
-
-    def cross(self, other: VectorInput) -> Self:
-        """Return the three-dimensional cross product with ``other``."""
-        vector = Vector(other)
-        if len(self) != 3 or len(vector) != 3:
-            raise ValueError("cross product requires two three-dimensional vectors")
-        return cast(Self, _cross_product(self, vector))
-
-    def __xor__(self, other: VectorInput) -> Self:
-        vector = self._coerce_vector(other)
-        if vector is NotImplemented:
-            return cast(Self, NotImplemented)
-        return self.cross(vector)
-
-    def __rxor__(self, other: VectorInput) -> Self:
-        vector = self._coerce_vector(other)
-        if vector is NotImplemented:
-            return cast(Self, NotImplemented)
-        crossed = _cross_product(vector, self)
-        return self._new(crossed)
-
-
-class VectorColumn(Vector):
-    """A :class:`Vector` rendered with column orientation."""
-
-    __slots__ = ()
-
-    @property
-    def column(self) -> VectorColumn:
-        return self
-
-    @property
-    def row(self) -> Vector:
-        return Vector(self)
-
-    def __latex__(self, options: LatexOptions) -> str:
-        entries = r" \\ ".join(options.render(component) for component in self)
-        return rf"\begin{{pmatrix}}{entries}\end{{pmatrix}}"
 
 
 def _sympify_vector(vector: VectorInput) -> Vector:
@@ -513,7 +334,10 @@ def are_equivalent_parametric_lines(
     ):
         return False
 
-    offset = left_point - right_point
+    offset = Vector(
+        left_component - right_component
+        for left_component, right_component in zip(left_point, right_point, strict=True)
+    )
     return _is_zero_vector(
         offset,
         compare=_broadly_equivalent,

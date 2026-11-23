@@ -132,10 +132,10 @@ class Boxed:
 ```
 
 The protocol belongs to `plutil.fmt`; it does not change the behavior of
-direct `sympy.latex(value)` calls. `Vector` and `VectorColumn` use this protocol
-for their row and column `pmatrix` representations. Both
-`Vector` and `VectorColumn` are full vector values; the distinction controls
-their rendered orientation rather than their mathematical equality.
+direct `sympy.latex(value)` calls. `Vector`, `VectorColumn`, and `Matrix` use
+this protocol for their `pmatrix` representations. Both vector orientations
+are full vector values, but orientation is part of their shape, equality, and
+matrix-multiplication behavior.
 
 ### Structured JSON and Mustache values
 

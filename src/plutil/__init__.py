@@ -1,6 +1,6 @@
 from typing import Final
 
-from . import choices, fabc, feedback, fmt, obfuscations, rand, vectors
+from . import choices, fabc, feedback, fmt, linalg, obfuscations, rand, vectors
 from .assumptions import (
     AssumptionsTypedDict,
     check,
@@ -68,6 +68,15 @@ from .lenses import (
     SympyQuestion,
     set_group_rich_score,
 )
+from .linalg import (
+    Matrix,
+    MatrixInput,
+    MatrixLike,
+    Vector,
+    VectorColumn,
+    VectorInput,
+    VectorLike,
+)
 from .partial_credit import (
     award_interval_clusivity_credit,
     award_partial_credit,
@@ -80,10 +89,6 @@ from .sets import (
 )
 from .symbolic_decimals import parse_symbolic_decimals
 from .vectors import (
-    Vector,
-    VectorColumn,
-    VectorInput,
-    VectorLike,
     are_orthogonal,
     are_parallel,
     cross,
@@ -102,6 +107,9 @@ __all__: Final[tuple[str, ...]] = (
     "ExprLike",
     "ImplicitEquivalenceResult",
     "ImplicitWitnesses",
+    "Matrix",
+    "MatrixInput",
+    "MatrixLike",
     "MultipleChoiceOption",
     "MultipleChoiceQuestion",
     "NoPreferences",
@@ -152,6 +160,7 @@ __all__: Final[tuple[str, ...]] = (
     "json_to_sympy",
     "latex",
     "lim_latex",
+    "linalg",
     "mbool",
     "normal",
     "obfuscations",

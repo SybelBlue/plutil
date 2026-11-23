@@ -51,7 +51,10 @@ def test_vector_products_have_operator_and_method_forms() -> None:
     left = Vector((1, 2, 3))
     right = Vector((4, 5, 6))
 
-    assert left.dot(right) == left @ right == (1, 2, 3) @ right == 32
+    assert left.dot(right) == 32
+    assert left @ right.column == 32
+    with pytest.raises(TypeError, match="unsupported operand"):
+        _ = left @ right  # pyright: ignore[reportOperatorIssue]
     assert left.cross(right) == left ^ right == Vector((-3, 6, -3))
     assert (1, 2, 3) ^ right == Vector((-3, 6, -3))
 
@@ -73,15 +76,15 @@ def test_vector_multiplication_rejects_another_vector() -> None:
         _ = Vector((1, 2)) * Vector((3, 4))  # pyright: ignore[reportOperatorIssue]
 
 
-def test_vector_column_is_a_vector_with_equivalent_components() -> None:
+def test_vector_column_is_a_distinct_oriented_vector() -> None:
     vector = Vector((1, 2, 3))
     column = vector.column
 
     assert isinstance(column, Vector)
     assert isinstance(column, VectorColumn)
-    assert column == vector
-    assert vector == column
-    assert hash(column) == hash(vector)
+    assert column != vector
+    assert vector != column
+    assert len({vector, column}) == 2
     assert column.column is column
     assert column.row == vector
     assert type(column.row) is Vector
@@ -91,20 +94,34 @@ def test_column_vector_operations_preserve_the_receiver_orientation() -> None:
     row = Vector((1, 2, 3))
     column = VectorColumn((4, 5, 6))
 
-    assert isinstance(column + row, VectorColumn)
-    assert column + row == VectorColumn((5, 7, 9))
-    assert isinstance(row + column, Vector)
-    assert not isinstance(row + column, VectorColumn)
-    assert row + column == Vector((5, 7, 9))
+    with pytest.raises(ValueError, match="matching vector orientation"):
+        _ = column + row
+    with pytest.raises(ValueError, match="matching vector orientation"):
+        _ = row + column
+    assert column + (1, 2, 3) == VectorColumn((5, 7, 9))
     assert isinstance((7, 8, 9) - column, VectorColumn)
     assert (7, 8, 9) - column == VectorColumn((3, 3, 3))
     assert isinstance(-column, VectorColumn)
     assert isinstance(2 * column, VectorColumn)
-    assert column @ row == row @ column == 32
+    assert row @ column == 32
+    assert column.dot(row) == 32
+    assert column @ row == column.outer(row)
     assert column ^ row == VectorColumn((3, -6, 3))
     assert (4, 5, 6) ^ row.column == VectorColumn((3, -6, 3))
     assert isinstance(hat(column), VectorColumn)
     assert isinstance(cross(column, row), VectorColumn)
+
+
+def test_geometry_predicates_ignore_explicit_vector_orientation() -> None:
+    t = sp.Symbol("t")
+
+    assert are_parallel(Vector((1, 2)), VectorColumn((2, 4)))
+    assert are_orthogonal(Vector((1, 0)), VectorColumn((0, 1)))
+    assert are_equivalent_parametric_lines(
+        VectorColumn((t, 2 * t)),
+        Vector((1 + t, 2 + 2 * t)),
+        parameter=t,
+    )
 
 
 def test_is_zero_vector_sympifies_components_and_handles_symbolic_zero() -> None:

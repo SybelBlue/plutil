@@ -623,8 +623,22 @@ def _json_value(
     np_encoding_version: Literal[1, 2],
 ) -> JsonValue:
     if is_dataclass(value):
-        from .vectors import Vector
+        from .linalg import Matrix, Vector
 
+        if isinstance(value, Matrix):
+            return [
+                [
+                    _json_value(
+                        item,
+                        path=f"{path}[{row_index}][{column_index}]",
+                        mustache_booleans=mustache_booleans,
+                        df_encoding_version=df_encoding_version,
+                        np_encoding_version=np_encoding_version,
+                    )
+                    for column_index, item in enumerate(row)
+                ]
+                for row_index, row in enumerate(value)
+            ]
         if isinstance(value, Vector):
             return [
                 _json_value(
